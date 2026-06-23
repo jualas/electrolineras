@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-23T19:49:46Z -->
+<!-- taskboard-exported-at: 2026-06-23T19:59:02Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-23 19:49 UTC  
-**Git:** `main` @ `1e65aeda`  
+**Exportado:** 2026-06-23 19:59 UTC  
+**Git:** `main` @ `60d1a0d9`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,28 +23,12 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 12 |
-| Completada (`completed`) | 4 |
+| Pendiente (`pending`) | 11 |
+| Completada (`completed`) | 5 |
 
 ---
 
 ## Pendiente (`pending`)
-
-<a id="task-6025"></a>
-### [#6025] Parser DATEX II unificado (España + Portugal)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6025` |
-| Estado | `pending` |
-| Complejidad | compleja |
-| Horas estimadas | 16 |
-| Posición Kanban | 5.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Implementar datex_parser.py que normalice ambos feeds a un esquema común: id, nombre, operador, lat/lon, conectores (potencia kW, tipo), país, acceso, fetched_at, source_version.
-
----
 
 <a id="task-6026"></a>
 ### [#6026] Modelo normalizado Station y persistencia SQLite
@@ -285,6 +269,22 @@ Implementar fetch_spain.py que descargue el feed XML oficial NAP DGT/MITECO, gua
 | Actualizado | 2026-06-23 19:36 UTC |
 
 Implementar fetch_portugal.py con descarga por streaming del XML ~180 MB MOBI.E NAP, escritura incremental a disco y validación de integridad básica.
+
+---
+
+<a id="task-6025"></a>
+### [#6025] Parser DATEX II unificado (España + Portugal)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6025` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Horas estimadas | 16 |
+| Posición Kanban | 5.0 |
+| Actualizado | 2026-06-23 19:58 UTC |
+
+Implementar datex_parser.py que normalice ambos feeds a un esquema común: id, nombre, operador, lat/lon, conectores (potencia kW, tipo), país, acceso, fetched_at, source_version.
 
 ---
 

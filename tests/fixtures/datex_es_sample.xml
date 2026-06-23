@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<d2:payload xmlns:com="http://datex2.eu/schema/3/common" xmlns:egi="http://datex2.eu/schema/3/energyInfrastructure" xmlns:fac="http://datex2.eu/schema/3/facilities" xmlns:loc="http://datex2.eu/schema/3/locationReferencing" xmlns:locx="http://datex2.eu/schema/3/locationExtension" xmlns:d2="http://datex2.eu/schema/3/d2Payload" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="egi:EnergyInfrastructureTablePublication" lang="es" modelBaseVersion="3">
+  <com:publicationTime>2026-06-23T10:19:29.666+02:00</com:publicationTime>
+  <com:publicationCreator>
+    <com:country>ES</com:country>
+  </com:publicationCreator>
+  <egi:energyInfrastructureTable id="TEST">
+    <egi:energyInfrastructureSite id="SITE-ES-1" version="">
+      <fac:name>
+        <com:values>
+          <com:value lang="es">Estación Test ES</com:value>
+        </com:values>
+      </fac:name>
+      <fac:locationReference xsi:type="loc:PointLocation">
+        <loc:coordinatesForDisplay>
+          <loc:latitude>40.4168</loc:latitude>
+          <loc:longitude>-3.7038</loc:longitude>
+        </loc:coordinatesForDisplay>
+      </fac:locationReference>
+      <fac:operator xsi:type="fac:OrganisationSpecification" id="OP1" version="">
+        <fac:name>
+          <com:values>
+            <com:value lang="es">Operador Test</com:value>
+          </com:values>
+        </fac:name>
+      </fac:operator>
+      <egi:typeOfSite>onstreet</egi:typeOfSite>
+      <egi:energyInfrastructureStation id="SITE-ES-1_1" version="">
+        <egi:authenticationAndIdentificationMethods>creditCard</egi:authenticationAndIdentificationMethods>
+        <egi:refillPoint xsi:type="egi:ElectricChargingPoint" id="RP1" version="">
+          <egi:connector>
+            <egi:connectorType>iec62196T2COMBO</egi:connectorType>
+            <egi:chargingMode>mode4DC</egi:chargingMode>
+            <egi:maxPowerAtSocket>150000.0</egi:maxPowerAtSocket>
+            <egi:voltage>800.0</egi:voltage>
+          </egi:connector>
+        </egi:refillPoint>
+      </egi:energyInfrastructureStation>
+    </egi:energyInfrastructureSite>
+    <egi:energyInfrastructureSite id="SITE-ES-SKIP" version="">
+      <fac:name>
+        <com:values>
+          <com:value lang="es">Sin coordenadas</com:value>
+        </com:values>
+      </fac:name>
+    </egi:energyInfrastructureSite>
+  </egi:energyInfrastructureTable>
+</d2:payload>

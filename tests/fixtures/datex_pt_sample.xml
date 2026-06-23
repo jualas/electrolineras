@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns7:payload xmlns="http://datex2.eu/schema/3/common" xmlns:ns4="http://datex2.eu/schema/3/facilities" xmlns:ns3="http://datex2.eu/schema/3/locationReferencing" xmlns:ns2="http://datex2.eu/schema/3/locationExtension" xmlns:ns6="http://datex2.eu/schema/3/energyInfrastructure" xmlns:ns7="http://datex2.eu/schema/3/d2Payload" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="ns6:EnergyInfrastructureTablePublication" lang="pt" modelBaseVersion="3">
+  <publicationTime>2026-06-23T03:00:05.160Z</publicationTime>
+  <publicationCreator>
+    <country>PT</country>
+    <nationalIdentifier>MOBIE</nationalIdentifier>
+  </publicationCreator>
+  <ns6:energyInfrastructureTable id="1" version="1">
+    <ns6:energyInfrastructureSite id="SITE-PT-1" version="1">
+      <ns4:name>
+        <values>
+          <value lang="pt-pt">Posto Teste PT</value>
+        </values>
+      </ns4:name>
+      <ns4:locationReference xsi:type="ns3:PointLocation">
+        <ns3:pointByCoordinates>
+          <ns3:pointCoordinates>
+            <ns3:latitude>38.7223</ns3:latitude>
+            <ns3:longitude>-9.1393</ns3:longitude>
+          </ns3:pointCoordinates>
+        </ns3:pointByCoordinates>
+      </ns4:locationReference>
+      <ns4:operator xsi:type="ns4:OrganisationSpecification" id="OPPT" version="1">
+        <ns4:name>
+          <values>
+            <value lang="pt-pt">Operador PT</value>
+          </values>
+        </ns4:name>
+      </ns4:operator>
+      <ns6:energyInfrastructureStation id="SITE-PT-1" version="1">
+        <ns6:authenticationAndIdentificationMethods>rfid</ns6:authenticationAndIdentificationMethods>
+        <ns6:refillPoint xsi:type="ns6:ElectricChargingPoint" id="PT-RP1" version="1">
+          <ns6:connector>
+            <ns6:connectorType>iec62196T2</ns6:connectorType>
+            <ns6:chargingMode>mode3AC3p</ns6:chargingMode>
+            <ns6:maxPowerAtSocket>22000.0</ns6:maxPowerAtSocket>
+          </ns6:connector>
+          <ns6:connector>
+            <ns6:connectorType>iec62196T2COMBO</ns6:connectorType>
+            <ns6:chargingMode>mode4DC</ns6:chargingMode>
+            <ns6:maxPowerAtSocket>50000.0</ns6:maxPowerAtSocket>
+          </ns6:connector>
+        </ns6:refillPoint>
+      </ns6:energyInfrastructureStation>
+    </ns6:energyInfrastructureSite>
+  </ns6:energyInfrastructureTable>
+</ns7:payload>

@@ -115,6 +115,7 @@ Comandos útiles:
 | `make lint` | ruff sobre `src/` y `tests/` |
 | `make fetch-es` | Descarga feed NAP España → `data/raw/es/` |
 | `make fetch-pt` | Descarga feed NAP Portugal (streaming ~180 MB) → `data/raw/pt/` |
+| `make parse-es` / `make parse-pt` | Parsear último XML DATEX → resumen JSON |
 
 Ingestión:
 
@@ -133,6 +134,6 @@ Pipeline completo (stub hasta #6027):
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6024](TASKBOARD.md#task-6024) (bootstrap + descargas NAP ES/PT). Siguiente: [#6025 Parser DATEX II](TASKBOARD.md#task-6025).
+**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6025](TASKBOARD.md#task-6025). Siguiente: [#6026 Persistencia SQLite](TASKBOARD.md#task-6026).
 
 Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)
