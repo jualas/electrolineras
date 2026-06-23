@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-23T15:15:10Z -->
+<!-- taskboard-exported-at: 2026-06-23T15:18:23Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-23 15:15 UTC  
-**Git:** `main` @ `?`  
+**Exportado:** 2026-06-23 15:18 UTC  
+**Git:** `main` @ `b5a47b42`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,28 +23,12 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 16 |
-| Completada (`completed`) | 0 |
+| Pendiente (`pending`) | 15 |
+| Completada (`completed`) | 1 |
 
 ---
 
 ## Pendiente (`pending`)
-
-<a id="task-6021"></a>
-### [#6021] Commit inicial del repositorio
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6021` |
-| Estado | `pending` |
-| Complejidad | simple |
-| Horas estimadas | 1 |
-| Posición Kanban | 1.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Incluir .gitignore, README.md, docs/, estructura data/scripts/src y snapshot estable del proyecto. Cierra el último ítem pendiente de Fase 0 en STATUS.md.
-
----
 
 <a id="task-6022"></a>
 ### [#6022] Bootstrap del proyecto y entorno de desarrollo
@@ -283,6 +267,24 @@ Flujo: ubicación (GPS / dirección / toque en mapa), radio ajustable (default 1
 | Actualizado | 2026-06-22 19:31 UTC |
 
 Botones «Navegar» con enlace Google Maps (destination=lat,lon), copiar coordenadas al portapapeles. Sin Tesla Fleet API en v1. Referencia: docs/NAVIGATION.md.
+
+---
+
+## Completada (`completed`)
+
+<a id="task-6021"></a>
+### [#6021] Commit inicial del repositorio
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6021` |
+| Estado | `completed` |
+| Complejidad | simple |
+| Horas estimadas | 1 |
+| Posición Kanban | 1.0 |
+| Actualizado | 2026-06-23 15:18 UTC |
+
+Incluir .gitignore, README.md, docs/, estructura data/scripts/src y snapshot estable del proyecto. Cierra el último ítem pendiente de Fase 0 en STATUS.md.
 
 ---
 
