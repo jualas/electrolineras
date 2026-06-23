@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-23T18:37:53Z -->
+<!-- taskboard-exported-at: 2026-06-23T19:25:01Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-23 18:37 UTC  
-**Git:** `main` @ `92020554`  
+**Exportado:** 2026-06-23 19:25 UTC  
+**Git:** `main` @ `1002dbec`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,44 +23,12 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 15 |
-| Completada (`completed`) | 1 |
+| Pendiente (`pending`) | 13 |
+| Completada (`completed`) | 3 |
 
 ---
 
 ## Pendiente (`pending`)
-
-<a id="task-6022"></a>
-### [#6022] Bootstrap del proyecto y entorno de desarrollo
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6022` |
-| Estado | `pending` |
-| Complejidad | media |
-| Horas estimadas | 4 |
-| Posición Kanban | 2.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Crear esqueleto según docs/ARCHITECTURE.md: pyproject.toml o requirements.txt (Python 3.11+, lxml, FastAPI, uvicorn), package.json para frontend (Vite), README con instrucciones de arranque local, variables de entorno (.env.example).
-
----
-
-<a id="task-6023"></a>
-### [#6023] Script de descarga NAP España (DATEX II)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6023` |
-| Estado | `pending` |
-| Complejidad | media |
-| Horas estimadas | 4 |
-| Posición Kanban | 3.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Implementar fetch_spain.py que descargue el feed XML oficial NAP DGT/MITECO, guarde raw en data/raw/es/ con timestamp y maneje errores/reintentos. Referencia: docs/DATA_SOURCES.md.
-
----
 
 <a id="task-6024"></a>
 ### [#6024] Script de descarga NAP Portugal MOBI.E (streaming)
@@ -285,6 +253,38 @@ Botones «Navegar» con enlace Google Maps (destination=lat,lon), copiar coorden
 | Actualizado | 2026-06-23 15:18 UTC |
 
 Incluir .gitignore, README.md, docs/, estructura data/scripts/src y snapshot estable del proyecto. Cierra el último ítem pendiente de Fase 0 en STATUS.md.
+
+---
+
+<a id="task-6022"></a>
+### [#6022] Bootstrap del proyecto y entorno de desarrollo
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6022` |
+| Estado | `completed` |
+| Complejidad | media |
+| Horas estimadas | 4 |
+| Posición Kanban | 2.0 |
+| Actualizado | 2026-06-23 18:55 UTC |
+
+Crear esqueleto según docs/ARCHITECTURE.md: pyproject.toml o requirements.txt (Python 3.11+, lxml, FastAPI, uvicorn), package.json para frontend (Vite), README con instrucciones de arranque local, variables de entorno (.env.example).
+
+---
+
+<a id="task-6023"></a>
+### [#6023] Script de descarga NAP España (DATEX II)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6023` |
+| Estado | `completed` |
+| Complejidad | media |
+| Horas estimadas | 4 |
+| Posición Kanban | 3.0 |
+| Actualizado | 2026-06-23 19:18 UTC |
+
+Implementar fetch_spain.py que descargue el feed XML oficial NAP DGT/MITECO, guarde raw en data/raw/es/ con timestamp y maneje errores/reintentos. Referencia: docs/DATA_SOURCES.md.
 
 ---
 

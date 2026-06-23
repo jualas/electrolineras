@@ -133,7 +133,8 @@ Regla de filtro por potencia: usar `max_power_kw` del sitio o filtrar conectores
 
 ```
 DATEX II (ES) ──┐
-                ├──► Parser DATEX ──► Normalizador ──► SQLite/PostGIS ──► API ──► Mapa web
+                ├──► Parser DATEX ──► Normalizador ──► SQLite (+ SpatiaLite) ──► API ──► Mapa web
+                │                              └── ver docs/STORAGE.md
 DATEX II (PT) ──┘
 REVE/OCPI (ES) ────► (fase 2) ──► merge por id/coords
 ```

@@ -50,6 +50,7 @@ Detalle técnico en [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
 - [`docs/NAVIGATION.md`](docs/NAVIGATION.md) — envío de paradas y rutas al coche (Tesla, Google Maps)
 - [`docs/ROUTE_CORRIDOR_SEARCH.md`](docs/ROUTE_CORRIDOR_SEARCH.md) — búsqueda en corredor de ruta
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — arquitectura propuesta
+- [`docs/STORAGE.md`](docs/STORAGE.md) — persistencia SQLite / SpatiaLite / PostGIS
 
 ### Seguimiento
 
@@ -60,14 +61,76 @@ Detalle técnico en [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
 
 ```
 Electrolineras/
-├── data/          # Datos procesados (raw voluminoso en .gitignore)
-├── docs/          # Documentación del proyecto
-├── scripts/       # Ingestión DATEX II, normalización, actualización
-└── src/           # Backend + frontend web
+├── data/
+│   ├── raw/           # XML DATEX descargados (gitignore)
+│   ├── processed/     # GeoJSON exportado
+│   └── db/            # stations.db (gitignore)
+├── docs/
+├── scripts/           # ingest_all.py, etc.
+├── src/
+│   ├── api/           # FastAPI
+│   ├── db/            # persistencia (#6026)
+│   ├── ingest/        # fetch + parser DATEX
+│   ├── models/
+│   └── web/           # Frontend Vite + React
+├── tests/
+├── pyproject.toml
+├── Makefile
+└── .env.example
+```
+
+## Requisitos
+
+- **Python 3.11+**
+- **Node.js 20+** (frontend)
+- `make` (opcional, atajos de desarrollo)
+
+## Arranque local
+
+```bash
+# 1. Variables de entorno
+cp .env.example .env
+
+# 2. Backend (venv + dependencias + tests)
+make install-dev
+
+# 3. Terminal A — API
+make api
+# → http://127.0.0.1:8000/health
+
+# 4. Terminal B — frontend
+make web
+# → http://127.0.0.1:5173
+```
+
+Comandos útiles:
+
+| Comando | Descripción |
+|---------|-------------|
+| `make install` | Solo Python (venv + `pip install -e .`) |
+| `make install-dev` | Python + dependencias dev + `npm install` en `src/web` |
+| `make api` | Uvicorn con recarga (`electrolineras-api`) |
+| `make web` | Vite dev server |
+| `make test` | pytest |
+| `make lint` | ruff sobre `src/` y `tests/` |
+| `make fetch-es` | Descarga feed NAP España → `data/raw/es/` |
+
+Ingestión:
+
+```bash
+make fetch-es
+# o: .venv/bin/electrolineras-fetch-es
+# Genera data/raw/es/electrolineras_<timestamp>.xml + manifest.json
+```
+
+Pipeline completo (stub hasta #6027):
+
+```bash
+.venv/bin/python scripts/ingest_all.py
 ```
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa** (Fase 0 completada). Siguiente tarea: [#6022 Bootstrap](TASKBOARD.md#task-6022).
+**Fase 1 — MVP datos + mapa**. Completadas [#6022 Bootstrap](TASKBOARD.md#task-6022) y [#6023 Script NAP España](TASKBOARD.md#task-6023). Siguiente tarea: [#6024 Script NAP Portugal](TASKBOARD.md#task-6024).
 
 Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)

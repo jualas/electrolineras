@@ -36,7 +36,7 @@ flowchart LR
 |------|------------|--------|
 | Ingestión | Python 3.11+ | XML DATEX II, ecosistema geo maduro |
 | Parser DATEX | `lxml` + XSD o biblioteca DATEX | Feed oficial en XML |
-| Almacenamiento | SQLite + SpatiaLite o PostGIS | MVP simple; PostGIS si crece |
+| Almacenamiento | SQLite + SpatiaLite (MVP); PostGIS si crece | Ver [`STORAGE.md`](STORAGE.md) |
 | API | FastAPI | Filtros por bbox, potencia, país |
 | Frontend | React/Vite o Svelte + **MapLibre GL** | Mapa vectorial, open source |
 | Despliegue | Docker + nginx o static hosting | Bajo coste |
@@ -105,6 +105,9 @@ src/
 │   └── fetch_portugal.py    # tarea #6024
 ├── models/
 │   └── station.py           # tarea #6026
+├── db/
+│   ├── schema.py            # tarea #6026 — ver STORAGE.md
+│   └── repository.py
 ├── api/
 │   └── main.py              # tareas #6028–6030
 └── web/
@@ -113,6 +116,8 @@ src/
     └── filters/             # tareas #6033–6035
 ```
 
-Pipeline completo (#6027): `scripts/ingest_all.py` → `data/processed/stations.geojson`.
+Pipeline completo (#6027): `scripts/ingest_all.py` → `data/db/stations.db` → `data/processed/stations.geojson`.
+
+Persistencia (esquema, índices, migración PostGIS): [`STORAGE.md`](STORAGE.md).
 
 Implementación y estado: [`TASKBOARD.md`](../TASKBOARD.md) · [`STATUS.md`](STATUS.md).

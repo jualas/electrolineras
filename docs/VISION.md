@@ -83,8 +83,8 @@ Nuestro valor: **agregación peninsular + filtro por potencia + fuente oficial c
 
 Backlog detallado en [`TASKBOARD.md`](../TASKBOARD.md) y resumen en [`STATUS.md`](STATUS.md).
 
-- [#6022](../TASKBOARD.md#task-6022) Bootstrap del entorno de desarrollo.
-- [#6023–6027](../TASKBOARD.md#task-6023) Ingestión DATEX II → modelo normalizado → GeoJSON.
+- [#6022](../TASKBOARD.md#task-6022) Bootstrap del entorno de desarrollo ✅
+- [#6023](../TASKBOARD.md#task-6023) Descarga NAP España ✅ · [#6024–6027](../TASKBOARD.md#task-6024) ingestión PT, parser, modelo y GeoJSON (pendiente).
 - [#6028–6030](../TASKBOARD.md#task-6028) API REST (listado, ruta, ciudad).
 - [#6031–6036](../TASKBOARD.md#task-6031) Frontend mapa (MapLibre) con filtros, búsqueda en ruta/ciudad y navegación externa.
 

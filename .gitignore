@@ -8,6 +8,7 @@ venv/
 env/
 .env
 .env.*
+!.env.example
 dist/
 build/
 *.egg-info/
@@ -21,10 +22,18 @@ htmlcov/
 Thumbs.db
 
 # Datos locales voluminosos o descargados
-data/raw/
+data/raw/*
+!data/raw/.gitkeep
 data/cache/
+data/db/*.db
+data/db/*.db-*
+!data/db/.gitkeep
 *.geojson.tmp
 *.csv.tmp
+
+# Frontend
+node_modules/
+src/web/dist/
 
 # IDEs y herramientas
 .idea/

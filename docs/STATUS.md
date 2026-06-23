@@ -4,7 +4,7 @@
 
 ## Fase actual
 
-**Fase 1 — MVP datos + mapa.** Fase 0 completada. Siguiente tarea: [#6022 Bootstrap del proyecto y entorno de desarrollo](../TASKBOARD.md#task-6022).
+**Fase 1 — MVP datos + mapa.** [#6023](../TASKBOARD.md#task-6023) completada. Siguiente tarea: [#6024 Script NAP Portugal](../TASKBOARD.md#task-6024).
 
 ## Gestión de tareas (TaskBoard)
 
@@ -49,16 +49,16 @@
 
 | Tarea | Estado | Documentación |
 |-------|--------|---------------|
-| [#6022](../TASKBOARD.md#task-6022) Bootstrap del proyecto y entorno de desarrollo | ⏳ **siguiente** | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| [#6022](../TASKBOARD.md#task-6022) Bootstrap del proyecto y entorno de desarrollo | ✅ | [`ARCHITECTURE.md`](ARCHITECTURE.md), [`README.md`](../README.md) |
 
 #### Datos e ingestión
 
 | Tarea | Estado | Documentación |
 |-------|--------|---------------|
-| [#6023](../TASKBOARD.md#task-6023) Script de descarga NAP España (DATEX II) | ⏳ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
-| [#6024](../TASKBOARD.md#task-6024) Script de descarga NAP Portugal MOBI.E (streaming) | ⏳ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
+| [#6023](../TASKBOARD.md#task-6023) Script de descarga NAP España (DATEX II) | ✅ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
+| [#6024](../TASKBOARD.md#task-6024) Script de descarga NAP Portugal MOBI.E (streaming) | ⏳ **siguiente** | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
 | [#6025](../TASKBOARD.md#task-6025) Parser DATEX II unificado (España + Portugal) | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
-| [#6026](../TASKBOARD.md#task-6026) Modelo normalizado Station y persistencia SQLite | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| [#6026](../TASKBOARD.md#task-6026) Modelo normalizado Station y persistencia SQLite | ⏳ | [`STORAGE.md`](STORAGE.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | [#6027](../TASKBOARD.md#task-6027) Pipeline de ingestión y export GeoJSON | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 
 #### API backend
@@ -80,7 +80,7 @@
 | [#6035](../TASKBOARD.md#task-6035) Frontend — búsqueda en ciudad | ⏳ | [`FILTERS.md`](FILTERS.md) |
 | [#6036](../TASKBOARD.md#task-6036) Navegación externa y envío al coche (MVP) | ⏳ | [`NAVIGATION.md`](NAVIGATION.md) |
 
-**Resumen Fase 1:** 0/15 tareas completadas; 15 pendientes (sin contar #6021 de Fase 0).
+**Resumen Fase 1:** 2/15 tareas completadas; 13 pendientes (sin contar #6021 de Fase 0).
 
 ### Fase 2 — Datos dinámicos y UX Tesla
 
@@ -108,6 +108,8 @@ Sin tareas TaskBoard creadas aún:
 | Filtro diferenciador | Potencia de carga (kW) |
 | Radio default modo ciudad | **1 km** |
 | Seguimiento de tareas | TaskBoard (`id=7`) + `TASKBOARD.md` |
+| Almacenamiento MVP | SQLite 3 + SpatiaLite (PostGIS si crece) — [`STORAGE.md`](STORAGE.md) |
+| Frontend MVP | React + Vite + TypeScript (`src/web/`) |
 
 ## Navegación y envío al coche
 
@@ -124,8 +126,8 @@ Documentado en [`docs/NAVIGATION.md`](NAVIGATION.md). Implementación MVP: tarea
 
 | Tema | Opciones | Tarea relacionada |
 |------|----------|-------------------|
-| Almacenamiento | SQLite vs PostGIS | #6026 |
-| Frontend | React vs Svelte vs vanilla | #6031 |
+| SpatiaLite en v1.0 | Activar extensión geo en #6026 vs solo lat/lon hasta #6029 | #6026, #6029 |
+| Frontend | React vs Svelte vs vanilla | ~~#6031~~ decidido: React en #6022 |
 | Filtro potencia | Por sitio (max) vs por conector | #6028, #6033 |
 | Hosting | VPS propio vs cloud estático | — |
 | Integración Tesla | Solo enlaces vs Fleet API en v2 | #6036 |
