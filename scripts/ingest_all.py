@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pipeline de ingestión (stub). Implementación completa en tarea #6027."""
+"""Pipeline de ingestión. Persistencia completa en tareas #6026–#6027."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import sys
 def main() -> int:
     from ingest.fetch_portugal import fetch_portugal_nap
     from ingest.fetch_spain import fetch_spain_nap
+    from db.load_cli import load_latest_feeds_to_db
 
     print("=== NAP España ===")
     try:
@@ -26,7 +27,14 @@ def main() -> int:
         print(f"ERROR Portugal: {exc}", file=sys.stderr)
         return 1
 
-    print("\ningest_all: parse y persistencia pendientes (#6025, #6026, #6027)")
+    print("\n=== Persistencia SQLite + GeoJSON ===")
+    try:
+        counts = load_latest_feeds_to_db(export_geojson=True)
+        print(f"OK: ES={counts['ES']}, PT={counts['PT']}")
+    except Exception as exc:
+        print(f"ERROR persistencia: {exc}", file=sys.stderr)
+        return 1
+
     return 0
 
 

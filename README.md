@@ -116,6 +116,7 @@ Comandos útiles:
 | `make fetch-es` | Descarga feed NAP España → `data/raw/es/` |
 | `make fetch-pt` | Descarga feed NAP Portugal (streaming ~180 MB) → `data/raw/pt/` |
 | `make parse-es` / `make parse-pt` | Parsear último XML DATEX → resumen JSON |
+| `make load-db` | Parsear ES+PT y persistir en SQLite + export GeoJSON |
 
 Ingestión:
 
@@ -134,6 +135,6 @@ Pipeline completo (stub hasta #6027):
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6025](TASKBOARD.md#task-6025). Siguiente: [#6026 Persistencia SQLite](TASKBOARD.md#task-6026).
+**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6026](TASKBOARD.md#task-6026). Siguiente: [#6027 Pipeline ingestión](TASKBOARD.md#task-6027).
 
 Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)

@@ -1,4 +1,4 @@
-.PHONY: install install-dev api web test lint fetch-es fetch-pt parse-es parse-pt clean
+.PHONY: install install-dev api web test lint fetch-es fetch-pt parse-es parse-pt load-db clean
 
 install:
 	python3 -m venv .venv
@@ -32,6 +32,9 @@ parse-es:
 
 parse-pt:
 	.venv/bin/electrolineras-parse-datex --latest PT --summary
+
+load-db:
+	.venv/bin/electrolineras-load-db
 
 clean:
 	rm -rf .venv src/web/node_modules src/web/dist

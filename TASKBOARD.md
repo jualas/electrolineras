@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-23T20:09:36Z -->
+<!-- taskboard-exported-at: 2026-06-23T20:12:21Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-23 20:09 UTC  
-**Git:** `main` @ `083431ee`  
+**Exportado:** 2026-06-23 20:12 UTC  
+**Git:** `main` @ `e4851e94`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,28 +23,12 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 11 |
-| Completada (`completed`) | 5 |
+| Pendiente (`pending`) | 10 |
+| Completada (`completed`) | 6 |
 
 ---
 
 ## Pendiente (`pending`)
-
-<a id="task-6026"></a>
-### [#6026] Modelo normalizado Station y persistencia SQLite
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6026` |
-| Estado | `pending` |
-| Complejidad | media |
-| Horas estimadas | 6 |
-| Posición Kanban | 6.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Definir station.py (Pydantic/dataclass) y capa de persistencia SQLite (+ SpatiaLite si se usa geo index). Tablas con índices por bbox, min_kw, país. Decisión MVP: SQLite según ARCHITECTURE.md.
-
----
 
 <a id="task-6027"></a>
 ### [#6027] Pipeline de ingestión y export GeoJSON
@@ -285,6 +269,22 @@ Implementar fetch_portugal.py con descarga por streaming del XML ~180 MB MOBI.E 
 | Actualizado | 2026-06-23 19:58 UTC |
 
 Implementar datex_parser.py que normalice ambos feeds a un esquema común: id, nombre, operador, lat/lon, conectores (potencia kW, tipo), país, acceso, fetched_at, source_version.
+
+---
+
+<a id="task-6026"></a>
+### [#6026] Modelo normalizado Station y persistencia SQLite
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6026` |
+| Estado | `completed` |
+| Complejidad | media |
+| Horas estimadas | 6 |
+| Posición Kanban | 6.0 |
+| Actualizado | 2026-06-23 20:12 UTC |
+
+Definir station.py (Pydantic/dataclass) y capa de persistencia SQLite (+ SpatiaLite si se usa geo index). Tablas con índices por bbox, min_kw, país. Decisión MVP: SQLite según ARCHITECTURE.md.
 
 ---
 

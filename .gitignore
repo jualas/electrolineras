@@ -28,6 +28,8 @@ data/cache/
 data/db/*.db
 data/db/*.db-*
 !data/db/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
 *.geojson.tmp
 *.csv.tmp
 
