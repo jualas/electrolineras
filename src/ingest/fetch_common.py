@@ -16,7 +16,9 @@ from ingest.config import IngestSettings, repo_root
 
 logger = logging.getLogger(__name__)
 
-PUBLICATION_TIME_RE = re.compile(r"<com:publicationTime>([^<]+)</com:publicationTime>")
+PUBLICATION_TIME_RE = re.compile(
+    r"<(?:com:)?publicationTime>([^<]+)</(?:com:)?publicationTime>"
+)
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,7 @@ class FetchResult:
     publication_time: str | None
     etag: str | None
     last_modified: str | None
+    resumed_from_bytes: int = 0
 
 
 def resolve_path(path: Path) -> Path:
@@ -55,6 +58,42 @@ def write_manifest(manifest_path: Path, payload: dict[str, Any]) -> None:
     temp_path.replace(manifest_path)
 
 
+def hash_existing_file(path: Path, chunk_size: int) -> tuple[hashlib._Hash, int]:
+    digest = hashlib.sha256()
+    bytes_read = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(chunk_size):
+            digest.update(chunk)
+            bytes_read += len(chunk)
+    return digest, bytes_read
+
+
+def validate_xml_file(
+    path: Path,
+    *,
+    expected_bytes: int | None,
+    min_bytes: int | None,
+) -> None:
+    size = path.stat().st_size
+    if min_bytes is not None and size < min_bytes:
+        msg = f"Archivo demasiado pequeño: {size} bytes (mínimo {min_bytes})"
+        raise ValueError(msg)
+    if expected_bytes is not None and size != expected_bytes:
+        msg = f"Tamaño distinto de Content-Length: {size} != {expected_bytes}"
+        raise ValueError(msg)
+
+    with path.open("rb") as handle:
+        head = handle.read(128)
+        if not head.startswith(b"<?xml"):
+            raise ValueError("Cabecera XML inválida")
+
+        handle.seek(max(0, size - 512))
+        tail = handle.read()
+        stripped = tail.rstrip()
+        if b"</" not in tail or not stripped.endswith(b">"):
+            raise ValueError("Cierre XML inválido o truncado")
+
+
 def download_to_file(
     *,
     source: str,
@@ -63,6 +102,10 @@ def download_to_file(
     filename_prefix: str,
     settings: IngestSettings,
     headers: dict[str, str] | None = None,
+    timeout_seconds: float | None = None,
+    min_bytes: int | None = None,
+    allow_resume: bool = False,
+    log_progress_mb: int | None = None,
 ) -> FetchResult:
     output_dir = resolve_path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -72,6 +115,8 @@ def download_to_file(
     output_path = output_dir / output_name
     temp_path = output_path.with_suffix(".xml.tmp")
     manifest_path = output_dir / "manifest.json"
+    chunk_size = settings.fetch_stream_chunk_size
+    timeout = timeout_seconds or settings.fetch_timeout_seconds
 
     request_headers = {"User-Agent": settings.fetch_user_agent}
     if headers:
@@ -79,26 +124,69 @@ def download_to_file(
 
     last_error: Exception | None = None
     response: httpx.Response | None = None
+    resumed_from_bytes = 0
+    expected_total_bytes: int | None = None
 
     for attempt in range(1, settings.fetch_max_retries + 1):
         try:
+            resume_from = 0
+            if allow_resume and temp_path.exists():
+                resume_from = temp_path.stat().st_size
+                if resume_from > 0:
+                    request_headers["Range"] = f"bytes={resume_from}-"
+                    resumed_from_bytes = resume_from
+                    logger.info("Reanudando descarga desde byte %d", resume_from)
+            elif "Range" in request_headers:
+                request_headers.pop("Range", None)
+                resumed_from_bytes = 0
+
             logger.info("Descargando %s (intento %d/%d)", url, attempt, settings.fetch_max_retries)
             with httpx.stream(
                 "GET",
                 url,
                 headers=request_headers,
-                timeout=settings.fetch_timeout_seconds,
+                timeout=timeout,
                 follow_redirects=True,
             ) as stream:
                 response = stream
                 stream.raise_for_status()
-                sha256 = hashlib.sha256()
-                bytes_written = 0
+
+                if resume_from and response.status_code == 200:
+                    logger.warning("Servidor ignoró Range; reiniciando descarga completa")
+                    temp_path.unlink(missing_ok=True)
+                    resume_from = 0
+                    resumed_from_bytes = 0
+                elif resume_from and response.status_code == 416:
+                    logger.warning("Range no satisfactorio; reiniciando descarga completa")
+                    temp_path.unlink(missing_ok=True)
+                    resume_from = 0
+                    resumed_from_bytes = 0
+
+                content_length = response.headers.get("content-length")
+                if content_length is not None:
+                    declared = int(content_length)
+                    if response.status_code == 206:
+                        expected_total_bytes = resume_from + declared
+                    else:
+                        expected_total_bytes = declared
+
+                sha256: hashlib._Hash | None = None
+                if resume_from:
+                    sha256, hashed_bytes = hash_existing_file(temp_path, chunk_size)
+                    if hashed_bytes != resume_from:
+                        raise ValueError("Tamaño parcial inconsistente antes de reanudar")
+                    file_mode = "ab"
+                else:
+                    sha256 = hashlib.sha256()
+                    file_mode = "wb"
+
+                bytes_written = resume_from
                 publication_time: str | None = None
                 head_buffer = bytearray()
+                last_progress_bucket = -1
 
-                with temp_path.open("wb") as handle:
-                    for chunk in stream.iter_bytes():
+                with temp_path.open(file_mode) as handle:
+                    for chunk in stream.iter_bytes(chunk_size):
                         if not chunk:
                             continue
                         handle.write(chunk)
@@ -108,7 +196,22 @@ def download_to_file(
                             remaining = 8192 - len(head_buffer)
                             head_buffer.extend(chunk[:remaining])
 
-                publication_time = extract_publication_time(bytes(head_buffer))
+                        if log_progress_mb:
+                            bucket = bytes_written // (log_progress_mb * 1024 * 1024)
+                            if bucket > last_progress_bucket:
+                                logger.info("Progreso: %.1f MB", bytes_written / (1024 * 1024))
+                                last_progress_bucket = bucket
+
+                if resume_from == 0:
+                    publication_time = extract_publication_time(bytes(head_buffer))
+                elif not head_buffer and temp_path.exists():
+                    publication_time = extract_publication_time(temp_path.read_bytes()[:8192])
+
+            validate_xml_file(
+                temp_path,
+                expected_bytes=expected_total_bytes,
+                min_bytes=min_bytes,
+            )
 
             temp_path.replace(output_path)
             digest = sha256.hexdigest()
@@ -123,6 +226,8 @@ def download_to_file(
                 "publication_time": publication_time,
                 "etag": response.headers.get("etag"),
                 "last_modified": response.headers.get("last-modified"),
+                "resumed_from_bytes": resumed_from_bytes,
+                "expected_bytes": expected_total_bytes,
             }
             write_manifest(manifest_path, manifest)
 
@@ -145,12 +250,19 @@ def download_to_file(
                 publication_time=publication_time,
                 etag=response.headers.get("etag"),
                 last_modified=response.headers.get("last-modified"),
+                resumed_from_bytes=resumed_from_bytes,
             )
-        except (httpx.HTTPError, OSError) as exc:
+        except (httpx.HTTPError, OSError, ValueError) as exc:
             last_error = exc
-            if temp_path.exists():
-                temp_path.unlink()
             if attempt >= settings.fetch_max_retries:
+                if temp_path.exists() and allow_resume:
+                    logger.error(
+                        "Descarga fallida; conservando parcial %s (%d bytes) para reintento",
+                        temp_path.name,
+                        temp_path.stat().st_size,
+                    )
+                elif temp_path.exists():
+                    temp_path.unlink()
                 break
             sleep_seconds = settings.fetch_retry_backoff_seconds * attempt
             logger.warning(

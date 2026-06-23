@@ -4,7 +4,7 @@
 
 ## Fase actual
 
-**Fase 1 — MVP datos + mapa.** [#6023](../TASKBOARD.md#task-6023) completada. Siguiente tarea: [#6024 Script NAP Portugal](../TASKBOARD.md#task-6024).
+**Fase 1 — MVP datos + mapa.** [#6024](../TASKBOARD.md#task-6024) completada. Siguiente tarea: [#6025 Parser DATEX II](../TASKBOARD.md#task-6025).
 
 ## Gestión de tareas (TaskBoard)
 
@@ -56,8 +56,8 @@
 | Tarea | Estado | Documentación |
 |-------|--------|---------------|
 | [#6023](../TASKBOARD.md#task-6023) Script de descarga NAP España (DATEX II) | ✅ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
-| [#6024](../TASKBOARD.md#task-6024) Script de descarga NAP Portugal MOBI.E (streaming) | ⏳ **siguiente** | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
-| [#6025](../TASKBOARD.md#task-6025) Parser DATEX II unificado (España + Portugal) | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| [#6024](../TASKBOARD.md#task-6024) Script de descarga NAP Portugal MOBI.E (streaming) | ✅ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
+| [#6025](../TASKBOARD.md#task-6025) Parser DATEX II unificado (España + Portugal) | ⏳ **siguiente** | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | [#6026](../TASKBOARD.md#task-6026) Modelo normalizado Station y persistencia SQLite | ⏳ | [`STORAGE.md`](STORAGE.md), [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | [#6027](../TASKBOARD.md#task-6027) Pipeline de ingestión y export GeoJSON | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 
@@ -80,7 +80,7 @@
 | [#6035](../TASKBOARD.md#task-6035) Frontend — búsqueda en ciudad | ⏳ | [`FILTERS.md`](FILTERS.md) |
 | [#6036](../TASKBOARD.md#task-6036) Navegación externa y envío al coche (MVP) | ⏳ | [`NAVIGATION.md`](NAVIGATION.md) |
 
-**Resumen Fase 1:** 2/15 tareas completadas; 13 pendientes (sin contar #6021 de Fase 0).
+**Resumen Fase 1:** 3/15 tareas completadas; 12 pendientes (sin contar #6021 de Fase 0).
 
 ### Fase 2 — Datos dinámicos y UX Tesla
 

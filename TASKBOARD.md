@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-23T19:26:49Z -->
+<!-- taskboard-exported-at: 2026-06-23T19:36:07Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-23 19:26 UTC  
-**Git:** `main` @ `fa816a73`  
+**Exportado:** 2026-06-23 19:36 UTC  
+**Git:** `main` @ `c5a4a134`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,28 +23,12 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 13 |
-| Completada (`completed`) | 3 |
+| Pendiente (`pending`) | 12 |
+| Completada (`completed`) | 4 |
 
 ---
 
 ## Pendiente (`pending`)
-
-<a id="task-6024"></a>
-### [#6024] Script de descarga NAP Portugal MOBI.E (streaming)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6024` |
-| Estado | `pending` |
-| Complejidad | compleja |
-| Horas estimadas | 8 |
-| Posición Kanban | 4.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Implementar fetch_portugal.py con descarga por streaming del XML ~180 MB MOBI.E NAP, escritura incremental a disco y validación de integridad básica.
-
----
 
 <a id="task-6025"></a>
 ### [#6025] Parser DATEX II unificado (España + Portugal)
@@ -285,6 +269,22 @@ Crear esqueleto según docs/ARCHITECTURE.md: pyproject.toml o requirements.txt (
 | Actualizado | 2026-06-23 19:18 UTC |
 
 Implementar fetch_spain.py que descargue el feed XML oficial NAP DGT/MITECO, guarde raw en data/raw/es/ con timestamp y maneje errores/reintentos. Referencia: docs/DATA_SOURCES.md.
+
+---
+
+<a id="task-6024"></a>
+### [#6024] Script de descarga NAP Portugal MOBI.E (streaming)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6024` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Horas estimadas | 8 |
+| Posición Kanban | 4.0 |
+| Actualizado | 2026-06-23 19:36 UTC |
+
+Implementar fetch_portugal.py con descarga por streaming del XML ~180 MB MOBI.E NAP, escritura incremental a disco y validación de integridad básica.
 
 ---
 

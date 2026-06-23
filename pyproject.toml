@@ -26,6 +26,7 @@ dev = [
 [project.scripts]
 electrolineras-api = "api.main:run"
 electrolineras-fetch-es = "ingest.fetch_spain:main"
+electrolineras-fetch-pt = "ingest.fetch_portugal:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

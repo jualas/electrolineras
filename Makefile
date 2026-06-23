@@ -1,4 +1,4 @@
-.PHONY: install install-dev api web test lint fetch-es clean
+.PHONY: install install-dev api web test lint fetch-es fetch-pt clean
 
 install:
 	python3 -m venv .venv
@@ -23,6 +23,9 @@ lint:
 
 fetch-es:
 	.venv/bin/electrolineras-fetch-es
+
+fetch-pt:
+	.venv/bin/electrolineras-fetch-pt
 
 clean:
 	rm -rf .venv src/web/node_modules src/web/dist

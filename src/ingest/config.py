@@ -20,11 +20,17 @@ class IngestSettings(BaseSettings):
     fetch_max_retries: int = 3
     fetch_retry_backoff_seconds: float = 2.0
     fetch_timeout_seconds: float = 120.0
+    fetch_pt_timeout_seconds: float = 900.0
+    fetch_stream_chunk_size: int = 1024 * 1024
     fetch_user_agent: str = "Electrolineras/0.1 (+https://github.com/electrolineras; NAP ingest)"
 
     @property
     def nap_es_raw_dir(self) -> Path:
         return self.data_raw_dir / "es"
+
+    @property
+    def nap_pt_raw_dir(self) -> Path:
+        return self.data_raw_dir / "pt"
 
 
 settings = IngestSettings()
