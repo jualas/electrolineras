@@ -1,0 +1,33 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+.DS_Store
+Thumbs.db
+
+# Datos locales voluminosos o descargados
+data/raw/
+data/cache/
+*.geojson.tmp
+*.csv.tmp
+
+# IDEs y herramientas
+.idea/
+.vscode/
+*.swp
+*.swo
