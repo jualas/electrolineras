@@ -4,7 +4,21 @@
 
 ## Fase actual
 
-**Definición de producto y fuentes de datos.** Visión acordada; feeds oficiales verificados; repositorio con commit inicial.
+**Fase 1 — MVP datos + mapa.** Fase 0 completada. Siguiente tarea: [#6022 Bootstrap del proyecto y entorno de desarrollo](../TASKBOARD.md#task-6022).
+
+## Gestión de tareas (TaskBoard)
+
+| Rol | Recurso |
+|-----|---------|
+| Fuente de verdad operativa | [TaskBoard — Electrolineras](https://kanban.jualas.es) (`proyecto id=7`) |
+| Espejo en el repo | [`TASKBOARD.md`](../TASKBOARD.md) — exportar tras cambios en el tablero |
+| Resumen de avance | Este archivo (`docs/STATUS.md`) |
+
+**Convenciones:**
+
+- Cada ítem del roadmap lleva el ID de tarea TaskBoard (`#6022`, etc.) con enlace al detalle en `TASKBOARD.md`.
+- Las tareas usan etiquetas `fase-0`, `fase-1`, … alineadas con las fases de [`VISION.md`](VISION.md).
+- Al completar una tarea: actualizar estado en TaskBoard → regenerar `TASKBOARD.md` → marcar aquí el checkbox correspondiente.
 
 ## Visión acordada
 
@@ -21,33 +35,64 @@
 | NAP Portugal (MOBI.E) | OK | XML ~180 MB; requiere descarga por streaming |
 | REVE (dinámico) | Pendiente | Sin API pública documentada |
 
-## Roadmap
+## Roadmap (sincronizado con TaskBoard)
 
 ### Fase 0 — Definición ✅ completada
 
-- [x] Crear repositorio Git
-- [x] Documentar visión y fuentes oficiales
-- [x] Verificar acceso a feeds DATEX II (ES + PT)
-- [x] Commit inicial del repo
-- [x] Crear proyecto en TaskBoard (opcional)
+| Tarea | Estado | Documentación |
+|-------|--------|---------------|
+| [#6021](../TASKBOARD.md#task-6021) Commit inicial del repositorio | ✅ | Estructura repo, `docs/`, `.gitignore` |
 
 ### Fase 1 — MVP datos + mapa
 
-- [ ] Parser DATEX II para España
-- [ ] Parser DATEX II para Portugal
-- [ ] Modelo normalizado + export GeoJSON
-- [ ] **Búsqueda en ruta:** corredor + filtro ≥ kW + anti-retroceso (caso Granada→Cartagena)
-- [ ] **Búsqueda en ciudad:** potencia + ubicación (GPS / dirección / zona mapa) + acceso
-- [ ] Mapa web móvil con resultados en ruta y en ciudad
-- [ ] API REST con filtros bbox / kW / radio / corredor de ruta
+#### Infraestructura
 
-### Fase 2 — Dinámico y UX Tesla
+| Tarea | Estado | Documentación |
+|-------|--------|---------------|
+| [#6022](../TASKBOARD.md#task-6022) Bootstrap del proyecto y entorno de desarrollo | ⏳ **siguiente** | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+
+#### Datos e ingestión
+
+| Tarea | Estado | Documentación |
+|-------|--------|---------------|
+| [#6023](../TASKBOARD.md#task-6023) Script de descarga NAP España (DATEX II) | ⏳ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
+| [#6024](../TASKBOARD.md#task-6024) Script de descarga NAP Portugal MOBI.E (streaming) | ⏳ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
+| [#6025](../TASKBOARD.md#task-6025) Parser DATEX II unificado (España + Portugal) | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| [#6026](../TASKBOARD.md#task-6026) Modelo normalizado Station y persistencia SQLite | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| [#6027](../TASKBOARD.md#task-6027) Pipeline de ingestión y export GeoJSON | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+
+#### API backend
+
+| Tarea | Estado | Documentación |
+|-------|--------|---------------|
+| [#6028](../TASKBOARD.md#task-6028) API REST FastAPI — consulta de estaciones | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FILTERS.md`](FILTERS.md) |
+| [#6029](../TASKBOARD.md#task-6029) API — búsqueda en ruta (corredor + anti-retroceso) | ⏳ | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md) |
+| [#6030](../TASKBOARD.md#task-6030) API — búsqueda en ciudad (potencia + ubicación + acceso) | ⏳ | [`FILTERS.md`](FILTERS.md) |
+
+#### Frontend web
+
+| Tarea | Estado | Documentación |
+|-------|--------|---------------|
+| [#6031](../TASKBOARD.md#task-6031) Frontend — scaffold web móvil (Vite + MapLibre GL) | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| [#6032](../TASKBOARD.md#task-6032) Frontend — mapa peninsular con capa de estaciones | ⏳ | [`VISION.md`](VISION.md) |
+| [#6033](../TASKBOARD.md#task-6033) Frontend — filtros de potencia (presets + personalizado) | ⏳ | [`FILTERS.md`](FILTERS.md) |
+| [#6034](../TASKBOARD.md#task-6034) Frontend — búsqueda en ruta (Granada→Cartagena) | ⏳ | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md) |
+| [#6035](../TASKBOARD.md#task-6035) Frontend — búsqueda en ciudad | ⏳ | [`FILTERS.md`](FILTERS.md) |
+| [#6036](../TASKBOARD.md#task-6036) Navegación externa y envío al coche (MVP) | ⏳ | [`NAVIGATION.md`](NAVIGATION.md) |
+
+**Resumen Fase 1:** 0/15 tareas completadas; 15 pendientes (sin contar #6021 de Fase 0).
+
+### Fase 2 — Datos dinámicos y UX Tesla
+
+Sin tareas TaskBoard creadas aún. Objetivos documentados en [`VISION.md`](VISION.md):
 
 - [ ] Investigar acceso datos REVE (disponibilidad, precio)
-- [ ] UI optimizada para navegador Tesla
-- [ ] Enlaces a Google Maps / copiar coordenadas
+- [ ] UI optimizada para navegador Tesla (más allá del scaffold base)
+- [ ] Tesla Fleet API (v2) — enlaces Google Maps cubiertos en #6036
 
 ### Fase 3 — Unión Europea
+
+Sin tareas TaskBoard creadas aún:
 
 - [ ] Inventariar NAPs UE (NAPCORE)
 - [ ] Conector genérico DATEX II reutilizable
@@ -62,29 +107,30 @@
 | Cliente MVP | Web / PWA (no app nativa Tesla) |
 | Filtro diferenciador | Potencia de carga (kW) |
 | Radio default modo ciudad | **1 km** |
+| Seguimiento de tareas | TaskBoard (`id=7`) + `TASKBOARD.md` |
 
 ## Navegación y envío al coche
 
-Documentado en [`docs/NAVIGATION.md`](docs/NAVIGATION.md).
+Documentado en [`docs/NAVIGATION.md`](NAVIGATION.md). Implementación MVP: tarea [#6036](../TASKBOARD.md#task-6036).
 
 | Necesidad | Enfoque acordado (borrador) |
 |-----------|----------------------------|
-| Enviar 1 parada | MVP: enlace Google/Apple Maps; v2: Tesla Fleet API |
+| Enviar 1 parada | MVP: enlace Google/Apple Maps (#6036); v2: Tesla Fleet API |
 | Ruta multi-parada | Planificador propio + export Google Maps |
 | Ruta completa al nav Tesla | No en v1; parada a parada si Fleet API |
 | Uso en Tesla | Web optimizada para navegador del coche |
 
 ## Decisiones pendientes
 
-| Tema | Opciones |
-|------|----------|
-| Almacenamiento | SQLite vs PostGIS |
-| Frontend | React vs Svelte vs vanilla |
-| Filtro potencia | Por sitio (max) vs por conector |
-| Hosting | VPS propio vs cloud estático |
-| Integración Tesla | Solo enlaces vs Fleet API en v2 |
-| Planificador de ruta | Solo export externo vs SOC/consumo en v3 |
-| Filtros potencia/acceso | Ver [`FILTERS.md`](FILTERS.md) — presets + heurísticas CC |
+| Tema | Opciones | Tarea relacionada |
+|------|----------|-------------------|
+| Almacenamiento | SQLite vs PostGIS | #6026 |
+| Frontend | React vs Svelte vs vanilla | #6031 |
+| Filtro potencia | Por sitio (max) vs por conector | #6028, #6033 |
+| Hosting | VPS propio vs cloud estático | — |
+| Integración Tesla | Solo enlaces vs Fleet API en v2 | #6036 |
+| Planificador de ruta | Solo export externo vs SOC/consumo en v3 | #6029 |
+| Filtros potencia/acceso | Ver [`FILTERS.md`](FILTERS.md) — presets + heurísticas CC | #6030, #6033 |
 
 ## Notas
 

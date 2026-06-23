@@ -42,12 +42,19 @@ Detalle técnico en [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
 
 ## Documentación
 
+### Producto y diseño
+
 - [`docs/VISION.md`](docs/VISION.md) — visión, funcionalidades y fases
 - [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) — URLs, formatos y estrategia de ingestión
 - [`docs/FILTERS.md`](docs/FILTERS.md) — potencia elegible y acceso público
 - [`docs/NAVIGATION.md`](docs/NAVIGATION.md) — envío de paradas y rutas al coche (Tesla, Google Maps)
+- [`docs/ROUTE_CORRIDOR_SEARCH.md`](docs/ROUTE_CORRIDOR_SEARCH.md) — búsqueda en corredor de ruta
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — arquitectura propuesta
-- [`docs/STATUS.md`](docs/STATUS.md) — seguimiento del avance
+
+### Seguimiento
+
+- [`docs/STATUS.md`](docs/STATUS.md) — fase actual, roadmap con IDs de tarea
+- [`TASKBOARD.md`](TASKBOARD.md) — espejo del backlog en [TaskBoard](https://kanban.jualas.es) (proyecto `id=7`)
 
 ## Estructura del repo
 
@@ -61,4 +68,6 @@ Electrolineras/
 
 ## Estado
 
-Fase de definición. Ver [`docs/STATUS.md`](docs/STATUS.md).
+**Fase 1 — MVP datos + mapa** (Fase 0 completada). Siguiente tarea: [#6022 Bootstrap](TASKBOARD.md#task-6022).
+
+Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)

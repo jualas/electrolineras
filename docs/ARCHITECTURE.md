@@ -100,15 +100,19 @@ Guardar `fetched_at` y `source_version` en cada registro para depuración.
 ```
 src/
 ├── ingest/
-│   ├── datex_parser.py
-│   ├── fetch_spain.py
-│   └── fetch_portugal.py
+│   ├── datex_parser.py      # tarea #6025
+│   ├── fetch_spain.py       # tarea #6023
+│   └── fetch_portugal.py    # tarea #6024
 ├── models/
-│   └── station.py
+│   └── station.py           # tarea #6026
 ├── api/
-│   └── main.py
+│   └── main.py              # tareas #6028–6030
 └── web/
     ├── index.html
-    ├── map/
-    └── filters/
+    ├── map/                 # tareas #6031–6032
+    └── filters/             # tareas #6033–6035
 ```
+
+Pipeline completo (#6027): `scripts/ingest_all.py` → `data/processed/stations.geojson`.
+
+Implementación y estado: [`TASKBOARD.md`](../TASKBOARD.md) · [`STATUS.md`](STATUS.md).

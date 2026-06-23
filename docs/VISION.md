@@ -72,18 +72,21 @@ Nuestro valor: **agregación peninsular + filtro por potencia + fuente oficial c
 
 ## Fases de desarrollo
 
-### Fase 0 — Definición (actual)
+### Fase 0 — Definición ✅ completada
 
 - Documentar fuentes y arquitectura.
 - Validar feeds DATEX II (ES + PT).
 - Definir esquema de datos común.
+- Tarea TaskBoard: [#6021](../TASKBOARD.md#task-6021).
 
-### Fase 1 — MVP web
+### Fase 1 — MVP web (actual)
 
-- Script de ingestión DATEX II → JSON/GeoJSON normalizado.
-- API REST simple (listado + filtros por potencia/bbox).
-- Frontend mapa (MapLibre / Leaflet) con filtros.
-- Despliegue estático o servidor ligero.
+Backlog detallado en [`TASKBOARD.md`](../TASKBOARD.md) y resumen en [`STATUS.md`](STATUS.md).
+
+- [#6022](../TASKBOARD.md#task-6022) Bootstrap del entorno de desarrollo.
+- [#6023–6027](../TASKBOARD.md#task-6023) Ingestión DATEX II → modelo normalizado → GeoJSON.
+- [#6028–6030](../TASKBOARD.md#task-6028) API REST (listado, ruta, ciudad).
+- [#6031–6036](../TASKBOARD.md#task-6031) Frontend mapa (MapLibre) con filtros, búsqueda en ruta/ciudad y navegación externa.
 
 ### Fase 2 — Datos dinámicos España
 
