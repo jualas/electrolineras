@@ -168,6 +168,6 @@ curl 'http://127.0.0.1:8000/api/v1/meta/stats'
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6031](TASKBOARD.md#task-6031). Siguiente: [#6032 mapa con estaciones](TASKBOARD.md#task-6032).
+**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6033](TASKBOARD.md#task-6033). Siguiente: [#6034 búsqueda en ruta UI](TASKBOARD.md#task-6034).
 
 Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)

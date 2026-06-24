@@ -4,7 +4,7 @@
 
 ## Fase actual
 
-**Fase 1 — MVP datos + mapa**. [#6031](../TASKBOARD.md#task-6031) completada (scaffold frontend). Siguiente: [#6032 mapa con estaciones](../TASKBOARD.md#task-6032).
+**Fase 1 — MVP datos + mapa**. [#6033](../TASKBOARD.md#task-6033) completada (filtros de potencia). Siguiente: [#6034 búsqueda en ruta UI](../TASKBOARD.md#task-6034).
 
 ## Gestión de tareas (TaskBoard)
 
@@ -74,13 +74,13 @@
 | Tarea | Estado | Documentación |
 |-------|--------|---------------|
 | [#6031](../TASKBOARD.md#task-6031) Frontend — scaffold web móvil (Vite + MapLibre GL) | ✅ | `src/web/`, [`src/web/README.md`](../src/web/README.md) |
-| [#6032](../TASKBOARD.md#task-6032) Frontend — mapa peninsular con capa de estaciones | ⏳ **siguiente** | [`VISION.md`](VISION.md) |
-| [#6033](../TASKBOARD.md#task-6033) Frontend — filtros de potencia (presets + personalizado) | ⏳ | [`FILTERS.md`](FILTERS.md) |
-| [#6034](../TASKBOARD.md#task-6034) Frontend — búsqueda en ruta (Granada→Cartagena) | ⏳ | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md) |
+| [#6032](../TASKBOARD.md#task-6032) Frontend — mapa peninsular con capa de estaciones | ✅ | `src/web/src/map/` |
+| [#6033](../TASKBOARD.md#task-6033) Frontend — filtros de potencia (presets + personalizado) | ✅ | `src/web/src/filters/`, [`FILTERS.md`](FILTERS.md) |
+| [#6034](../TASKBOARD.md#task-6034) Frontend — búsqueda en ruta (Granada→Cartagena) | ⏳ **siguiente** | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md) |
 | [#6035](../TASKBOARD.md#task-6035) Frontend — búsqueda en ciudad | ⏳ | [`FILTERS.md`](FILTERS.md) |
 | [#6036](../TASKBOARD.md#task-6036) Navegación externa y envío al coche (MVP) | ⏳ | [`NAVIGATION.md`](NAVIGATION.md) |
 
-**Resumen Fase 1:** 10/15 tareas completadas; 5 pendientes (sin contar #6021 de Fase 0).
+**Resumen Fase 1:** 12/15 tareas completadas; 3 pendientes (sin contar #6021 de Fase 0).
 
 ### Fase Prod — Despliegue y operación (tras MVP funcional)
 

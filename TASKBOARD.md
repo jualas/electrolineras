@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-24T18:54:34Z -->
+<!-- taskboard-exported-at: 2026-06-24T19:03:37Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-24 18:54 UTC  
-**Git:** `main` @ `11a9314`  
+**Exportado:** 2026-06-24 19:03 UTC  
+**Git:** `main` @ `893ad33c`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,44 +23,12 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 16 |
-| Completada (`completed`) | 11 |
+| Pendiente (`pending`) | 14 |
+| Completada (`completed`) | 13 |
 
 ---
 
 ## Pendiente (`pending`)
-
-<a id="task-6032"></a>
-### [#6032] Frontend — mapa peninsular con capa de estaciones
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6032` |
-| Estado | `pending` |
-| Complejidad | media |
-| Horas estimadas | 10 |
-| Posición Kanban | 12.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Mapa interactivo ES+PT mostrando puntos desde API/GeoJSON con clustering o tiles según zoom, popup con operador, potencia máxima y número de conectores.
-
----
-
-<a id="task-6033"></a>
-### [#6033] Frontend — filtros de potencia (presets + personalizado)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6033` |
-| Estado | `pending` |
-| Complejidad | media |
-| Horas estimadas | 6 |
-| Posición Kanban | 13.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-UI chips: Lento, Semi-rápido, Rápido, Viaje (≥100), Ultrarrápido (≥150), Personalizado (slider min-max). Perfiles En viaje / En ciudad / Todo según docs/FILTERS.md. Sincronizar con query API.
-
----
 
 <a id="task-6034"></a>
 ### [#6034] Frontend — búsqueda en ruta (Granada→Cartagena)
@@ -405,6 +373,22 @@ Implementar datex_parser.py que normalice ambos feeds a un esquema común: id, n
 
 ---
 
+<a id="task-6032"></a>
+### [#6032] Frontend — mapa peninsular con capa de estaciones
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6032` |
+| Estado | `completed` |
+| Complejidad | media |
+| Horas estimadas | 10 |
+| Posición Kanban | 12.0 |
+| Actualizado | 2026-06-24 18:59 UTC |
+
+Mapa interactivo ES+PT mostrando puntos desde API/GeoJSON con clustering o tiles según zoom, popup con operador, potencia máxima y número de conectores.
+
+---
+
 <a id="task-6026"></a>
 ### [#6026] Modelo normalizado Station y persistencia SQLite
 
@@ -418,6 +402,22 @@ Implementar datex_parser.py que normalice ambos feeds a un esquema común: id, n
 | Actualizado | 2026-06-24 11:25 UTC |
 
 Definir station.py (Pydantic/dataclass) y capa de persistencia SQLite (+ SpatiaLite si se usa geo index). Tablas con índices por bbox, min_kw, país. Decisión MVP: SQLite según ARCHITECTURE.md.
+
+---
+
+<a id="task-6033"></a>
+### [#6033] Frontend — filtros de potencia (presets + personalizado)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6033` |
+| Estado | `completed` |
+| Complejidad | media |
+| Horas estimadas | 6 |
+| Posición Kanban | 13.0 |
+| Actualizado | 2026-06-24 19:03 UTC |
+
+UI chips: Lento, Semi-rápido, Rápido, Viaje (≥100), Ultrarrápido (≥150), Personalizado (slider min-max). Perfiles En viaje / En ciudad / Todo según docs/FILTERS.md. Sincronizar con query API.
 
 ---
 
