@@ -177,7 +177,7 @@ class StationRepository:
         connectors = self._load_connectors([station_id])[station_id]
         return _row_to_station(row, connectors)
 
-    def search(
+    def _search_clauses(
         self,
         *,
         west: float | None = None,
@@ -187,9 +187,7 @@ class StationRepository:
         min_kw: float | None = None,
         max_kw: float | None = None,
         countries: list[str] | None = None,
-        limit: int = 500,
-        offset: int = 0,
-    ) -> list[Station]:
+    ) -> tuple[list[str], list[Any]]:
         clauses = ["1 = 1"]
         params: list[Any] = []
 
@@ -209,6 +207,57 @@ class StationRepository:
             placeholders = ",".join("?" for _ in countries)
             clauses.append(f"country IN ({placeholders})")
             params.extend(countries)
+
+        return clauses, params
+
+    def count_matching(
+        self,
+        *,
+        west: float | None = None,
+        south: float | None = None,
+        east: float | None = None,
+        north: float | None = None,
+        min_kw: float | None = None,
+        max_kw: float | None = None,
+        countries: list[str] | None = None,
+    ) -> int:
+        clauses, params = self._search_clauses(
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            min_kw=min_kw,
+            max_kw=max_kw,
+            countries=countries,
+        )
+        row = self.connection.execute(
+            f"SELECT COUNT(*) FROM station WHERE {' AND '.join(clauses)}",
+            params,
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def search(
+        self,
+        *,
+        west: float | None = None,
+        south: float | None = None,
+        east: float | None = None,
+        north: float | None = None,
+        min_kw: float | None = None,
+        max_kw: float | None = None,
+        countries: list[str] | None = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> list[Station]:
+        clauses, params = self._search_clauses(
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            min_kw=min_kw,
+            max_kw=max_kw,
+            countries=countries,
+        )
 
         params.extend([limit, offset])
         rows = self.connection.execute(
@@ -325,3 +374,88 @@ class StationRepository:
                 }
             )
         return {"type": "FeatureCollection", "features": features}
+
+    def start_ingest_run(self, source: str, *, started_at: datetime | None = None) -> int:
+        started = _iso_datetime(started_at)
+        with self.connection:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO ingest_run (source, started_at, status)
+                VALUES (?, ?, 'running')
+                """,
+                (source, started),
+            )
+        return int(cursor.lastrowid)
+
+    def finish_ingest_run(
+        self,
+        run_id: int,
+        *,
+        status: str,
+        records_upserted: int | None = None,
+        source_version: str | None = None,
+        finished_at: datetime | None = None,
+    ) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE ingest_run
+                SET finished_at = ?, source_version = ?, records_upserted = ?, status = ?
+                WHERE id = ?
+                """,
+                (
+                    _iso_datetime(finished_at),
+                    source_version,
+                    records_upserted,
+                    status,
+                    run_id,
+                ),
+            )
+
+    def stats_by_power(self) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                country,
+                COUNT(*) AS total,
+                SUM(CASE WHEN max_power_kw < 22 THEN 1 ELSE 0 END) AS slow_ac,
+                SUM(CASE WHEN max_power_kw >= 22 AND max_power_kw < 43
+                    THEN 1 ELSE 0 END) AS ac_fast,
+                SUM(CASE WHEN max_power_kw >= 43 AND max_power_kw < 100
+                    THEN 1 ELSE 0 END) AS dc_fast,
+                SUM(CASE WHEN max_power_kw >= 100 AND max_power_kw < 150
+                    THEN 1 ELSE 0 END) AS hpc,
+                SUM(CASE WHEN max_power_kw >= 150 THEN 1 ELSE 0 END) AS ultra_fast
+            FROM station
+            GROUP BY country
+            ORDER BY country
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def top_operators(self, *, country: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
+        if country:
+            rows = self.connection.execute(
+                """
+                SELECT operator, COUNT(*) AS count
+                FROM station
+                WHERE country = ? AND operator IS NOT NULL AND operator != ''
+                GROUP BY operator
+                ORDER BY count DESC
+                LIMIT ?
+                """,
+                (country, limit),
+            ).fetchall()
+        else:
+            rows = self.connection.execute(
+                """
+                SELECT operator, COUNT(*) AS count
+                FROM station
+                WHERE operator IS NOT NULL AND operator != ''
+                GROUP BY operator
+                ORDER BY count DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [{"operator": row["operator"], "count": row["count"]} for row in rows]

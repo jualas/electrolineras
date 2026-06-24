@@ -29,6 +29,7 @@ electrolineras-fetch-es = "ingest.fetch_spain:main"
 electrolineras-fetch-pt = "ingest.fetch_portugal:main"
 electrolineras-parse-datex = "ingest.datex_cli:main"
 electrolineras-load-db = "db.load_cli:main"
+electrolineras-ingest = "ingest.pipeline_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

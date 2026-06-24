@@ -1,4 +1,4 @@
-.PHONY: install install-dev api web test lint fetch-es fetch-pt parse-es parse-pt load-db clean
+.PHONY: install install-dev api web test lint fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt clean
 
 install:
 	python3 -m venv .venv
@@ -35,6 +35,15 @@ parse-pt:
 
 load-db:
 	.venv/bin/electrolineras-load-db
+
+ingest:
+	.venv/bin/electrolineras-ingest
+
+ingest-es:
+	.venv/bin/electrolineras-ingest --es-only
+
+ingest-pt:
+	.venv/bin/electrolineras-ingest --pt-only
 
 clean:
 	rm -rf .venv src/web/node_modules src/web/dist

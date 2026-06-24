@@ -31,7 +31,7 @@ def database_path_from_url(database_url: str | None = None) -> Path:
 def connect(database_url: str | None = None) -> sqlite3.Connection:
     db_path = database_path_from_url(database_url)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(db_path)
+    connection = sqlite3.connect(db_path, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")

@@ -5,35 +5,15 @@ import logging
 import sys
 
 from db.connection import database_path_from_url
-from db.repository import StationRepository
-from ingest.config import repo_root
-from ingest.datex_parser import parse_latest_raw_feed
+from ingest.pipeline import pipeline_result_to_dict, run_pipeline
 
 logger = logging.getLogger(__name__)
 
 
 def load_latest_feeds_to_db(*, export_geojson: bool = True) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    with StationRepository() as repo:
-        for country in ("ES", "PT"):
-            result = parse_latest_raw_feed(country)
-            counts[country] = repo.upsert_stations(result.stations)
-            logger.info("Persistidas %d estaciones %s", counts[country], country)
-
-        if export_geojson:
-            geojson_path = repo_root() / "data" / "processed" / "stations.geojson"
-            geojson_path.parent.mkdir(parents=True, exist_ok=True)
-            payload = repo.export_geojson()
-            geojson_path.write_text(
-                json.dumps(payload, ensure_ascii=False) + "\n",
-                encoding="utf-8",
-            )
-            logger.info(
-                "GeoJSON exportado: %s (%d features)",
-                geojson_path,
-                len(payload["features"]),
-            )
-    return counts
+    """Parse + persist sin descargar (usa último XML en data/raw/)."""
+    result = run_pipeline(fetch=False, export_geojson_file=export_geojson)
+    return {item.country: item.stations_upserted for item in result.countries}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -53,8 +33,10 @@ def main(argv: list[str] | None = None) -> int:
         print(database_path_from_url())
         return 0
 
-    counts = load_latest_feeds_to_db(export_geojson=not args.no_geojson)
-    print(json.dumps({"upserted": counts, "db": str(database_path_from_url())}, indent=2))
+    result = run_pipeline(fetch=False, export_geojson_file=not args.no_geojson)
+    payload = pipeline_result_to_dict(result)
+    upserted = {item["country"]: item["stations_upserted"] for item in payload["countries"]}
+    print(json.dumps({"upserted": upserted, "db": payload["db"]}, indent=2))
     return 0
 
 

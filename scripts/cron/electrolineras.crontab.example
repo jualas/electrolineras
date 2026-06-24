@@ -1,0 +1,19 @@
+# Ejemplo de cron para Electrolineras (ajusta rutas y usuario).
+# Instalar: crontab -e  → pegar líneas descomentadas.
+#
+# Variables:
+#   REPO=/mnt/datos/Proyectos/Electrolineras
+#   VENV=$REPO/.venv/bin
+#   LOG=$REPO/data/logs
+
+# España — NAP DGT, actualización diaria (~06:00 UTC / 08:00 península en verano)
+# 0 6 * * * cd $REPO && $VENV/electrolineras-ingest --es-only >> $LOG/ingest-es.log 2>&1
+
+# Portugal — MOBI.E, cada 6 horas
+# 0 */6 * * * cd $REPO && $VENV/electrolineras-ingest --pt-only >> $LOG/ingest-pt.log 2>&1
+
+# Pipeline completo manual / semanal (descarga ES+PT + GeoJSON)
+# 0 5 * * 0 cd $REPO && $VENV/electrolineras-ingest >> $LOG/ingest-full.log 2>&1
+
+# Solo re-persistir desde XML ya descargado (sin red)
+# 30 6 * * * cd $REPO && $VENV/electrolineras-ingest --skip-fetch >> $LOG/ingest-reload.log 2>&1
