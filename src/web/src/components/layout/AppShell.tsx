@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { checkApiHealth } from '../../api/client'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
+import { usePowerFilter } from '../../hooks/usePowerFilter'
 import { useTheme } from '../../hooks/useTheme'
 import { MapView } from '../../map/MapView'
 import { SearchPanel, type SearchMode } from '../../search/SearchPanel'
@@ -13,14 +14,28 @@ const MODES: { id: SearchMode; label: string }[] = [
   { id: 'city', label: 'En ciudad' },
 ]
 
+const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
+  route: 'trip',
+  city: 'slow',
+}
+
 export function AppShell() {
   const { theme, toggleTheme } = useTheme()
   const [mode, setMode] = useState<SearchMode>('map')
   const [apiOk, setApiOk] = useState(false)
+  const { filter, setPreset, setCustomRange, apiQuery } = usePowerFilter('all')
 
   useEffect(() => {
     checkApiHealth().then(setApiOk)
   }, [])
+
+  const handleModeChange = (nextMode: SearchMode) => {
+    setMode(nextMode)
+    const defaultPreset = MODE_DEFAULT_PRESET[nextMode]
+    if (defaultPreset) {
+      setPreset(defaultPreset)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -46,7 +61,7 @@ export function AppShell() {
             key={item.id}
             type="button"
             className={`mode-tab ${mode === item.id ? 'mode-tab--active' : ''}`}
-            onClick={() => setMode(item.id)}
+            onClick={() => handleModeChange(item.id)}
             aria-pressed={mode === item.id}
           >
             {item.label}
@@ -55,10 +70,20 @@ export function AppShell() {
       </nav>
 
       <div className="app-main">
-        <MapView className="map-view" />
+        <MapView
+          className="map-view"
+          theme={theme}
+          loadStations={mode === 'map'}
+          minKw={apiQuery.minKw}
+          maxKw={apiQuery.maxKw}
+        />
         <aside className="side-panel">
           <SearchPanel mode={mode} />
-          <PowerFilterPanel />
+          <PowerFilterPanel
+            filter={filter}
+            onPresetChange={setPreset}
+            onCustomRangeChange={setCustomRange}
+          />
         </aside>
       </div>
     </div>

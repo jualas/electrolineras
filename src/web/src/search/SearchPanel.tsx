@@ -34,7 +34,7 @@ export function SearchPanel({ mode }: SearchPanelProps) {
   return (
     <section className="panel search-panel" aria-labelledby="map-search-heading">
       <h2 id="map-search-heading">Mapa peninsular</h2>
-      <p className="panel-hint">Capa de estaciones en #6032</p>
+      <p className="panel-hint">Puntos desde la API al mover o hacer zoom en el mapa.</p>
     </section>
   )
 }

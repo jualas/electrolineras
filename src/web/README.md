@@ -23,7 +23,7 @@ src/
   api/          # cliente HTTP
   components/   # layout (AppShell, ThemeToggle)
   filters/      # presets potencia (#6033)
-  map/          # MapLibre MapView (#6032)
+  map/          # MapLibre MapView + capa estaciones (#6032)
   search/       # modos mapa / ruta / ciudad (#6034–6035)
   hooks/        # tema claro/oscuro
   styles/       # variables CSS tema
