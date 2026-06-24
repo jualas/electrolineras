@@ -83,6 +83,25 @@ class AlongRouteResponse(BaseModel):
     candidates_in_bbox: int
 
 
+class NearbyStationResult(BaseModel):
+    station: Station
+    distance_m: float
+    distance_km: float
+    access_class: str
+
+
+class NearbyResponse(BaseModel):
+    reference: RouteEndpoint
+    reference_label: str | None = None
+    radius_m: float | None = None
+    bbox: list[float] | None = None
+    results: list[NearbyStationResult]
+
+
+DEFAULT_NEARBY_LIMIT = 50
+MAX_NEARBY_LIMIT = 200
+
+
 DEFAULT_STATIONS_LIMIT = 100
 MAX_STATIONS_LIMIT = 5000
 MAX_OPERATORS_LIMIT = 100

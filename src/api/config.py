@@ -15,6 +15,14 @@ class Settings(BaseSettings):
     route_behind_margin_km_default: float = 2.0
     route_wrong_side_penalty_km_default: float = 5.0
     route_results_limit_default: int = 10
+    nominatim_base_url: str = "https://nominatim.openstreetmap.org"
+    nominatim_user_agent: str = "Electrolineras/0.1.0 (dev; contact: local)"
+    nominatim_country_codes: str = "es,pt"
+    nominatim_timeout_seconds: float = 15.0
+    nearby_radius_m_default: float = 1000.0
+    nearby_radius_m_max: float = 10000.0
+    serve_web_static: bool = False
+    web_dist_path: str = "src/web/dist"
 
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

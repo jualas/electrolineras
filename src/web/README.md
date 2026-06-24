@@ -1,32 +1,43 @@
-# React + TypeScript + Vite
+# Frontend — Electrolineras Web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite + TypeScript + MapLibre GL. Scaffold mobile-first (#6031).
 
-Currently, two official plugins are available:
+## Desarrollo
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+# Terminal A — API
+make api
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+# Terminal B — frontend (proxy /api y /health → :8000)
+make web
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Abre http://127.0.0.1:5173
+
+Variables: `VITE_API_URL` en `.env` (vacío = proxy Vite en dev).
+
+## Estructura
+
+```
+src/
+  api/          # cliente HTTP
+  components/   # layout (AppShell, ThemeToggle)
+  filters/      # presets potencia (#6033)
+  map/          # MapLibre MapView (#6032)
+  search/       # modos mapa / ruta / ciudad (#6034–6035)
+  hooks/        # tema claro/oscuro
+  styles/       # variables CSS tema
+```
+
+## Build estático
+
+```bash
+cd src/web && npm run build
+```
+
+Salida: `src/web/dist/` — servible por nginx o FastAPI (`SERVE_WEB_STATIC=true`).
+
+```bash
+SERVE_WEB_STATIC=true make api
+# → http://127.0.0.1:8000 (SPA + /api/v1/...)
+```

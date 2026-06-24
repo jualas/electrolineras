@@ -1,4 +1,4 @@
-.PHONY: install install-dev api web test lint fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt clean
+.PHONY: install install-dev api web web-build test lint fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt clean
 
 install:
 	python3 -m venv .venv
@@ -14,6 +14,9 @@ api:
 
 web:
 	cd src/web && npm run dev
+
+web-build:
+	cd src/web && npm run build
 
 test:
 	.venv/bin/pytest
