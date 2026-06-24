@@ -4,7 +4,7 @@
 
 ## Fase actual
 
-**Fase 1 — MVP datos + mapa**. [#6029](../TASKBOARD.md#task-6029) completada (búsqueda en ruta). Siguiente tarea: [#6030 API búsqueda en ciudad](../TASKBOARD.md#task-6030).
+**Fase 1 — MVP datos + mapa**. [#6031](../TASKBOARD.md#task-6031) completada (scaffold frontend). Siguiente: [#6032 mapa con estaciones](../TASKBOARD.md#task-6032).
 
 ## Gestión de tareas (TaskBoard)
 
@@ -67,20 +67,42 @@
 |-------|--------|---------------|
 | [#6028](../TASKBOARD.md#task-6028) API REST FastAPI — consulta de estaciones | ✅ | [`ARCHITECTURE.md`](ARCHITECTURE.md), `src/api/` |
 | [#6029](../TASKBOARD.md#task-6029) API — búsqueda en ruta (corredor + anti-retroceso) | ✅ | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md), `src/api/routing/` |
-| [#6030](../TASKBOARD.md#task-6030) API — búsqueda en ciudad (potencia + ubicación + acceso) | ⏳ **siguiente** | [`FILTERS.md`](FILTERS.md) |
+| [#6030](../TASKBOARD.md#task-6030) API — búsqueda en ciudad (potencia + ubicación + acceso) | ✅ | [`FILTERS.md`](FILTERS.md), `src/api/routes/nearby.py` |
 
 #### Frontend web
 
 | Tarea | Estado | Documentación |
 |-------|--------|---------------|
-| [#6031](../TASKBOARD.md#task-6031) Frontend — scaffold web móvil (Vite + MapLibre GL) | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
-| [#6032](../TASKBOARD.md#task-6032) Frontend — mapa peninsular con capa de estaciones | ⏳ | [`VISION.md`](VISION.md) |
+| [#6031](../TASKBOARD.md#task-6031) Frontend — scaffold web móvil (Vite + MapLibre GL) | ✅ | `src/web/`, [`src/web/README.md`](../src/web/README.md) |
+| [#6032](../TASKBOARD.md#task-6032) Frontend — mapa peninsular con capa de estaciones | ⏳ **siguiente** | [`VISION.md`](VISION.md) |
 | [#6033](../TASKBOARD.md#task-6033) Frontend — filtros de potencia (presets + personalizado) | ⏳ | [`FILTERS.md`](FILTERS.md) |
 | [#6034](../TASKBOARD.md#task-6034) Frontend — búsqueda en ruta (Granada→Cartagena) | ⏳ | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md) |
 | [#6035](../TASKBOARD.md#task-6035) Frontend — búsqueda en ciudad | ⏳ | [`FILTERS.md`](FILTERS.md) |
 | [#6036](../TASKBOARD.md#task-6036) Navegación externa y envío al coche (MVP) | ⏳ | [`NAVIGATION.md`](NAVIGATION.md) |
 
-**Resumen Fase 1:** 8/15 tareas completadas; 7 pendientes (sin contar #6021 de Fase 0).
+**Resumen Fase 1:** 10/15 tareas completadas; 5 pendientes (sin contar #6021 de Fase 0).
+
+### Fase Prod — Despliegue y operación (tras MVP funcional)
+
+Backlog creado en TaskBoard (`fase-prod`). Ejecutar cuando Fase 1 esté cerrada o en paralelo a frontend si el go-live es inminente.
+
+| Orden sugerido | Tarea | Área |
+|----------------|-------|------|
+| 1 | [#6047](../TASKBOARD.md#task-6047) Runbook y `docs/DEPLOYMENT.md` | Documentación |
+| 2 | [#6043](../TASKBOARD.md#task-6043) Variables de entorno y secretos | Config |
+| 3 | [#6037](../TASKBOARD.md#task-6037) **OSRM self-hosted** (ES+PT) | Routing |
+| 4 | [#6038](../TASKBOARD.md#task-6038) Docker Compose (API, web, nginx, OSRM) | Infra |
+| 5 | [#6039](../TASKBOARD.md#task-6039) HTTPS, dominio y reverse proxy | Infra |
+| 6 | [#6040](../TASKBOARD.md#task-6040) Cron ingestión DATEX con monitoring | Datos |
+| 7 | [#6041](../TASKBOARD.md#task-6041) Backups SQLite y `data/` | Datos |
+| 8 | [#6042](../TASKBOARD.md#task-6042) Rate limiting, CORS y hardening API | Seguridad |
+| 9 | [#6046](../TASKBOARD.md#task-6046) Geocodificación en producción (ciudad) | Routing |
+| 10 | [#6045](../TASKBOARD.md#task-6045) Monitoring y alertas | Ops |
+| 11 | [#6044](../TASKBOARD.md#task-6044) CI/CD despliegue automatizado | Ops |
+
+**Nota dev vs prod:** en desarrollo basta `router.project-osrm.org`; en producción usar `OSRM_BASE_URL` apuntando al servicio interno (#6037).
+
+**Resumen Fase Prod:** 0/11 tareas completadas; 11 pendientes.
 
 ### Fase 2 — Datos dinámicos y UX Tesla
 
@@ -129,7 +151,7 @@ Documentado en [`docs/NAVIGATION.md`](NAVIGATION.md). Implementación MVP: tarea
 | SpatiaLite en v1.0 | Activar extensión geo en #6026 vs solo lat/lon hasta #6029 | #6026, #6029 |
 | Frontend | React vs Svelte vs vanilla | ~~#6031~~ decidido: React en #6022 |
 | Filtro potencia | Por sitio (max) vs por conector | #6028, #6033 |
-| Hosting | VPS propio vs cloud estático | — |
+| Hosting | VPS propio vs cloud estático | #6038, #6039, [#6047](../TASKBOARD.md#task-6047) |
 | Integración Tesla | Solo enlaces vs Fleet API en v2 | #6036 |
 | Planificador de ruta | Solo export externo vs SOC/consumo en v3 | #6029 |
 | Filtros potencia/acceso | Ver [`FILTERS.md`](FILTERS.md) — presets + heurísticas CC | #6030, #6033 |

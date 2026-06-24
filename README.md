@@ -111,7 +111,8 @@ Comandos útiles:
 | `make install` | Solo Python (venv + `pip install -e .`) |
 | `make install-dev` | Python + dependencias dev + `npm install` en `src/web` |
 | `make api` | Uvicorn con recarga (`electrolineras-api`) |
-| `make web` | Vite dev server |
+| `make web` | Vite dev server (`src/web`, proxy API) |
+| `make web-build` | Build estático → `src/web/dist/` |
 | `make test` | pytest |
 | `make lint` | ruff sobre `src/` y `tests/` |
 | `make fetch-es` | Descarga feed NAP España → `data/raw/es/` |
@@ -152,6 +153,7 @@ Documentación interactiva: `http://127.0.0.1:8000/docs`
 | `GET /health` | Estado del servicio |
 | `GET /api/v1/stations` | Lista paginada (`format=json\|geojson`, `min_kw`, `max_kw`, `country`, `bbox`, `limit`, `offset`) |
 | `GET /api/v1/stations/{id}` | Detalle de una estación |
+| `GET /api/v1/stations/nearby` | Ciudad: `lat/lon`, `q` (geocode), `bbox`, `radius_m` (default 1 km), kW, filtros acceso |
 | `GET /api/v1/stations/along-route` | Búsqueda en corredor (`origin_lat/lon`, `dest_lat/lon`, `min_kw`, `corridor_km`, `behind_margin_km`) |
 | `GET /api/v1/meta/stats` | Conteos por país y bandas de potencia |
 | `GET /api/v1/meta/operators` | Top operadores (`country`, `limit`) |
@@ -166,6 +168,6 @@ curl 'http://127.0.0.1:8000/api/v1/meta/stats'
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6029](TASKBOARD.md#task-6029). Siguiente: [#6030 API búsqueda en ciudad](TASKBOARD.md#task-6030).
+**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6031](TASKBOARD.md#task-6031). Siguiente: [#6032 mapa con estaciones](TASKBOARD.md#task-6032).
 
 Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)
