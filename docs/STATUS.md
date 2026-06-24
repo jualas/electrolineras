@@ -1,10 +1,10 @@
 # Estado del proyecto
 
-Última actualización: 2026-06-23
+Última actualización: 2026-06-24
 
 ## Fase actual
 
-**Fase 1 — MVP datos + mapa**. [#6026](../TASKBOARD.md#task-6026) completada. Siguiente tarea: [#6027 Pipeline ingestión y export GeoJSON](../TASKBOARD.md#task-6027).
+**Fase 1 — MVP datos + mapa**. [#6029](../TASKBOARD.md#task-6029) completada (búsqueda en ruta). Siguiente tarea: [#6030 API búsqueda en ciudad](../TASKBOARD.md#task-6030).
 
 ## Gestión de tareas (TaskBoard)
 
@@ -59,15 +59,15 @@
 | [#6024](../TASKBOARD.md#task-6024) Script de descarga NAP Portugal MOBI.E (streaming) | ✅ | [`DATA_SOURCES.md`](DATA_SOURCES.md) |
 | [#6025](../TASKBOARD.md#task-6025) Parser DATEX II unificado (España + Portugal) | ✅ | [`DATA_SOURCES.md`](DATA_SOURCES.md), `src/ingest/datex_parser.py` |
 | [#6026](../TASKBOARD.md#task-6026) Modelo normalizado Station y persistencia SQLite | ✅ | [`STORAGE.md`](STORAGE.md), `src/db/` |
-| [#6027](../TASKBOARD.md#task-6027) Pipeline de ingestión y export GeoJSON | ⏳ **siguiente** | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| [#6027](../TASKBOARD.md#task-6027) Pipeline de ingestión y export GeoJSON | ✅ | [`README.md`](../README.md), `src/ingest/pipeline.py` |
 
 #### API backend
 
 | Tarea | Estado | Documentación |
 |-------|--------|---------------|
-| [#6028](../TASKBOARD.md#task-6028) API REST FastAPI — consulta de estaciones | ⏳ | [`ARCHITECTURE.md`](ARCHITECTURE.md), [`FILTERS.md`](FILTERS.md) |
-| [#6029](../TASKBOARD.md#task-6029) API — búsqueda en ruta (corredor + anti-retroceso) | ⏳ | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md) |
-| [#6030](../TASKBOARD.md#task-6030) API — búsqueda en ciudad (potencia + ubicación + acceso) | ⏳ | [`FILTERS.md`](FILTERS.md) |
+| [#6028](../TASKBOARD.md#task-6028) API REST FastAPI — consulta de estaciones | ✅ | [`ARCHITECTURE.md`](ARCHITECTURE.md), `src/api/` |
+| [#6029](../TASKBOARD.md#task-6029) API — búsqueda en ruta (corredor + anti-retroceso) | ✅ | [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md), `src/api/routing/` |
+| [#6030](../TASKBOARD.md#task-6030) API — búsqueda en ciudad (potencia + ubicación + acceso) | ⏳ **siguiente** | [`FILTERS.md`](FILTERS.md) |
 
 #### Frontend web
 
@@ -80,7 +80,7 @@
 | [#6035](../TASKBOARD.md#task-6035) Frontend — búsqueda en ciudad | ⏳ | [`FILTERS.md`](FILTERS.md) |
 | [#6036](../TASKBOARD.md#task-6036) Navegación externa y envío al coche (MVP) | ⏳ | [`NAVIGATION.md`](NAVIGATION.md) |
 
-**Resumen Fase 1:** 5/15 tareas completadas; 10 pendientes (sin contar #6021 de Fase 0).
+**Resumen Fase 1:** 8/15 tareas completadas; 7 pendientes (sin contar #6021 de Fase 0).
 
 ### Fase 2 — Datos dinámicos y UX Tesla
 

@@ -97,6 +97,7 @@ make install-dev
 # 3. Terminal A — API
 make api
 # → http://127.0.0.1:8000/health
+# → http://127.0.0.1:8000/docs (OpenAPI / Swagger)
 
 # 4. Terminal B — frontend
 make web
@@ -116,25 +117,55 @@ Comandos útiles:
 | `make fetch-es` | Descarga feed NAP España → `data/raw/es/` |
 | `make fetch-pt` | Descarga feed NAP Portugal (streaming ~180 MB) → `data/raw/pt/` |
 | `make parse-es` / `make parse-pt` | Parsear último XML DATEX → resumen JSON |
-| `make load-db` | Parsear ES+PT y persistir en SQLite + export GeoJSON |
+| `make load-db` | Re-parsear XML existente → SQLite + GeoJSON (sin descargar) |
+| `make ingest` | Pipeline completo: descarga ES+PT → SQLite → GeoJSON |
+| `make ingest-es` / `make ingest-pt` | Pipeline de un solo país (ideal para cron) |
 
-Ingestión:
+### Pipeline de ingestión
+
+Flujo: **descarga DATEX → parse → SQLite → GeoJSON**.
 
 ```bash
-make fetch-es
-make fetch-pt
-# o: .venv/bin/electrolineras-fetch-es / electrolineras-fetch-pt
-# Genera data/raw/{es,pt}/<prefix>_<timestamp>.xml + manifest.json
+make ingest              # ES + PT completo
+make ingest-es           # solo España (cron diario)
+make ingest-pt           # solo Portugal (cron cada 6 h)
+.venv/bin/electrolineras-ingest --skip-fetch   # sin red, usa XML en data/raw/
+.venv/bin/electrolineras-ingest --summary      # resumen JSON
 ```
 
-Pipeline completo (stub hasta #6027):
+Salidas: `data/raw/{es,pt}/`, `data/db/stations.db`, `data/processed/stations.geojson`.
+
+Cron de ejemplo: [`scripts/cron/electrolineras.crontab.example`](scripts/cron/electrolineras.crontab.example)
+
+Pasos individuales (depuración):
 
 ```bash
-.venv/bin/python scripts/ingest_all.py
+make fetch-es && make fetch-pt && make load-db
+```
+
+### API REST (#6028)
+
+Documentación interactiva: `http://127.0.0.1:8000/docs`
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /health` | Estado del servicio |
+| `GET /api/v1/stations` | Lista paginada (`format=json\|geojson`, `min_kw`, `max_kw`, `country`, `bbox`, `limit`, `offset`) |
+| `GET /api/v1/stations/{id}` | Detalle de una estación |
+| `GET /api/v1/stations/along-route` | Búsqueda en corredor (`origin_lat/lon`, `dest_lat/lon`, `min_kw`, `corridor_km`, `behind_margin_km`) |
+| `GET /api/v1/meta/stats` | Conteos por país y bandas de potencia |
+| `GET /api/v1/meta/operators` | Top operadores (`country`, `limit`) |
+
+Ejemplos:
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/stations?min_kw=100&country=ES&format=geojson&limit=50'
+curl 'http://127.0.0.1:8000/api/v1/stations/along-route?origin_lat=37.18&origin_lon=-3.60&dest_lat=37.60&dest_lon=-0.99&min_kw=100&corridor_km=10'
+curl 'http://127.0.0.1:8000/api/v1/meta/stats'
 ```
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6026](TASKBOARD.md#task-6026). Siguiente: [#6027 Pipeline ingestión](TASKBOARD.md#task-6027).
+**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6029](TASKBOARD.md#task-6029). Siguiente: [#6030 API búsqueda en ciudad](TASKBOARD.md#task-6030).
 
 Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)

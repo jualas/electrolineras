@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-23T20:14:15Z -->
+<!-- taskboard-exported-at: 2026-06-24T18:31:50Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-23 20:14 UTC  
-**Git:** `main` @ `8f55f6e7`  
+**Exportado:** 2026-06-24 18:31 UTC  
+**Git:** `main` @ `d2e1ce74`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,60 +23,12 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 10 |
-| Completada (`completed`) | 6 |
+| Pendiente (`pending`) | 7 |
+| Completada (`completed`) | 9 |
 
 ---
 
 ## Pendiente (`pending`)
-
-<a id="task-6027"></a>
-### [#6027] Pipeline de ingestión y export GeoJSON
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6027` |
-| Estado | `pending` |
-| Complejidad | media |
-| Horas estimadas | 6 |
-| Posición Kanban | 7.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Orquestar descarga → parse → persistencia → export data/processed/stations.geojson. CLI scripts/ingest_all.py ejecutable manualmente y preparado para cron (ES diario, PT cada 6–12 h).
-
----
-
-<a id="task-6028"></a>
-### [#6028] API REST FastAPI — consulta de estaciones
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6028` |
-| Estado | `pending` |
-| Complejidad | media |
-| Horas estimadas | 8 |
-| Posición Kanban | 8.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Levantar src/api/main.py con endpoints: GET /api/v1/stations (filtros min_kw, max_kw, country, bbox), GET /api/v1/stations/{id}, GET /api/v1/meta/stats, GET /api/v1/meta/operators. Respuesta paginada GeoJSON/JSON.
-
----
-
-<a id="task-6029"></a>
-### [#6029] API — búsqueda en ruta (corredor + anti-retroceso)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6029` |
-| Estado | `pending` |
-| Complejidad | compleja |
-| Horas estimadas | 16 |
-| Posición Kanban | 9.0 |
-| Actualizado | 2026-06-22 19:31 UTC |
-
-Endpoint GET /api/v1/stations/along-route: origen, destino, min_kw, ancho corredor (km), orden por menor desvío. Integrar routing OSRM/GraphHopper para polilínea y filtrar estaciones en corredor en sentido de marcha. Reglas: docs/ROUTE_CORRIDOR_SEARCH.md.
-
----
 
 <a id="task-6030"></a>
 ### [#6030] API — búsqueda en ciudad (potencia + ubicación + acceso)
@@ -201,8 +153,8 @@ Botones «Navegar» con enlace Google Maps (destination=lat,lon), copiar coorden
 | Estado | `completed` |
 | Complejidad | simple |
 | Horas estimadas | 1 |
-| Posición Kanban | 1.0 |
-| Actualizado | 2026-06-23 15:18 UTC |
+| Posición Kanban | 8.0 |
+| Actualizado | 2026-06-23 23:01 UTC |
 
 Incluir .gitignore, README.md, docs/, estructura data/scripts/src y snapshot estable del proyecto. Cierra el último ítem pendiente de Fase 0 en STATUS.md.
 
@@ -217,10 +169,26 @@ Incluir .gitignore, README.md, docs/, estructura data/scripts/src y snapshot est
 | Estado | `completed` |
 | Complejidad | media |
 | Horas estimadas | 4 |
-| Posición Kanban | 2.0 |
-| Actualizado | 2026-06-23 18:55 UTC |
+| Posición Kanban | 9.0 |
+| Actualizado | 2026-06-24 11:23 UTC |
 
 Crear esqueleto según docs/ARCHITECTURE.md: pyproject.toml o requirements.txt (Python 3.11+, lxml, FastAPI, uvicorn), package.json para frontend (Vite), README con instrucciones de arranque local, variables de entorno (.env.example).
+
+---
+
+<a id="task-6029"></a>
+### [#6029] API — búsqueda en ruta (corredor + anti-retroceso)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6029` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Horas estimadas | 16 |
+| Posición Kanban | 9.0 |
+| Actualizado | 2026-06-24 18:31 UTC |
+
+Endpoint GET /api/v1/stations/along-route: origen, destino, min_kw, ancho corredor (km), orden por menor desvío. Integrar routing OSRM/GraphHopper para polilínea y filtrar estaciones en corredor en sentido de marcha. Reglas: docs/ROUTE_CORRIDOR_SEARCH.md.
 
 ---
 
@@ -233,8 +201,8 @@ Crear esqueleto según docs/ARCHITECTURE.md: pyproject.toml o requirements.txt (
 | Estado | `completed` |
 | Complejidad | media |
 | Horas estimadas | 4 |
-| Posición Kanban | 3.0 |
-| Actualizado | 2026-06-23 19:18 UTC |
+| Posición Kanban | 10.0 |
+| Actualizado | 2026-06-24 11:23 UTC |
 
 Implementar fetch_spain.py que descargue el feed XML oficial NAP DGT/MITECO, guarde raw en data/raw/es/ con timestamp y maneje errores/reintentos. Referencia: docs/DATA_SOURCES.md.
 
@@ -249,8 +217,8 @@ Implementar fetch_spain.py que descargue el feed XML oficial NAP DGT/MITECO, gua
 | Estado | `completed` |
 | Complejidad | compleja |
 | Horas estimadas | 8 |
-| Posición Kanban | 4.0 |
-| Actualizado | 2026-06-23 19:36 UTC |
+| Posición Kanban | 11.0 |
+| Actualizado | 2026-06-24 11:25 UTC |
 
 Implementar fetch_portugal.py con descarga por streaming del XML ~180 MB MOBI.E NAP, escritura incremental a disco y validación de integridad básica.
 
@@ -265,8 +233,8 @@ Implementar fetch_portugal.py con descarga por streaming del XML ~180 MB MOBI.E 
 | Estado | `completed` |
 | Complejidad | compleja |
 | Horas estimadas | 16 |
-| Posición Kanban | 5.0 |
-| Actualizado | 2026-06-23 19:58 UTC |
+| Posición Kanban | 12.0 |
+| Actualizado | 2026-06-24 11:25 UTC |
 
 Implementar datex_parser.py que normalice ambos feeds a un esquema común: id, nombre, operador, lat/lon, conectores (potencia kW, tipo), país, acceso, fetched_at, source_version.
 
@@ -281,10 +249,42 @@ Implementar datex_parser.py que normalice ambos feeds a un esquema común: id, n
 | Estado | `completed` |
 | Complejidad | media |
 | Horas estimadas | 6 |
-| Posición Kanban | 6.0 |
-| Actualizado | 2026-06-23 20:12 UTC |
+| Posición Kanban | 13.0 |
+| Actualizado | 2026-06-24 11:25 UTC |
 
 Definir station.py (Pydantic/dataclass) y capa de persistencia SQLite (+ SpatiaLite si se usa geo index). Tablas con índices por bbox, min_kw, país. Decisión MVP: SQLite según ARCHITECTURE.md.
+
+---
+
+<a id="task-6027"></a>
+### [#6027] Pipeline de ingestión y export GeoJSON
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6027` |
+| Estado | `completed` |
+| Complejidad | media |
+| Horas estimadas | 6 |
+| Posición Kanban | 14.0 |
+| Actualizado | 2026-06-24 11:26 UTC |
+
+Orquestar descarga → parse → persistencia → export data/processed/stations.geojson. CLI scripts/ingest_all.py ejecutable manualmente y preparado para cron (ES diario, PT cada 6–12 h).
+
+---
+
+<a id="task-6028"></a>
+### [#6028] API REST FastAPI — consulta de estaciones
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6028` |
+| Estado | `completed` |
+| Complejidad | media |
+| Horas estimadas | 8 |
+| Posición Kanban | 17.0 |
+| Actualizado | 2026-06-24 18:28 UTC |
+
+Levantar src/api/main.py con endpoints: GET /api/v1/stations (filtros min_kw, max_kw, country, bbox), GET /api/v1/stations/{id}, GET /api/v1/meta/stats, GET /api/v1/meta/operators. Respuesta paginada GeoJSON/JSON.
 
 ---
 
