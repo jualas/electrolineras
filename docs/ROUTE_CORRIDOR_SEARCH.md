@@ -133,7 +133,9 @@ Modo **rápido**: una pantalla, sin login, origen = GPS.
 4. Top 10 por menor desvío.
 5. Botón abrir en Google Maps.
 
-**No incluir en MVP:** estimación SOC, tiempo de carga, ocupación REVE.
+**No incluir en MVP Fase 1:** estimación SOC, tiempo de carga, ocupación REVE.
+
+**Fase 2 (#6053–#6055):** plan de carga con SOC, consumo por modelo, viabilidad en corredor (principal o alternativo) y comparación de opciones — ver [`EV_RANGE_PLAN.md`](EV_RANGE_PLAN.md).
 
 ---
 

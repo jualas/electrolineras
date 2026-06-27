@@ -168,11 +168,18 @@ ABRP y otros usan el **navegador del coche** para mostrar el planificador.
 - Lista de paradas del viaje con estado (pendiente / actual / hecha).
 - Recordatorio: precondicionamiento funciona mejor con nav Tesla nativo.
 
-### Fase C — Planificador inteligente
+### Fase C — Planificador inteligente (#6053–#6055)
 
-- Autonomía estimada (SOC inicial, consumo, modelo de coche).
-- Selección automática de paradas según potencia mínima y distancia.
-- Reoptimizar ruta si una parada está ocupada (cuando tengamos datos REVE dinámicos).
+Ver [`EV_RANGE_PLAN.md`](EV_RANGE_PLAN.md).
+
+- Autonomía estimada (SOC manual, consumo por preset EV, factor terreno ajustable).
+- Origen del plan vía **GPS del móvil** (sin telemetría del coche).
+- Plan sobre ruta principal o **alternativa** (vías secundarias lejos de redes de operador); comparar 2–3 estrategias de carga.
+- Selección de paradas según potencia mínima, viabilidad SOC y datos REVE dinámicos (#6050).
+- Modo emergencia: cargador viable más cercano.
+- Reoptimizar si una parada está ocupada (datos REVE).
+
+**Fase 3 — Agente Dify (#6056–#6058):** ver [`EV_RANGE_PLAN.md`](EV_RANGE_PLAN.md#fase-3--agente-plan-de-carga-dify-mini-pc). Workflow en mini PC; preferencias en lenguaje natural y explicaciones; cálculos delegados a la API.
 
 ### Fase D — UE
 

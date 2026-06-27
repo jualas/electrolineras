@@ -49,13 +49,25 @@ Mapa oficial con información **en tiempo real** (disponibilidad, precio).
 | Todos los puntos remitidos al MITECO | Enfoque en públicos con datos dinámicos (≥ 43 kW obligatorio) |
 | Estándar DATEX II para terceros | Mapa/app REVE; intercambio CPO↔SGV vía **OCPI** |
 
-### Acceso para desarrolladores
+### Acceso para desarrolladores (actualizado Fase 2 — jun 2026)
 
-REVE **no publica una API REST documentada** para terceros. Los operadores envían datos al SGV por OCPI. Opciones a estudiar:
+El frontend de [mapareve.es](https://www.mapareve.es/) consume una **API REST pública de lectura** (sin documentación formal para terceros):
 
-1. Usar solo NAP DATEX II (suficiente para MVP estático + filtro potencia).
-2. Solicitar acceso técnico a Red Eléctrica / MITECO para datos dinámicos.
-3. Analizar si el frontend de mapareve.es consume endpoints internos (revisar términos de uso antes de usar).
+| Endpoint | Método | Uso |
+|----------|--------|-----|
+| `/api/public/v1/stats` | GET | Contadores agregados |
+| `/api/public/v1/cpos` | GET | Operadores |
+| `/api/public/v1/markers` | POST | Clusters/marcadores por bbox + zoom |
+| `/api/public/v1/locations` | POST | Listado paginado con detalle EVSE |
+| `/api/public/v1/locations/{id}` | GET | Ficha de emplazamiento |
+
+Base URL: `https://www.mapareve.es/api/public/v1`
+
+Implementación en este repo: `src/ingest/reve_client.py`, sync en `src/ingest/reve_sync.py`. Ver [`PHASE2.md`](PHASE2.md).
+
+**Precauciones:** respetar términos REE/MITECO; sync con cron espaciado (2–4 h); User-Agent identificable; no abusar del servicio público.
+
+El acceso **OCPI directo al SGV** sigue reservado a CPOs registrados en el [portal de clientes REE](https://www.portalclientes.ree.es/).
 
 Normativa de referencia: Resolución SEE nov 2024 (procedimiento SGV), BOE abril 2025 (remisión información dinámica).
 
@@ -136,7 +148,7 @@ DATEX II (ES) ──┐
                 ├──► Parser DATEX ──► Normalizador ──► SQLite (+ SpatiaLite) ──► API ──► Mapa web
                 │                              └── ver docs/STORAGE.md
 DATEX II (PT) ──┘
-REVE/OCPI (ES) ────► (fase 2) ──► merge por id/coords
+REVE/OCPI (ES) ────► sync REVE (fase 2) ──► merge por coords + enrich dinámico
 ```
 
 Tareas iniciales en `scripts/`:

@@ -136,7 +136,7 @@ make ingest-pt           # solo Portugal (cron cada 6 h)
 
 Salidas: `data/raw/{es,pt}/`, `data/db/stations.db`, `data/processed/stations.geojson`.
 
-Cron de ejemplo: [`scripts/cron/electrolineras.crontab.example`](scripts/cron/electrolineras.crontab.example)
+Cron producción (#6040): [`scripts/cron/`](scripts/cron/) — `make cron-install`, `make cron-test-es`, `make cron-test-reve`. Ver [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#5-cron-de-ingestión-producción-6040).
 
 Pasos individuales (depuración):
 
@@ -155,6 +155,7 @@ Documentación interactiva: `http://127.0.0.1:8000/docs`
 | `GET /api/v1/stations/{id}` | Detalle de una estación |
 | `GET /api/v1/stations/nearby` | Ciudad: `lat/lon`, `q` (geocode), `bbox`, `radius_m` (default 1 km), kW, filtros acceso |
 | `GET /api/v1/stations/along-route` | Búsqueda en corredor (`origin_lat/lon`, `dest_lat/lon`, `min_kw`, `corridor_km`, `behind_margin_km`) |
+| `GET /api/v1/meta/geocode` | Autocompletado de lugares (`q`, `limit`) vía Nominatim |
 | `GET /api/v1/meta/stats` | Conteos por país y bandas de potencia |
 | `GET /api/v1/meta/operators` | Top operadores (`country`, `limit`) |
 
@@ -168,6 +169,6 @@ curl 'http://127.0.0.1:8000/api/v1/meta/stats'
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa**. Completadas [#6022](TASKBOARD.md#task-6022)–[#6033](TASKBOARD.md#task-6033). Siguiente: [#6034 búsqueda en ruta UI](TASKBOARD.md#task-6034).
+**Fase 1 — MVP datos + mapa** ✅ completada ([#6022](TASKBOARD.md#task-6022)–[#6036](TASKBOARD.md#task-6036)). Siguiente: Fase Prod ([#6037](TASKBOARD.md#task-6037) OSRM self-hosted, etc.).
 
-Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md)
+Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md) · pruebas y prod: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
