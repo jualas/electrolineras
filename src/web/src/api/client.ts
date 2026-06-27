@@ -8,7 +8,18 @@ export function apiUrl(path: string): string {
 export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), init)
   if (!response.ok) {
-    throw new Error(`API ${path}: HTTP ${response.status}`)
+    let message = `API ${path}: HTTP ${response.status}`
+    try {
+      const body = (await response.json()) as { detail?: string | { msg: string }[] }
+      if (typeof body.detail === 'string') {
+        message = body.detail
+      } else if (Array.isArray(body.detail) && body.detail[0]?.msg) {
+        message = body.detail[0].msg
+      }
+    } catch {
+      // keep default message
+    }
+    throw new Error(message)
   }
   return response.json() as Promise<T>
 }
