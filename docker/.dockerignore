@@ -1,0 +1,17 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+data/raw
+data/processed
+src/web/node_modules
+src/web/dist
+node_modules
+*.md
+!README.md
+TASKBOARD.md
+docs
+tests
+scripts/cron

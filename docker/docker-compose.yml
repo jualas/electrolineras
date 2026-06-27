@@ -1,0 +1,53 @@
+# Electrolineras — API FastAPI + SPA (build Vite dentro de la imagen)
+#
+# Despliegue operativo (mini PC):
+#   /mnt/datos/docker/electrolineras/
+#
+#   cd /mnt/datos/docker/electrolineras
+#   cp env.example .env
+#   docker compose up -d --build
+
+services:
+  electrolineras:
+    build:
+      context: ${ELECTROLINERAS_SRC:-/mnt/datos/Proyectos/Electrolineras}
+      dockerfile: docker/Dockerfile
+    image: electrolineras:local
+    container_name: electrolineras
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:////app/data/db/stations.db
+      SERVE_WEB_STATIC: "true"
+      WEB_DIST_PATH: /app/src/web/dist
+      API_RELOAD: "false"
+    ports:
+      # 0.0.0.0 = acceso LAN (<IP-LAN-SERVIDOR>:8015). Usar 127.0.0.1:8015:8000 si solo túnel Cloudflare.
+      - "${ELECTROLINERAS_PORT:-0.0.0.0:8015:8000}"
+    volumes:
+      - ${ELECTROLINERAS_DATA:-/mnt/datos/docker/volumes/electrolineras-data}:/app/data
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\")"']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # Túnel Cloudflare — network_mode: host + origen 127.0.0.1:8015 en Zero Trust
+  electrolineras-cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: electrolineras-cloudflared
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARED_TOKEN}
+    depends_on:
+      electrolineras:
+        condition: service_healthy

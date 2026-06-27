@@ -9,6 +9,7 @@ env/
 .env
 .env.*
 !.env.example
+scripts/cron/electrolineras.env
 dist/
 build/
 *.egg-info/

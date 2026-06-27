@@ -1,0 +1,17 @@
+# Logrotate — Electrolineras cron (#6040)
+#
+# Instalar en el mini PC:
+#   sudo cp scripts/cron/logrotate.electrolineras.example \
+#     /etc/logrotate.d/electrolineras
+#
+# Ajustar la ruta si ELECTROLINERAS_LOG_DIR difiere.
+
+/mnt/datos/docker/volumes/electrolineras-data/logs/cron/*.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
