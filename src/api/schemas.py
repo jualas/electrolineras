@@ -58,6 +58,12 @@ class MetaOperatorsResponse(BaseModel):
     limit: int
 
 
+class GeocodeResultItem(BaseModel):
+    lat: float
+    lon: float
+    label: str
+
+
 class RouteEndpoint(BaseModel):
     lat: float
     lon: float
@@ -80,6 +86,55 @@ class AlongRouteResponse(BaseModel):
     route_duration_minutes: float
     route_geometry: dict[str, Any] | None = None
     results: list[AlongRouteStationResult]
+    candidates_in_bbox: int
+
+
+ChargingClassification = Literal["safe", "adjusted", "critical", "unreachable"]
+
+
+class VehicleEnergyInput(BaseModel):
+    soc_percent: float
+    usable_capacity_kwh: float
+    consumption_wh_per_km: float
+    terrain_factor: float = 1.0
+    reserve_soc_percent: float = 10.0
+
+
+class ChargingPlanStopResult(BaseModel):
+    station: Station
+    deviation_km: float
+    route_distance_km: float
+    extra_minutes: float
+    wrong_side: bool
+    distance_from_origin_km: float
+    soc_arrival_pct: float
+    classification: ChargingClassification
+
+
+class ChargingPlanStrategyResult(BaseModel):
+    id: str
+    label: str
+    station_id: str | None
+    soc_arrival_pct: float | None
+    classification: ChargingClassification | None
+    summary: str
+
+
+class ChargingPlanResponse(BaseModel):
+    mode: Literal["route", "emergency"]
+    vehicle: VehicleEnergyInput
+    range_km: float
+    origin: RouteEndpoint
+    destination: RouteEndpoint | None = None
+    corridor_km: float | None = None
+    route_distance_km: float | None = None
+    route_duration_minutes: float | None = None
+    soc_at_destination_pct: float | None = None
+    reachable_without_stop: bool
+    route_geometry: dict[str, Any] | None = None
+    stops: list[ChargingPlanStopResult]
+    strategies: list[ChargingPlanStrategyResult]
+    warnings: list[str]
     candidates_in_bbox: int
 
 

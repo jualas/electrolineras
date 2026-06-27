@@ -34,6 +34,9 @@ class Station(BaseModel):
     raw_ref: str
     fetched_at: datetime | None = None
     source_version: str | None = None
+    dynamic_status: str | None = None
+    dynamic_price_eur_kwh: float | None = None
+    dynamic_updated_at: datetime | None = None
 
 
 class ParseStats(BaseModel):

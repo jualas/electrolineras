@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+import sqlite3
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from api.dependencies import get_repository
+from api.main import app
+from api.routing.osrm import OsrmRoute
+from db.repository import StationRepository
+from models.station import Connector, Station, StationLocation
+
+
+def memory_repo() -> StationRepository:
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    return StationRepository(connection)
+
+
+def sample_station(station_id: str, lat: float, lon: float, kw: float = 150.0, price: float | None = None) -> Station:
+    return Station(
+        id=station_id,
+        source="es-nap-dgt",
+        country="ES",
+        location=StationLocation(lat=lat, lon=lon),
+        connectors=[Connector(connector_type="ccs", power_kw=kw)],
+        max_power_kw=kw,
+        raw_ref=station_id,
+        dynamic_price_eur_kwh=price,
+        dynamic_status="available",
+    )
+
+
+MOCK_ROUTE = OsrmRoute(
+    coordinates=[(0.0, 40.0), (0.5, 40.0), (1.0, 40.0)],
+    distance_m=111_320.0,
+    duration_s=3600.0,
+)
+
+VEHICLE_PARAMS = {
+    "soc_percent": 45,
+    "usable_capacity_kwh": 57,
+    "consumption_wh_per_km": 150,
+    "terrain_factor": 1.0,
+    "reserve_soc_percent": 10,
+}
+
+
+@pytest.fixture
+def api_client() -> TestClient:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station("ahead-safe", 40.01, 0.25, 350.0, 0.42),
+            sample_station("ahead-far", 40.01, 0.75, 350.0, 0.38),
+            sample_station("behind", 40.01, -0.2, 350.0),
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+
+
+@patch("api.routes.charging_plan.fetch_osrm_route", return_value=MOCK_ROUTE)
+def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
+    response = api_client.get(
+        "/api/v1/stations/charging-plan",
+        params={
+            "origin_lat": 40.0,
+            "origin_lon": 0.1,
+            "dest_lat": 40.0,
+            "dest_lon": 1.0,
+            "min_kw": 100,
+            "corridor_km": 20,
+            **VEHICLE_PARAMS,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "route"
+    assert payload["range_km"] > 0
+    assert payload["stops"]
+    assert len(payload["strategies"]) == 3
+    assert payload["stops"][0]["classification"] in {"safe", "adjusted", "critical", "unreachable"}
+    assert payload["route_geometry"]["type"] == "LineString"
+
+
+def test_charging_plan_emergency_mode(api_client: TestClient) -> None:
+    response = api_client.get(
+        "/api/v1/stations/charging-plan",
+        params={
+            "origin_lat": 40.0,
+            "origin_lon": 0.0,
+            "min_kw": 100,
+            **VEHICLE_PARAMS,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "emergency"
+    assert payload["destination"] is None
+    assert any(stop["station"]["id"] == "ahead-safe" for stop in payload["stops"])
+
+
+def test_charging_plan_rejects_partial_destination(api_client: TestClient) -> None:
+    response = api_client.get(
+        "/api/v1/stations/charging-plan",
+        params={
+            "origin_lat": 40.0,
+            "origin_lon": 0.0,
+            "dest_lat": 40.0,
+            **VEHICLE_PARAMS,
+        },
+    )
+    assert response.status_code == 422

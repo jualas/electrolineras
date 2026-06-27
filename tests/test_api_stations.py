@@ -26,6 +26,9 @@ def sample_station(
     lon: float = -3.7,
     max_kw: float = 150.0,
     operator: str = "Operador Test",
+    *,
+    dynamic_status: str | None = None,
+    dynamic_price_eur_kwh: float | None = None,
 ) -> Station:
     return Station(
         id=station_id,
@@ -39,6 +42,8 @@ def sample_station(
         access="public",
         raw_ref=raw_ref,
         source_version="2026-06-23T10:00:00+02:00",
+        dynamic_status=dynamic_status,
+        dynamic_price_eur_kwh=dynamic_price_eur_kwh,
     )
 
 
@@ -80,6 +85,38 @@ def test_list_stations_geojson(api_client: TestClient) -> None:
     feature = payload["features"][0]
     assert feature["geometry"]["type"] == "Point"
     assert "max_power_kw" in feature["properties"]
+
+
+def test_list_stations_exposes_dynamic_fields(api_client: TestClient) -> None:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station(
+                "es-dgt-dynamic",
+                "D",
+                dynamic_status="AVAILABLE",
+                dynamic_price_eur_kwh=0.59,
+            )
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+    try:
+        json_response = client.get("/api/v1/stations?country=ES")
+        station = json_response.json()["stations"][0]
+        assert station["dynamic_status"] == "AVAILABLE"
+        assert station["dynamic_price_eur_kwh"] == pytest.approx(0.59)
+
+        geo_response = client.get("/api/v1/stations?format=geojson&country=ES")
+        props = geo_response.json()["features"][0]["properties"]
+        assert props["dynamic_status"] == "AVAILABLE"
+        assert props["dynamic_price_eur_kwh"] == pytest.approx(0.59)
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_list_stations_min_kw_filter(api_client: TestClient) -> None:

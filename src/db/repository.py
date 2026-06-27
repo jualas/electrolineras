@@ -47,6 +47,9 @@ def _row_to_station(row: sqlite3.Row, connectors: list[Connector]) -> Station:
         raw_ref=row["raw_ref"],
         fetched_at=_parse_datetime(row["fetched_at"]),
         source_version=row["source_version"],
+        dynamic_status=row["dynamic_status"],
+        dynamic_price_eur_kwh=row["dynamic_price"],
+        dynamic_updated_at=_parse_datetime(row["dynamic_updated_at"]),
     )
 
 
@@ -106,8 +109,9 @@ class StationRepository:
                     INSERT INTO station (
                         id, source, country, site_name, operator, lat, lon, address,
                         max_power_kw, access, payment_methods, opening_hours, raw_ref,
-                        fetched_at, source_version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        fetched_at, source_version, dynamic_status, dynamic_price,
+                        dynamic_updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         source = excluded.source,
                         country = excluded.country,
@@ -122,7 +126,12 @@ class StationRepository:
                         opening_hours = excluded.opening_hours,
                         raw_ref = excluded.raw_ref,
                         fetched_at = excluded.fetched_at,
-                        source_version = excluded.source_version
+                        source_version = excluded.source_version,
+                        dynamic_status = COALESCE(excluded.dynamic_status, station.dynamic_status),
+                        dynamic_price = COALESCE(excluded.dynamic_price, station.dynamic_price),
+                        dynamic_updated_at = COALESCE(
+                            excluded.dynamic_updated_at, station.dynamic_updated_at
+                        )
                     """,
                     (
                         station.id,
@@ -140,6 +149,9 @@ class StationRepository:
                         station.raw_ref,
                         fetched_at,
                         station.source_version,
+                        station.dynamic_status,
+                        station.dynamic_price_eur_kwh,
+                        _iso_datetime(station.dynamic_updated_at),
                     ),
                 )
                 self.connection.execute(
@@ -166,6 +178,55 @@ class StationRepository:
                 )
                 upserted += 1
         return upserted
+
+    def find_nearby_station_id(
+        self,
+        lat: float,
+        lon: float,
+        *,
+        radius_m: float,
+        country: str,
+    ) -> str | None:
+        south, north, west, east = bbox_sql(lat, lon, radius_m)
+        rows = self.connection.execute(
+            """
+            SELECT id, lat, lon
+            FROM station
+            WHERE country = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+            """,
+            (country, south, north, west, east),
+        ).fetchall()
+        best_id: str | None = None
+        best_distance = radius_m
+        for row in rows:
+            distance = haversine_m(lat, lon, row["lat"], row["lon"])
+            if distance <= radius_m and distance < best_distance:
+                best_distance = distance
+                best_id = row["id"]
+        return best_id
+
+    def update_dynamic_fields(
+        self,
+        station_id: str,
+        *,
+        dynamic_status: str | None,
+        dynamic_price_eur_kwh: float | None,
+        dynamic_updated_at: datetime | None,
+    ) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE station
+                SET dynamic_status = ?, dynamic_price = ?, dynamic_updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    dynamic_status,
+                    dynamic_price_eur_kwh,
+                    _iso_datetime(dynamic_updated_at),
+                    station_id,
+                ),
+            )
 
     def get_by_id(self, station_id: str) -> Station | None:
         row = self.connection.execute(

@@ -25,6 +25,11 @@ def station_to_feature(station: Station) -> dict[str, Any]:
             "address": station.location.address,
             "fetched_at": station.fetched_at.isoformat() if station.fetched_at else None,
             "source_version": station.source_version,
+            "dynamic_status": station.dynamic_status,
+            "dynamic_price_eur_kwh": station.dynamic_price_eur_kwh,
+            "dynamic_updated_at": (
+                station.dynamic_updated_at.isoformat() if station.dynamic_updated_at else None
+            ),
         },
     }
 

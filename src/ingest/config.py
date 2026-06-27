@@ -24,6 +24,12 @@ class IngestSettings(BaseSettings):
     fetch_stream_chunk_size: int = 1024 * 1024
     fetch_user_agent: str = "Electrolineras/0.1 (+https://github.com/electrolineras; NAP ingest)"
 
+    reve_base_url: str = "https://www.mapareve.es/api/public/v1"
+    reve_timeout_seconds: float = 60.0
+    reve_user_agent: str = "Electrolineras/0.2 (+https://github.com/electrolineras; REVE sync)"
+    reve_sync_per_page: int = 25
+    reve_match_radius_m: float = 150.0
+
     @property
     def nap_es_raw_dir(self) -> Path:
         return self.data_raw_dir / "es"

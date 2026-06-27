@@ -64,6 +64,24 @@ def test_upsert_updates_connectors() -> None:
     assert loaded.connectors[0].connector_type == "chademo"
 
 
+def test_upsert_preserves_dynamic_fields_when_not_provided() -> None:
+    repo = memory_repo()
+    station = sample_station()
+    station.dynamic_status = "AVAILABLE"
+    station.dynamic_price_eur_kwh = 0.59
+    repo.upsert_stations([station])
+
+    refreshed = sample_station()
+    refreshed.site_name = "Updated name"
+    repo.upsert_stations([refreshed])
+
+    loaded = repo.get_by_id(station.id)
+    assert loaded is not None
+    assert loaded.site_name == "Updated name"
+    assert loaded.dynamic_status == "AVAILABLE"
+    assert loaded.dynamic_price_eur_kwh == 0.59
+
+
 def test_search_bbox_and_min_kw() -> None:
     repo = memory_repo()
     repo.upsert_stations(

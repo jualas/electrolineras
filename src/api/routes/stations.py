@@ -13,8 +13,10 @@ from api.query_params import (
     stations_limit_query,
     stations_offset_query,
 )
+from api.routing.nominatim import GeocodingError, search_places
 from api.schemas import (
     CountryStats,
+    GeocodeResultItem,
     GeoJSONStationCollection,
     MetaOperatorsResponse,
     MetaStatsResponse,
@@ -184,3 +186,15 @@ def meta_operators(
         for row in repo.top_operators(country=country_filter, limit=limit)
     ]
     return MetaOperatorsResponse(operators=operators, country=country_filter, limit=limit)
+
+
+@router.get("/meta/geocode", tags=["meta"])
+def meta_geocode(
+    q: Annotated[str, Query(min_length=2, description="Lugar o dirección a buscar")],
+    limit: Annotated[int, Query(ge=1, le=10, description="Máximo de sugerencias")] = 5,
+) -> list[GeocodeResultItem]:
+    try:
+        hits = search_places(q, limit=limit)
+    except GeocodingError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return [GeocodeResultItem(lat=lat, lon=lon, label=label) for lat, lon, label in hits]
