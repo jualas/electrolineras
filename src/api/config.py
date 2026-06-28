@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     nearby_radius_m_max: float = 10000.0
     serve_web_static: bool = False
     web_dist_path: str = "src/web/dist"
+    charging_agent_enabled: bool = True
+    agent_api_token: str = ""
 
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

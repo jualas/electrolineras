@@ -69,7 +69,7 @@ def api_client() -> TestClient:
     app.dependency_overrides.clear()
 
 
-@patch("api.routes.charging_plan.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.charging_plan_service.fetch_osrm_route", return_value=MOCK_ROUTE)
 def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     response = api_client.get(
         "/api/v1/stations/charging-plan",
@@ -94,9 +94,48 @@ def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     assert isinstance(payload["origin_stops"], list)
     assert payload["stops"][0]["classification"] in {"safe", "adjusted", "critical", "unreachable"}
     assert payload["route_geometry"]["type"] == "LineString"
+    assert payload["destination_stay"] is not None
+    assert payload["destination_stay"]["bands"]["total"] >= 0
 
 
-@patch("api.routes.charging_plan.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.charging_plan_service.fetch_osrm_route", return_value=MOCK_ROUTE)
+def test_charging_plan_route_destination_slow_infra(mock_fetch, api_client: TestClient) -> None:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station("ahead-safe", 40.01, 0.25, 350.0, 0.42),
+            sample_station("dest-slow", 40.0, 1.01, 11.0),
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/v1/stations/charging-plan",
+        params={
+            "origin_lat": 40.0,
+            "origin_lon": 0.1,
+            "dest_lat": 40.0,
+            "dest_lon": 1.0,
+            "min_kw": 100,
+            "corridor_km": 20,
+            **VEHICLE_PARAMS,
+        },
+    )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    stay = response.json()["destination_stay"]
+    assert stay["infrastructure_level"] in {"ac_slow", "ac_fast"}
+    assert stay["recommended_soc_at_arrival_pct"] >= 40
+    assert stay["bands"]["ac_slow"] >= 1
+
+
+@patch("api.charging_plan_service.fetch_osrm_route", return_value=MOCK_ROUTE)
 def test_charging_plan_emergency_mode(mock_fetch, api_client: TestClient) -> None:
     response = api_client.get(
         "/api/v1/stations/charging-plan",

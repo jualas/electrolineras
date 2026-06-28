@@ -174,7 +174,9 @@ Auth: red interna (LAN) o token de servicio; Dify no expuesto a internet sin pro
 | 2 | [#6057](../TASKBOARD.md#task-6057) Workflow Dify MVP | Dify + ops |
 | 3 | [#6058](../TASKBOARD.md#task-6058) UI agente opcional + feature flag | Frontend |
 
-Variable de entorno prevista: `CHARGING_AGENT_ENABLED` (default `false`).
+Variable de entorno prevista: `CHARGING_AGENT_ENABLED` (default `true` en API; UI #6058 con flag propio).
+
+Documentación detallada: [`CHARGING_AGENT.md`](CHARGING_AGENT.md).
 
 ### Evaluación pendiente (#6057)
 

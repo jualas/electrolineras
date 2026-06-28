@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import settings
+from api.routes.agent_tools import router as agent_tools_router
 from api.routes.along_route import router as along_route_router
 from api.routes.charging_plan import router as charging_plan_router
 from api.routes.nearby import router as nearby_router
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(along_route_router)
+    app.include_router(agent_tools_router)
     app.include_router(charging_plan_router)
     app.include_router(nearby_router)
     app.include_router(stations_router)

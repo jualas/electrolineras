@@ -128,6 +128,31 @@ class ChargingPlanStrategyResult(BaseModel):
     summary: str
 
 
+class DestinationChargingBandsResult(BaseModel):
+    ac_slow: int
+    ac_fast: int
+    dc_fast: int
+    hpc: int
+    total: int
+    best_max_kw: float
+    nearest_km: float | None = None
+
+
+class DestinationStayAdviceResult(BaseModel):
+    radius_km: float
+    local_mobility_km: float
+    local_soc_needed_pct: float
+    recommended_soc_at_arrival_pct: float
+    minimum_soc_at_arrival_pct: float
+    projected_soc_at_arrival_pct: float | None = None
+    arrival_gap_pct: float | None = None
+    bands: DestinationChargingBandsResult
+    infrastructure_level: str
+    charge_time_hint: str
+    summary: str
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ChargingPlanResponse(BaseModel):
     mode: Literal["route", "emergency"]
     vehicle: VehicleEnergyInput
@@ -147,6 +172,15 @@ class ChargingPlanResponse(BaseModel):
     strategies: list[ChargingPlanStrategyResult]
     warnings: list[str]
     candidates_in_bbox: int
+    destination_stay: DestinationStayAdviceResult | None = None
+
+
+class TripAdviceResponse(BaseModel):
+    """Respuesta enriquecida para agentes (Dify / Cursor CLI)."""
+
+    plan: ChargingPlanResponse
+    agent_summary: str
+    agent_bullets: list[str] = Field(default_factory=list)
 
 
 class NearbyStationResult(BaseModel):
