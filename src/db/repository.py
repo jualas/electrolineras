@@ -8,7 +8,7 @@ from typing import Any
 from db.connection import connect
 from db.schema import init_schema
 from db.spatial import bbox_sql, haversine_m
-from models.station import Connector, Station, StationLocation
+from models.station import Connector, ExternalUserComment, Station, StationLocation
 
 
 def _iso_datetime(value: datetime | None) -> str:
@@ -23,6 +23,31 @@ def _parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromisoformat(value)
+
+
+def _parse_external_comments(raw: str | None) -> list[ExternalUserComment]:
+    if not raw:
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    comments: list[ExternalUserComment] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        comments.append(
+            ExternalUserComment(
+                rating=item.get("rating"),
+                comment=item.get("comment"),
+                username=item.get("username"),
+                created_at=_parse_datetime(item.get("created_at")),
+                checkin_label=item.get("checkin_label"),
+            )
+        )
+    return comments
 
 
 def _row_to_station(row: sqlite3.Row, connectors: list[Connector]) -> Station:
@@ -50,6 +75,11 @@ def _row_to_station(row: sqlite3.Row, connectors: list[Connector]) -> Station:
         dynamic_status=row["dynamic_status"],
         dynamic_price_eur_kwh=row["dynamic_price"],
         dynamic_updated_at=_parse_datetime(row["dynamic_updated_at"]),
+        external_rating_avg=row["external_rating_avg"],
+        external_rating_count=int(row["external_rating_count"] or 0),
+        external_comments=_parse_external_comments(row["external_comments_json"]),
+        external_rating_updated_at=_parse_datetime(row["external_rating_updated_at"]),
+        ocm_poi_id=row["ocm_poi_id"],
     )
 
 
@@ -104,6 +134,53 @@ class StationRepository:
             for station in stations:
                 fetched_at = _iso_datetime(station.fetched_at)
                 payment_methods = json.dumps(station.payment_methods, ensure_ascii=False)
+                existing = self.connection.execute(
+                    "SELECT ocpi_live_at FROM station WHERE id = ?",
+                    (station.id,),
+                ).fetchone()
+                preserve_ocpi_profile = (
+                    existing is not None
+                    and existing["ocpi_live_at"]
+                    and station.source == "es-nap-dgt"
+                )
+
+                if preserve_ocpi_profile:
+                    self.connection.execute(
+                        """
+                        UPDATE station SET
+                            source = ?,
+                            country = ?,
+                            site_name = ?,
+                            operator = ?,
+                            lat = ?,
+                            lon = ?,
+                            address = ?,
+                            access = ?,
+                            opening_hours = ?,
+                            raw_ref = ?,
+                            fetched_at = ?,
+                            source_version = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            station.source,
+                            station.country,
+                            station.site_name,
+                            station.operator,
+                            station.location.lat,
+                            station.location.lon,
+                            station.location.address,
+                            station.access,
+                            station.opening_hours,
+                            station.raw_ref,
+                            fetched_at,
+                            station.source_version,
+                            station.id,
+                        ),
+                    )
+                    upserted += 1
+                    continue
+
                 self.connection.execute(
                     """
                     INSERT INTO station (
@@ -224,6 +301,86 @@ class StationRepository:
                     dynamic_status,
                     dynamic_price_eur_kwh,
                     _iso_datetime(dynamic_updated_at),
+                    station_id,
+                ),
+            )
+
+    def enrich_from_reve(self, station_id: str, station: Station) -> None:
+        """Aplica perfil operativo OCPI/REVE sobre una estación NAP existente."""
+        now = _iso_datetime(station.dynamic_updated_at or station.fetched_at)
+        payment_methods = json.dumps(station.payment_methods, ensure_ascii=False)
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE station
+                SET max_power_kw = ?,
+                    payment_methods = ?,
+                    dynamic_status = ?,
+                    dynamic_price = ?,
+                    dynamic_updated_at = ?,
+                    ocpi_live_at = ?
+                WHERE id = ?
+                """,
+                (
+                    station.max_power_kw,
+                    payment_methods,
+                    station.dynamic_status,
+                    station.dynamic_price_eur_kwh,
+                    _iso_datetime(station.dynamic_updated_at),
+                    now,
+                    station_id,
+                ),
+            )
+            self.connection.execute(
+                "DELETE FROM connector WHERE station_id = ?",
+                (station_id,),
+            )
+            self.connection.executemany(
+                """
+                INSERT INTO connector (
+                    station_id, connector_type, power_kw, voltage_v, current_a, charging_mode
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        station_id,
+                        connector.connector_type,
+                        connector.power_kw,
+                        connector.voltage_v,
+                        connector.current_a,
+                        connector.charging_mode,
+                    )
+                    for connector in station.connectors
+                ],
+            )
+
+    def enrich_from_ocm(
+        self,
+        station_id: str,
+        *,
+        ocm_poi_id: int,
+        rating_avg: float | None,
+        rating_count: int,
+        comments_json: str | None,
+        updated_at: datetime | None,
+    ) -> None:
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE station
+                SET ocm_poi_id = ?,
+                    external_rating_avg = ?,
+                    external_rating_count = ?,
+                    external_comments_json = ?,
+                    external_rating_updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    ocm_poi_id,
+                    rating_avg,
+                    rating_count,
+                    comments_json,
+                    _iso_datetime(updated_at),
                     station_id,
                 ),
             )
@@ -384,6 +541,25 @@ class StationRepository:
         else:
             row = self.connection.execute("SELECT COUNT(*) FROM station").fetchone()
         return int(row[0]) if row else 0
+
+    def count_external_ratings(self) -> int:
+        row = self.connection.execute(
+            "SELECT COUNT(*) FROM station WHERE external_rating_count > 0"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def last_ingest_run(self, source: str) -> dict[str, Any] | None:
+        row = self.connection.execute(
+            """
+            SELECT id, source, started_at, finished_at, source_version, records_upserted, status
+            FROM ingest_run
+            WHERE source = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (source,),
+        ).fetchone()
+        return dict(row) if row else None
 
     def stats_by_country(self) -> list[dict[str, Any]]:
         rows = self.connection.execute(

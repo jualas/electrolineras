@@ -61,6 +61,9 @@ def _energy_price_eur_kwh(connector: dict[str, Any]) -> float | None:
                     continue
                 price = _parse_float(component.get("price"))
                 if price is not None:
+                    vat = _parse_float(component.get("vat"))
+                    if vat is not None and vat > 0:
+                        price = price / (1.0 + vat / 100.0)
                     prices.append(price)
     if not prices:
         return None

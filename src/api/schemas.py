@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from models.station import Station
 
@@ -56,6 +56,14 @@ class MetaOperatorsResponse(BaseModel):
     operators: list[OperatorCount]
     country: str | None = None
     limit: int
+
+
+class MetaOcmResponse(BaseModel):
+    configured: bool
+    stations_with_ratings: int
+    last_sync_status: str | None = None
+    last_sync_finished_at: str | None = None
+    last_sync_enriched: int | None = None
 
 
 class GeocodeResultItem(BaseModel):
@@ -124,6 +132,7 @@ class ChargingPlanResponse(BaseModel):
     mode: Literal["route", "emergency"]
     vehicle: VehicleEnergyInput
     range_km: float
+    charging_reach_km: float
     origin: RouteEndpoint
     destination: RouteEndpoint | None = None
     corridor_km: float | None = None
@@ -132,7 +141,9 @@ class ChargingPlanResponse(BaseModel):
     soc_at_destination_pct: float | None = None
     reachable_without_stop: bool
     route_geometry: dict[str, Any] | None = None
+    preview_route_geometry: dict[str, Any] | None = None
     stops: list[ChargingPlanStopResult]
+    origin_stops: list[ChargingPlanStopResult] = Field(default_factory=list)
     strategies: list[ChargingPlanStrategyResult]
     warnings: list[str]
     candidates_in_bbox: int

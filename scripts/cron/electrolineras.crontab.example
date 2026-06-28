@@ -20,3 +20,6 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 # REVE — precio/disponibilidad, cada 3 horas (~25 min de duración)
 0 */3 * * * /mnt/datos/Proyectos/Electrolineras/scripts/cron/run_scheduled_job.sh reve
+
+# Open Charge Map — valoraciones/comentarios, semanal (domingo 04:30)
+30 4 * * 0 /mnt/datos/Proyectos/Electrolineras/scripts/cron/run_scheduled_job.sh ocm

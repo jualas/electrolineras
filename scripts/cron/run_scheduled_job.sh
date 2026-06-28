@@ -2,14 +2,14 @@
 # Ejecutor de ingestión programada — Electrolineras (#6040)
 #
 # Uso:
-#   run_scheduled_job.sh es|pt|reve
+#   run_scheduled_job.sh es|pt|reve|ocm
 #
 # Variables (scripts/cron/electrolineras.env o entorno):
 #   ELECTROLINERAS_REPO, ELECTROLINERAS_VENV, ELECTROLINERAS_DATA, DATABASE_URL
 #   INGEST_WEBHOOK_URL (opcional — POST JSON en fallo)
 set -euo pipefail
 
-JOB="${1:?job requerido: es|pt|reve}"
+JOB="${1:?job requerido: es|pt|reve|ocm}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${ELECTROLINERAS_REPO:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 ENV_FILE="${ELECTROLINERAS_CRON_ENV:-$SCRIPT_DIR/electrolineras.env}"
@@ -65,6 +65,16 @@ set +e
       ;;
     reve)
       "$VENV/electrolineras-sync-reve" --summary
+      ;;
+    ocm)
+      if [[ -n "${OCM_API_KEY:-}" ]]; then
+        "$VENV/electrolineras-sync-ocm" --summary
+      elif [[ -d "${REPO}/data/raw/ocm-export/data/ES" ]]; then
+        "$VENV/electrolineras-sync-ocm" --from-export --summary
+      else
+        echo "WARN: sin OCM_API_KEY ni export local; omitiendo sync OCM"
+        ingest_status=0
+      fi
       ;;
     *)
       echo "ERROR: job desconocido: $JOB"

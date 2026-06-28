@@ -160,6 +160,54 @@ def test_delete_by_source() -> None:
     assert repo.count_stations() == 0
 
 
+def test_enrich_from_reve_updates_connectors_and_preserves_on_nap_refresh() -> None:
+    repo = memory_repo()
+    nap_station = sample_station()
+    nap_station.connectors = [Connector(connector_type="iec62196T2COMBO", power_kw=50.0)]
+    nap_station.max_power_kw = 50.0
+    repo.upsert_stations([nap_station])
+
+    live_station = Station(
+        id="es-reve-live",
+        source="es-reve-public",
+        country="ES",
+        site_name="Live",
+        operator="Operador Test",
+        location=nap_station.location,
+        connectors=[
+            Connector(connector_type="Type2", power_kw=22.0),
+            Connector(connector_type="Type2", power_kw=22.0),
+        ],
+        max_power_kw=22.0,
+        access="public",
+        payment_methods=["rfid"],
+        opening_hours=None,
+        raw_ref="live",
+        source_version="reve",
+        dynamic_status="AVAILABLE",
+        dynamic_price_eur_kwh=0.39,
+    )
+    repo.enrich_from_reve(nap_station.id, live_station)
+
+    enriched = repo.get_by_id(nap_station.id)
+    assert enriched is not None
+    assert enriched.max_power_kw == 22.0
+    assert len(enriched.connectors) == 2
+    assert enriched.dynamic_price_eur_kwh == pytest.approx(0.39)
+
+    stale_nap = sample_station()
+    stale_nap.connectors = [Connector(connector_type="iec62196T2COMBO", power_kw=50.0)]
+    stale_nap.max_power_kw = 50.0
+    stale_nap.site_name = "Nombre NAP actualizado"
+    repo.upsert_stations([stale_nap])
+
+    refreshed = repo.get_by_id(nap_station.id)
+    assert refreshed is not None
+    assert refreshed.site_name == "Nombre NAP actualizado"
+    assert refreshed.max_power_kw == 22.0
+    assert len(refreshed.connectors) == 2
+
+
 @pytest.mark.integration
 def test_load_latest_feeds_to_db(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "stations.db"

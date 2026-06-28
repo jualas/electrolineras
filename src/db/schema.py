@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 MIGRATIONS: dict[int, list[str]] = {
     1: [
@@ -63,6 +63,16 @@ MIGRATIONS: dict[int, list[str]] = {
         "CREATE INDEX IF NOT EXISTS idx_station_source ON station(source)",
         "CREATE INDEX IF NOT EXISTS idx_connector_station ON connector(station_id)",
         "CREATE INDEX IF NOT EXISTS idx_connector_power ON connector(power_kw)",
+    ],
+    2: [
+        "ALTER TABLE station ADD COLUMN ocpi_live_at TEXT",
+    ],
+    3: [
+        "ALTER TABLE station ADD COLUMN external_rating_avg REAL",
+        "ALTER TABLE station ADD COLUMN external_rating_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE station ADD COLUMN external_comments_json TEXT",
+        "ALTER TABLE station ADD COLUMN external_rating_updated_at TEXT",
+        "ALTER TABLE station ADD COLUMN ocm_poi_id INTEGER",
     ],
 }
 

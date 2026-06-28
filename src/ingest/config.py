@@ -30,6 +30,15 @@ class IngestSettings(BaseSettings):
     reve_sync_per_page: int = 25
     reve_match_radius_m: float = 150.0
 
+    ocm_base_url: str = "https://api.openchargemap.io/v3"
+    ocm_api_key: str = ""
+    ocm_timeout_seconds: float = 60.0
+    ocm_user_agent: str = "Electrolineras/0.2 (+https://github.com/electrolineras; OCM sync)"
+    ocm_sync_page_size: int = 500
+    ocm_match_radius_m: float = 200.0
+    ocm_max_comments_stored: int = 8
+    ocm_export_dir: Path = Path("data/raw/ocm-export/data")
+
     @property
     def nap_es_raw_dir(self) -> Path:
         return self.data_raw_dir / "es"

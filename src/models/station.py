@@ -5,6 +5,14 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+class ExternalUserComment(BaseModel):
+    rating: int | None = None
+    comment: str | None = None
+    username: str | None = None
+    created_at: datetime | None = None
+    checkin_label: str | None = None
+
+
 class Connector(BaseModel):
     connector_type: str
     power_kw: float
@@ -37,6 +45,11 @@ class Station(BaseModel):
     dynamic_status: str | None = None
     dynamic_price_eur_kwh: float | None = None
     dynamic_updated_at: datetime | None = None
+    external_rating_avg: float | None = None
+    external_rating_count: int = 0
+    external_comments: list[ExternalUserComment] = Field(default_factory=list)
+    external_rating_updated_at: datetime | None = None
+    ocm_poi_id: int | None = None
 
 
 class ParseStats(BaseModel):

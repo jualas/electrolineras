@@ -18,6 +18,7 @@ from api.schemas import (
     CountryStats,
     GeocodeResultItem,
     GeoJSONStationCollection,
+    MetaOcmResponse,
     MetaOperatorsResponse,
     MetaStatsResponse,
     OperatorCount,
@@ -25,6 +26,8 @@ from api.schemas import (
     PowerBandStats,
     StationListResponse,
 )
+from ingest.config import settings as ingest_settings
+from ingest.ocm_parser import OCM_SOURCE
 from db.repository import StationRepository
 from models.station import Station
 
@@ -164,6 +167,22 @@ def meta_stats(
         total_stations=repo.count_stations(),
         by_country=by_country,
         by_power_band=by_power_band,
+    )
+
+
+@router.get("/meta/ocm", tags=["meta"])
+def meta_ocm(
+    repo: Annotated[StationRepository, Depends(get_repository)],
+) -> MetaOcmResponse:
+    last_run = repo.last_ingest_run(OCM_SOURCE)
+    return MetaOcmResponse(
+        configured=bool(ingest_settings.ocm_api_key),
+        stations_with_ratings=repo.count_external_ratings(),
+        last_sync_status=last_run["status"] if last_run else None,
+        last_sync_finished_at=last_run["finished_at"] if last_run else None,
+        last_sync_enriched=int(last_run["records_upserted"])
+        if last_run and last_run["records_upserted"] is not None
+        else None,
     )
 
 

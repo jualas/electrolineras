@@ -75,12 +75,7 @@ def sync_reve_locations(
                     country="ES",
                 )
                 if existing_id:
-                    repo.update_dynamic_fields(
-                        existing_id,
-                        dynamic_status=station.dynamic_status,
-                        dynamic_price_eur_kwh=station.dynamic_price_eur_kwh,
-                        dynamic_updated_at=station.dynamic_updated_at,
-                    )
+                    repo.enrich_from_reve(existing_id, station)
                     result.enriched += 1
                 else:
                     repo.upsert_stations([station])

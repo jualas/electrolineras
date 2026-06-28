@@ -87,13 +87,17 @@ def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     payload = response.json()
     assert payload["mode"] == "route"
     assert payload["range_km"] > 0
+    assert payload["charging_reach_km"] >= payload["range_km"]
     assert payload["stops"]
-    assert len(payload["strategies"]) == 3
+    assert len(payload["strategies"]) >= 3
+    assert "origin_stops" in payload
+    assert isinstance(payload["origin_stops"], list)
     assert payload["stops"][0]["classification"] in {"safe", "adjusted", "critical", "unreachable"}
     assert payload["route_geometry"]["type"] == "LineString"
 
 
-def test_charging_plan_emergency_mode(api_client: TestClient) -> None:
+@patch("api.routes.charging_plan.fetch_osrm_route", return_value=MOCK_ROUTE)
+def test_charging_plan_emergency_mode(mock_fetch, api_client: TestClient) -> None:
     response = api_client.get(
         "/api/v1/stations/charging-plan",
         params={
@@ -108,6 +112,8 @@ def test_charging_plan_emergency_mode(api_client: TestClient) -> None:
     assert payload["mode"] == "emergency"
     assert payload["destination"] is None
     assert any(stop["station"]["id"] == "ahead-safe" for stop in payload["stops"])
+    assert payload["preview_route_geometry"]["type"] == "LineString"
+    mock_fetch.assert_called_once()
 
 
 def test_charging_plan_rejects_partial_destination(api_client: TestClient) -> None:

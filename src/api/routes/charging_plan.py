@@ -12,6 +12,7 @@ from api.routing.charging_plan import (
     VehicleEnergyProfile,
     build_emergency_charging_plan,
     build_route_charging_plan,
+    estimate_charging_reach_km,
     estimate_range_km,
 )
 from api.routing.corridor import RoutePolyline, rank_stations_along_route
@@ -29,6 +30,42 @@ from db.repository import StationRepository
 from db.spatial import haversine_m
 
 router = APIRouter(prefix="/api/v1", tags=["charging-plan"])
+
+
+def _rank_stations_near_origin(
+    repo: StationRepository,
+    *,
+    origin_lat: float,
+    origin_lon: float,
+    min_kw: float | None,
+    max_kw: float | None,
+    countries: list[str] | None,
+    search_radius_m: float,
+) -> list[tuple[Station, float]]:
+    lat_pad = search_radius_m / 111_320.0
+    cos_lat = max(0.1, abs(math.cos(math.radians(origin_lat))))
+    lon_pad = search_radius_m / (111_320.0 * cos_lat)
+    candidates = repo.search(
+        west=origin_lon - lon_pad,
+        south=origin_lat - lat_pad,
+        east=origin_lon + lon_pad,
+        north=origin_lat + lat_pad,
+        min_kw=min_kw,
+        max_kw=max_kw,
+        countries=countries,
+        limit=10_000,
+        offset=0,
+    )
+    return sorted(
+        (
+            (
+                station,
+                haversine_m(origin_lat, origin_lon, station.location.lat, station.location.lon) / 1000.0,
+            )
+            for station in candidates
+        ),
+        key=lambda item: item[1],
+    )
 
 
 def _vehicle_profile_from_query(
@@ -65,6 +102,7 @@ def _to_response(
     route_distance_km: float | None,
     route_duration_minutes: float | None,
     route_geometry: dict | None,
+    preview_route_geometry: dict | None = None,
     computation,
     candidates_in_bbox: int,
 ) -> ChargingPlanResponse:
@@ -83,6 +121,7 @@ def _to_response(
         mode=mode,
         vehicle=vehicle_input,
         range_km=computation.range_km,
+        charging_reach_km=computation.charging_reach_km,
         origin=RouteEndpoint(lat=origin_lat, lon=origin_lon),
         destination=destination,
         corridor_km=corridor_km,
@@ -91,6 +130,7 @@ def _to_response(
         soc_at_destination_pct=computation.soc_at_destination_pct,
         reachable_without_stop=computation.reachable_without_stop,
         route_geometry=route_geometry,
+        preview_route_geometry=preview_route_geometry,
         stops=[
             ChargingPlanStopResult(
                 station=stop.station,
@@ -103,6 +143,19 @@ def _to_response(
                 classification=stop.classification,
             )
             for stop in computation.stops
+        ],
+        origin_stops=[
+            ChargingPlanStopResult(
+                station=stop.station,
+                deviation_km=stop.deviation_km,
+                route_distance_km=stop.route_distance_km,
+                extra_minutes=stop.extra_minutes,
+                wrong_side=stop.wrong_side,
+                distance_from_origin_km=stop.distance_from_origin_km,
+                soc_arrival_pct=stop.soc_arrival_pct,
+                classification=stop.classification,
+            )
+            for stop in computation.origin_stops
         ],
         strategies=[
             ChargingPlanStrategyResult(
@@ -191,30 +244,16 @@ def stations_charging_plan(
 
     if not has_destination:
         range_km = estimate_range_km(vehicle)
-        search_radius_m = max(emergency_radius_km, range_km) * 1000.0
-        lat_pad = search_radius_m / 111_320.0
-        cos_lat = max(0.1, abs(math.cos(math.radians(origin_lat))))
-        lon_pad = search_radius_m / (111_320.0 * cos_lat)
-        candidates = repo.search(
-            west=origin_lon - lon_pad,
-            south=origin_lat - lat_pad,
-            east=origin_lon + lon_pad,
-            north=origin_lat + lat_pad,
+        charging_reach_km = estimate_charging_reach_km(vehicle)
+        search_radius_m = max(emergency_radius_km, charging_reach_km, range_km) * 1000.0
+        ranked = _rank_stations_near_origin(
+            repo,
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
             min_kw=min_kw,
             max_kw=max_kw,
             countries=countries,
-            limit=10_000,
-            offset=0,
-        )
-        ranked = sorted(
-            (
-                (
-                    station,
-                    haversine_m(origin_lat, origin_lon, station.location.lat, station.location.lon) / 1000.0,
-                )
-                for station in candidates
-            ),
-            key=lambda item: item[1],
+            search_radius_m=search_radius_m,
         )
         computation = build_emergency_charging_plan(
             ranked,
@@ -223,6 +262,24 @@ def stations_charging_plan(
             adjusted_min_pct=adjusted_min_pct,
             limit=limit,
         )
+        preview_route_geometry = None
+        route_distance_km = None
+        route_duration_minutes = None
+        if computation.stops:
+            nearest = computation.stops[0]
+            try:
+                osrm_nearest = fetch_osrm_route(
+                    origin_lat,
+                    origin_lon,
+                    nearest.station.location.lat,
+                    nearest.station.location.lon,
+                )
+                preview_route_geometry = osrm_nearest.geojson_geometry
+                route_distance_km = round(osrm_nearest.distance_m / 1000.0, 2)
+                route_duration_minutes = round(osrm_nearest.duration_s / 60.0, 1)
+            except RoutingError:
+                preview_route_geometry = None
+
         return _to_response(
             mode="emergency",
             vehicle=vehicle,
@@ -231,11 +288,12 @@ def stations_charging_plan(
             destination_lat=None,
             destination_lon=None,
             corridor_km=None,
-            route_distance_km=None,
-            route_duration_minutes=None,
+            route_distance_km=route_distance_km,
+            route_duration_minutes=route_duration_minutes,
             route_geometry=None,
+            preview_route_geometry=preview_route_geometry,
             computation=computation,
-            candidates_in_bbox=len(candidates),
+            candidates_in_bbox=len(ranked),
         )
 
     try:
@@ -277,11 +335,32 @@ def stations_charging_plan(
     origin_position_km = origin_projection.route_position_m / 1000.0
     destination_distance_km = polyline.length_m / 1000.0
 
+    range_km = estimate_range_km(vehicle)
+    charging_reach_km = estimate_charging_reach_km(vehicle)
+    origin_search_radius_m = max(emergency_radius_km, charging_reach_km, range_km) * 1000.0
+    origin_ranked = _rank_stations_near_origin(
+        repo,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        min_kw=min_kw,
+        max_kw=max_kw,
+        countries=countries,
+        search_radius_m=origin_search_radius_m,
+    )
+    origin_computation = build_emergency_charging_plan(
+        origin_ranked,
+        profile=vehicle,
+        safe_margin_pct=safe_margin_pct,
+        adjusted_min_pct=adjusted_min_pct,
+        limit=min(limit, 15),
+    )
+
     computation = build_route_charging_plan(
         matches,
         origin_position_km=origin_position_km,
         destination_distance_km=destination_distance_km,
         profile=vehicle,
+        origin_stops=origin_computation.stops,
         safe_margin_pct=safe_margin_pct,
         adjusted_min_pct=adjusted_min_pct,
         limit=limit,

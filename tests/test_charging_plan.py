@@ -5,6 +5,7 @@ from api.routing.charging_plan import (
     build_emergency_charging_plan,
     build_route_charging_plan,
     classify_soc_arrival,
+    estimate_charging_reach_km,
     estimate_range_km,
     soc_at_distance_km,
 )
@@ -29,19 +30,19 @@ def test_estimate_range_model3_sr() -> None:
     profile = VehicleEnergyProfile(
         soc_percent=80,
         usable_capacity_kwh=57,
-        consumption_wh_per_km=142,
+        consumption_wh_per_km=136,
         terrain_factor=1.0,
         reserve_soc_percent=10,
     )
     range_km = estimate_range_km(profile)
-    assert 250 < range_km < 290
+    assert 290 < range_km < 300
 
 
 def test_soc_at_distance_sierra_factor() -> None:
     profile = VehicleEnergyProfile(
         soc_percent=80,
         usable_capacity_kwh=57,
-        consumption_wh_per_km=142,
+        consumption_wh_per_km=136,
         terrain_factor=1.25,
         reserve_soc_percent=10,
     )
@@ -90,9 +91,61 @@ def test_build_route_charging_plan_ranks_by_classification() -> None:
         limit=5,
     )
     assert plan.stops[0].classification == "safe"
-    assert plan.strategies[0].station_id == plan.stops[0].station.id
+    assert any(strategy.id == "charge_now" for strategy in plan.strategies)
     assert plan.soc_at_destination_pct is not None
     assert plan.reachable_without_stop is False
+
+
+def test_build_route_charging_plan_with_origin_stops() -> None:
+    profile = VehicleEnergyProfile(
+        soc_percent=15,
+        usable_capacity_kwh=57,
+        consumption_wh_per_km=150,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+    )
+    corridor_matches = [
+        CorridorMatch(
+            station=sample_station("far-on-route", 40.0, 0.8, price=0.45),
+            deviation_m=500,
+            route_position_m=80_000,
+            extra_minutes=5.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+    ]
+    origin_near = build_emergency_charging_plan(
+        [(sample_station("near-home", 40.001, 0.001, price=0.42), 2.0)],
+        profile=profile,
+        limit=5,
+    )
+    plan = build_route_charging_plan(
+        corridor_matches,
+        origin_position_km=0.0,
+        destination_distance_km=120.0,
+        profile=profile,
+        origin_stops=origin_near.stops,
+        limit=5,
+    )
+    assert plan.origin_stops
+    assert plan.origin_stops[0].station.id == "near-home"
+    assert plan.stops[0].classification == "unreachable"
+    assert any(strategy.id == "charge_at_origin" for strategy in plan.strategies)
+
+
+def test_charging_reach_low_soc_vs_planning_range() -> None:
+    profile = VehicleEnergyProfile(
+        soc_percent=15,
+        usable_capacity_kwh=57,
+        consumption_wh_per_km=136,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+    )
+    plan_range = estimate_range_km(profile)
+    charge_reach = estimate_charging_reach_km(profile)
+    assert plan_range < 25
+    assert 35 < charge_reach < 48
+    assert classify_soc_arrival(5.0, within_range=True) == "critical"
 
 
 def test_build_emergency_charging_plan() -> None:
@@ -110,4 +163,4 @@ def test_build_emergency_charging_plan() -> None:
     plan = build_emergency_charging_plan(stations, profile=profile, limit=5)
     assert plan.stops
     assert plan.stops[0].station.id == "close"
-    assert plan.strategies[0].station_id is not None
+    assert any(strategy.id == "charge_at_origin" for strategy in plan.strategies)

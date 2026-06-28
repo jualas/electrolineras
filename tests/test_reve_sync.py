@@ -26,7 +26,7 @@ def test_location_to_station_parses_zunder_baza() -> None:
     assert station.operator == "Zunder"
     assert station.max_power_kw == 360.0
     assert station.dynamic_status == "AVAILABLE"
-    assert station.dynamic_price_eur_kwh == pytest.approx(0.59)
+    assert station.dynamic_price_eur_kwh == pytest.approx(0.59 / 1.21)
     assert len(station.connectors) == 4
     assert all(connector.connector_type == "CCS2" for connector in station.connectors)
 
@@ -128,7 +128,9 @@ def test_sync_reve_enriches_when_coords_match(tmp_path) -> None:
         station = repo.get_by_id("es-dgt-zunder-placeholder")
         assert station is not None
         assert station.dynamic_status == "AVAILABLE"
-        assert station.dynamic_price_eur_kwh == pytest.approx(0.59)
+        assert station.dynamic_price_eur_kwh == pytest.approx(0.59 / 1.21)
+        assert station.max_power_kw == 360.0
+        assert len(station.connectors) == 4
 
 
 def _connect(db_path: Path):

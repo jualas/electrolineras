@@ -16,8 +16,12 @@ CLASSIFICATION_ORDER: dict[ChargingClassification, int] = {
 }
 
 STRATEGY_CHARGE_NOW = "charge_now"
+STRATEGY_CHARGE_AT_ORIGIN = "charge_at_origin"
 STRATEGY_NEXT_SAFE = "next_safe"
 STRATEGY_BEST_VALUE = "best_value"
+
+# SOC mínimo al llegar a un cargador (llegar con 5 % = crítico pero alcanzable).
+CHARGING_MIN_ARRIVAL_SOC_PCT = 5.0
 
 
 @dataclass(frozen=True)
@@ -54,9 +58,11 @@ class ChargingStrategyOption:
 @dataclass(frozen=True)
 class ChargingPlanComputation:
     range_km: float
+    charging_reach_km: float
     soc_at_destination_pct: float | None
     reachable_without_stop: bool
     stops: list[ScoredChargingStop]
+    origin_stops: list[ScoredChargingStop]
     strategies: list[ChargingStrategyOption]
     warnings: list[str]
 
@@ -65,16 +71,30 @@ def effective_consumption_wh_per_km(profile: VehicleEnergyProfile) -> float:
     return profile.consumption_wh_per_km * profile.terrain_factor
 
 
-def available_energy_kwh(profile: VehicleEnergyProfile) -> float:
-    usable_soc = max(0.0, profile.soc_percent - profile.reserve_soc_percent)
+def available_energy_kwh(profile: VehicleEnergyProfile, floor_soc_percent: float | None = None) -> float:
+    floor = floor_soc_percent if floor_soc_percent is not None else profile.reserve_soc_percent
+    usable_soc = max(0.0, profile.soc_percent - floor)
     return profile.usable_capacity_kwh * usable_soc / 100.0
 
 
 def estimate_range_km(profile: VehicleEnergyProfile) -> float:
+    """Autonomía con reserva de planificación (llegar al destino sin cargar)."""
     consumption_kwh_per_km = effective_consumption_wh_per_km(profile) / 1000.0
     if consumption_kwh_per_km <= 0:
         return 0.0
     return available_energy_kwh(profile) / consumption_kwh_per_km
+
+
+def estimate_charging_reach_km(
+    profile: VehicleEnergyProfile,
+    min_arrival_soc_pct: float = CHARGING_MIN_ARRIVAL_SOC_PCT,
+) -> float:
+    """Distancia máxima hasta un cargador (llegada ≥ min_arrival_soc_pct, p. ej. 5 %)."""
+    consumption_kwh_per_km = effective_consumption_wh_per_km(profile) / 1000.0
+    if consumption_kwh_per_km <= 0:
+        return 0.0
+    energy = available_energy_kwh(profile, floor_soc_percent=min_arrival_soc_pct)
+    return energy / consumption_kwh_per_km
 
 
 def soc_at_distance_km(profile: VehicleEnergyProfile, distance_km: float) -> float:
@@ -106,13 +126,13 @@ def _stop_from_corridor_match(
     *,
     origin_position_km: float,
     profile: VehicleEnergyProfile,
-    range_km: float,
+    charging_reach_km: float,
     safe_margin_pct: float,
     adjusted_min_pct: float,
 ) -> ScoredChargingStop:
     distance_from_origin_km = max(0.0, match.route_position_m / 1000.0 - origin_position_km)
     soc_arrival_pct = round(soc_at_distance_km(profile, distance_from_origin_km), 1)
-    within_range = distance_from_origin_km <= range_km + 1e-6
+    within_range = distance_from_origin_km <= charging_reach_km + 1e-6
     classification = classify_soc_arrival(
         soc_arrival_pct,
         within_range=within_range,
@@ -148,9 +168,41 @@ def _rank_key(stop: ScoredChargingStop) -> tuple[float, float, float, float, flo
     )
 
 
-def _build_strategies(stops: list[ScoredChargingStop]) -> list[ChargingStrategyOption]:
+def _build_strategies(
+    stops: list[ScoredChargingStop],
+    *,
+    origin_stops: list[ScoredChargingStop] | None = None,
+) -> list[ChargingStrategyOption]:
     viable = [stop for stop in stops if stop.classification != "unreachable"]
+    origin_viable = [stop for stop in (origin_stops or []) if stop.classification != "unreachable"]
     strategies: list[ChargingStrategyOption] = []
+
+    if origin_viable:
+        closest_origin = min(origin_viable, key=lambda item: item.distance_from_origin_km)
+        strategies.append(
+            ChargingStrategyOption(
+                id=STRATEGY_CHARGE_AT_ORIGIN,
+                label="Cargar desde la salida",
+                station_id=closest_origin.station.id,
+                soc_arrival_pct=closest_origin.soc_arrival_pct,
+                classification=closest_origin.classification,
+                summary=(
+                    f"Más cercano a {closest_origin.distance_from_origin_km:.1f} km "
+                    f"({closest_origin.soc_arrival_pct:.0f} % SOC estimado al llegar)."
+                ),
+            )
+        )
+    elif origin_stops:
+        strategies.append(
+            ChargingStrategyOption(
+                id=STRATEGY_CHARGE_AT_ORIGIN,
+                label="Cargar desde la salida",
+                station_id=None,
+                soc_arrival_pct=None,
+                classification=None,
+                summary="No hay cargadores alcanzables cerca del punto de salida.",
+            )
+        )
 
     charge_now = min(viable, key=_rank_key, default=None)
     if charge_now:
@@ -267,17 +319,19 @@ def build_route_charging_plan(
     origin_position_km: float,
     destination_distance_km: float,
     profile: VehicleEnergyProfile,
+    origin_stops: list[ScoredChargingStop] | None = None,
     safe_margin_pct: float = 15.0,
     adjusted_min_pct: float = 10.0,
     limit: int = 20,
 ) -> ChargingPlanComputation:
     range_km = estimate_range_km(profile)
+    charging_reach_km = estimate_charging_reach_km(profile)
     stops = [
         _stop_from_corridor_match(
             match,
             origin_position_km=origin_position_km,
             profile=profile,
-            range_km=range_km,
+            charging_reach_km=charging_reach_km,
             safe_margin_pct=safe_margin_pct,
             adjusted_min_pct=adjusted_min_pct,
         )
@@ -285,6 +339,10 @@ def build_route_charging_plan(
     ]
     stops.sort(key=_rank_key)
     stops = stops[:limit]
+
+    resolved_origin_stops = origin_stops or []
+    viable = [stop for stop in stops if stop.classification != "unreachable"]
+    origin_viable = [stop for stop in resolved_origin_stops if stop.classification != "unreachable"]
 
     distance_to_dest_km = max(0.0, destination_distance_km - origin_position_km)
     soc_at_destination_pct = round(soc_at_distance_km(profile, distance_to_dest_km), 1)
@@ -294,18 +352,24 @@ def build_route_charging_plan(
 
     warnings: list[str] = []
     if not reachable_without_stop and not any(stop.classification == "safe" for stop in stops):
-        warnings.append("No hay paradas seguras antes de agotar autonomía.")
+        warnings.append("No hay paradas seguras en la ruta antes de agotar autonomía.")
     if any(stop.classification == "critical" for stop in stops[:3]):
-        warnings.append("Las primeras opciones llegan con SOC crítico (< 10 %).")
-    if soc_at_destination_pct < profile.reserve_soc_percent and not stops:
-        warnings.append("No hay cargadores en corredor dentro de tu autonomía.")
+        warnings.append("Las primeras opciones en ruta llegan con SOC crítico (< 10 %).")
+    if soc_at_destination_pct < profile.reserve_soc_percent and not stops and not resolved_origin_stops:
+        warnings.append("No hay cargadores en corredor ni cerca del origen dentro de tu autonomía.")
+    elif soc_at_destination_pct < profile.reserve_soc_percent and not viable and origin_viable:
+        warnings.append(
+            "No alcanzas cargadores en la ruta; carga primero en un punto cercano a tu salida."
+        )
 
     return ChargingPlanComputation(
         range_km=round(range_km, 1),
+        charging_reach_km=round(charging_reach_km, 1),
         soc_at_destination_pct=soc_at_destination_pct,
         reachable_without_stop=reachable_without_stop,
         stops=stops,
-        strategies=_build_strategies(stops),
+        origin_stops=resolved_origin_stops,
+        strategies=_build_strategies(stops, origin_stops=resolved_origin_stops),
         warnings=warnings,
     )
 
@@ -319,11 +383,12 @@ def build_emergency_charging_plan(
     limit: int = 10,
 ) -> ChargingPlanComputation:
     range_km = estimate_range_km(profile)
+    charging_reach_km = estimate_charging_reach_km(profile)
     stops: list[ScoredChargingStop] = []
 
     for station, distance_km in stations:
         soc_arrival_pct = round(soc_at_distance_km(profile, distance_km), 1)
-        within_range = distance_km <= range_km + 1e-6
+        within_range = distance_km <= charging_reach_km + 1e-6
         classification = classify_soc_arrival(
             soc_arrival_pct,
             within_range=within_range,
@@ -349,12 +414,20 @@ def build_emergency_charging_plan(
     warnings: list[str] = []
     if not any(stop.classification != "unreachable" for stop in stops):
         warnings.append("No hay cargadores alcanzables desde tu posición.")
+        if stops:
+            closest = stops[0]
+            warnings.append(
+                f"El más cercano está a {closest.distance_from_origin_km:.1f} km "
+                f"(alcance hasta cargador {charging_reach_km:.1f} km)."
+            )
 
     return ChargingPlanComputation(
         range_km=round(range_km, 1),
+        charging_reach_km=round(charging_reach_km, 1),
         soc_at_destination_pct=None,
         reachable_without_stop=False,
         stops=stops,
-        strategies=_build_strategies(stops),
+        origin_stops=stops,
+        strategies=_build_strategies([], origin_stops=stops),
         warnings=warnings,
     )

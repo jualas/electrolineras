@@ -1,0 +1,41 @@
+{
+  "ID": 123456,
+  "AddressInfo": {
+    "Latitude": 37.80401,
+    "Longitude": -2.54443,
+    "Country": {
+      "ISOCode": "ESP"
+    }
+  },
+  "UserComments": [
+    {
+      "Rating": 4,
+      "Comment": "Carga lenta pero fiable.",
+      "UserName": "evdriver",
+      "DateCreated": "2025-11-10T10:15:00Z",
+      "CheckinStatusType": {
+        "Title": "Successful Charge",
+        "IsPositive": true
+      }
+    },
+    {
+      "Rating": 5,
+      "Comment": "Todo correcto.",
+      "UserName": "maria",
+      "DateCreated": "2025-08-01T18:20:00Z",
+      "CheckinStatusType": {
+        "Title": "Successful Charge",
+        "IsPositive": true
+      }
+    },
+    {
+      "Comment": "Uno de los puntos no disponible.",
+      "UserName": "juan",
+      "DateCreated": "2025-06-03T09:00:00Z",
+      "CheckinStatusType": {
+        "Title": "Failed Charge",
+        "IsPositive": false
+      }
+    }
+  ]
+}

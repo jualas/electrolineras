@@ -73,6 +73,30 @@ Normativa de referencia: Resolución SEE nov 2024 (procedimiento SGV), BOE abril
 
 ---
 
+## Open Charge Map — valoraciones y comentarios
+
+Base abierta global con reseñas de usuarios (puntuación 1–5 y comentarios/check-ins).
+
+- Web: https://openchargemap.io/
+- API: https://api.openchargemap.io/v3/ (requiere **API key** gratuita)
+- Export sin API (oficial): https://github.com/openchargemap/ocm-export
+- Implementación: `src/ingest/ocm_client.py`, sync en `src/ingest/ocm_sync.py`
+
+Se empareja por coordenadas con estaciones NAP (ES/PT) y guarda media de valoraciones + comentarios recientes. Cron recomendado: semanal (`electrolineras-sync-ocm`).
+
+### Acceso a datos (dos vías)
+
+| Vía | Cuándo | Cómo |
+|-----|--------|------|
+| **API live** | Web OCM operativa + API key | `OCM_API_KEY` en `.env` → `electrolineras-sync-ocm --summary` |
+| **Export GitHub** | Web caída o sin key | `scripts/fetch_ocm_export.sh` → `electrolineras-sync-ocm --from-export --summary` |
+
+El export es el mismo dataset que alimenta la API; OCM recomienda mirror o export para consumo masivo. Atribución: «Datos de valoraciones: Open Charge Map».
+
+Variable de entorno: `OCM_API_KEY` (solo API). Export local: `data/raw/ocm-export/data/ES`, `data/PT`.
+
+---
+
 ## Portugal — MOBI.E (NAP)
 
 La red nacional MOBI.E agrega operadores portugueses. Publica feeds NAP en DATEX II.
