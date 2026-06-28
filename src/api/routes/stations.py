@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.converters import stations_to_geojson
 from api.dependencies import get_repository
+from api.access_filters import passes_access_filters
 from api.query_params import (
     operators_limit_query,
     parse_bbox,
@@ -82,6 +83,27 @@ def _search_stations(
     return stations, pagination
 
 
+def _apply_access_filters_to_stations(
+    stations: list[Station],
+    *,
+    public_open_only: bool,
+    exclude_commercial: bool,
+    ad_hoc_only: bool,
+) -> list[Station]:
+    if not public_open_only and not exclude_commercial and not ad_hoc_only:
+        return stations
+    return [
+        station
+        for station in stations
+        if passes_access_filters(
+            station,
+            public_open_only=public_open_only,
+            exclude_commercial=exclude_commercial,
+            ad_hoc_only=ad_hoc_only,
+        )
+    ]
+
+
 @router.get("/stations")
 def list_stations(
     repo: Annotated[StationRepository, Depends(get_repository)],
@@ -95,6 +117,18 @@ def list_stations(
     ] = None,
     country: Annotated[str | None, Query(description="Países ISO (ES,PT)")] = None,
     bbox: Annotated[str | None, Query(description="west,south,east,north")] = None,
+    public_open_only: Annotated[
+        bool,
+        Query(description="Solo acceso público abierto (excluye CC e interior)"),
+    ] = False,
+    exclude_commercial: Annotated[
+        bool,
+        Query(description="Excluir centros comerciales (heurística)"),
+    ] = False,
+    ad_hoc_only: Annotated[
+        bool,
+        Query(description="Solo pago ad-hoc (tarjeta/NFC)"),
+    ] = False,
     format: Annotated[
         Literal["json", "geojson"],
         Query(description="Formato de respuesta"),
@@ -118,6 +152,20 @@ def list_stations(
         limit=limit,
         offset=offset,
     )
+
+    stations = _apply_access_filters_to_stations(
+        stations,
+        public_open_only=public_open_only,
+        exclude_commercial=exclude_commercial,
+        ad_hoc_only=ad_hoc_only,
+    )
+    if public_open_only or exclude_commercial or ad_hoc_only:
+        pagination = Pagination(
+            total=len(stations),
+            limit=limit,
+            offset=offset,
+            has_more=False,
+        )
 
     if format == "geojson":
         return GeoJSONStationCollection(
