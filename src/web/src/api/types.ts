@@ -62,6 +62,9 @@ export type StationQuery = {
   maxKw?: number
   country?: string
   limit?: number
+  publicOpenOnly?: boolean
+  excludeCommercial?: boolean
+  adHocOnly?: boolean
 }
 
 export type LatLon = {

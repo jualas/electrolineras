@@ -24,6 +24,15 @@ export async function fetchStationsGeoJSON(
   if (query.country) {
     params.set('country', query.country)
   }
+  if (query.publicOpenOnly) {
+    params.set('public_open_only', 'true')
+  }
+  if (query.excludeCommercial) {
+    params.set('exclude_commercial', 'true')
+  }
+  if (query.adHocOnly) {
+    params.set('ad_hoc_only', 'true')
+  }
 
   return fetchApi<GeoJSONStationCollection>(`/api/v1/stations?${params.toString()}`, init)
 }

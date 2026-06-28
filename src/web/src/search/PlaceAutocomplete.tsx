@@ -11,6 +11,7 @@ type PlaceAutocompleteProps = {
   onChange: (value: string) => void
   onSelect: (place: GeocodeResult) => void
   disabled?: boolean
+  variant?: 'default' | 'floating'
 }
 
 export function PlaceAutocomplete({
@@ -21,6 +22,7 @@ export function PlaceAutocomplete({
   onChange,
   onSelect,
   disabled = false,
+  variant = 'default',
 }: PlaceAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([])
   const [open, setOpen] = useState(false)
@@ -82,27 +84,52 @@ export function PlaceAutocomplete({
   }
 
   return (
-    <div className="place-autocomplete">
-      <label className="field" htmlFor={id}>
-        <span className="field__label">{label}</span>
+    <div className={`place-autocomplete${variant === 'floating' ? ' place-autocomplete--floating' : ''}`}>
+      {variant === 'default' && (
+        <label className="field" htmlFor={id}>
+          <span className="field__label">{label}</span>
+          <input
+            id={id}
+            type="search"
+            className="place-autocomplete__input"
+            value={value}
+            placeholder={placeholder}
+            autoComplete="off"
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            aria-autocomplete="list"
+            aria-expanded={open}
+            aria-controls={`${id}-suggestions`}
+          />
+        </label>
+      )}
+      {variant === 'floating' && (
         <input
           id={id}
-          type="text"
+          type="search"
+          className="place-autocomplete__input place-autocomplete__input--floating"
           value={value}
-          placeholder={placeholder}
+          placeholder={placeholder ?? label}
           autoComplete="off"
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          aria-label={label}
           aria-autocomplete="list"
           aria-expanded={open}
           aria-controls={`${id}-suggestions`}
         />
-      </label>
+      )}
       {loading && <span className="place-autocomplete__hint">Buscando…</span>}
       {open && suggestions.length > 0 && (
-        <ul id={`${id}-suggestions`} className="place-suggestions" role="listbox">
+        <ul
+          id={`${id}-suggestions`}
+          className={`place-suggestions${variant === 'floating' ? ' place-suggestions--floating' : ''}`}
+          role="listbox"
+        >
           {suggestions.map((place) => (
             <li key={`${place.lat},${place.lon},${place.label}`} role="option">
               <button

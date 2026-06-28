@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { checkApiHealth } from '../../api/client'
-import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, NearbyResponse, Station } from '../../api/types'
+import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
 import { useTheme } from '../../hooks/useTheme'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
 import { MapView } from '../../map/MapView'
+import { MapFloatingSearch } from '../../map/MapFloatingSearch'
 import { SearchPanel, type SearchMode } from '../../search/SearchPanel'
 import { ThemeToggle } from './ThemeToggle'
 
@@ -15,30 +16,26 @@ const MODES: { id: SearchMode; label: string }[] = [
   { id: 'map', label: 'Mapa' },
   { id: 'charge', label: 'Plan carga' },
   { id: 'route', label: 'En ruta' },
-  { id: 'city', label: 'En ciudad' },
 ]
 
 const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
   charge: 'trip',
   route: 'trip',
-  city: 'slow',
 }
 
 export function AppShell() {
   const { theme, toggleTheme } = useTheme()
   const [mode, setMode] = useState<SearchMode>('map')
+  const [panelOpen, setPanelOpen] = useState(false)
   const [apiOk, setApiOk] = useState(false)
   const [routeData, setRouteData] = useState<AlongRouteResponse | null>(null)
   const [routeChargePlanData, setRouteChargePlanData] = useState<ChargingPlanResponse | null>(null)
   const [routeSearching, setRouteSearching] = useState(false)
   const [chargePlanData, setChargePlanData] = useState<ChargingPlanResponse | null>(null)
   const [chargePlanSearching, setChargePlanSearching] = useState(false)
-  const [cityData, setCityData] = useState<NearbyResponse | null>(null)
-  const [citySearching, setCitySearching] = useState(false)
-  const [cityPickMode, setCityPickMode] = useState(false)
-  const [cityMapPin, setCityMapPin] = useState<{ label: string; lat: number; lon: number } | null>(null)
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
   const [mapFocusPlace, setMapFocusPlace] = useState<GeocodeResult | null>(null)
+  const [mapSearchText, setMapSearchText] = useState('')
   const mapBoundsGetterRef = useRef<(() => MapBounds | null) | null>(null)
   const { filter, setPreset, setCustomRange, apiQuery } = usePowerFilter('all')
   const {
@@ -68,16 +65,12 @@ export function AppShell() {
       setChargePlanData(null)
       setChargePlanSearching(false)
     }
-    if (nextMode !== 'city') {
-      setCityData(null)
-      setCitySearching(false)
-      setCityPickMode(false)
-      setCityMapPin(null)
-    }
     if (nextMode !== 'map') {
       setMapFocusPlace(null)
+      setMapSearchText('')
     }
     setSelectedStation(null)
+    setPanelOpen(nextMode !== 'map')
   }
 
   const handleRouteResults = useCallback((response: AlongRouteResponse | null) => {
@@ -102,25 +95,25 @@ export function AppShell() {
     setChargePlanSearching(status === 'loading')
   }, [])
 
-  const handleCityResults = useCallback((response: NearbyResponse | null) => {
-    setCityData(response)
+  const handleMapFocusPlace = useCallback((place: GeocodeResult | null) => {
+    setMapFocusPlace(place)
+    setMapSearchText(place?.label ?? '')
     setSelectedStation(null)
   }, [])
 
-  const handleCitySearchStateChange = useCallback((status: 'idle' | 'loading' | 'ready' | 'error') => {
-    setCitySearching(status === 'loading')
-  }, [])
+  const handleMapSearchTextChange = useCallback(
+    (text: string) => {
+      setMapSearchText(text)
+      if (mapFocusPlace && text.trim() !== mapFocusPlace.label.trim()) {
+        setMapFocusPlace(null)
+      }
+    },
+    [mapFocusPlace],
+  )
 
-  const handleCityMapPick = useCallback((lat: number, lon: number) => {
-    setCityMapPin({
-      label: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-      lat,
-      lon,
-    })
-  }, [])
-
-  const handleMapFocusPlace = useCallback((place: GeocodeResult | null) => {
-    setMapFocusPlace(place)
+  const clearMapSearch = useCallback(() => {
+    setMapSearchText('')
+    setMapFocusPlace(null)
     setSelectedStation(null)
   }, [])
 
@@ -128,61 +121,88 @@ export function AppShell() {
     mapBoundsGetterRef.current = getter
   }, [])
 
-  const requestMapBounds = useCallback(() => mapBoundsGetterRef.current?.() ?? null, [])
-
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="app-header__title">
-          <h1>Electrolineras</h1>
-          <p className="app-header__subtitle">Península ibérica</p>
-        </div>
-        <div className="app-header__actions">
-          <span
-            className={`status-pill ${apiOk ? 'status-pill--ok' : 'status-pill--warn'}`}
-            title={apiOk ? 'API conectada' : 'API no disponible'}
-          >
-            {apiOk ? 'API ok' : 'Sin API'}
-          </span>
-          <ThemeToggle theme={theme} onToggle={toggleTheme} />
-        </div>
-      </header>
+    <div className={`app-shell${mode === 'map' ? ' app-shell--map-search' : ''}`}>
+      <MapView
+        className="app-map"
+        theme={theme}
+        loadStations={mode === 'map'}
+        minKw={mode === 'map' ? undefined : apiQuery.minKw}
+        maxKw={mode === 'map' ? undefined : apiQuery.maxKw}
+        publicOpenOnly={mode === 'map'}
+        routeData={mode === 'route' ? routeData : null}
+        routeChargePlanData={mode === 'route' ? routeChargePlanData : null}
+        routeSearching={mode === 'route' && routeSearching}
+        chargePlanData={mode === 'charge' ? chargePlanData : null}
+        chargePlanSearching={mode === 'charge' && chargePlanSearching}
+        focusStation={mode !== 'map' ? selectedStation : null}
+        mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
+        onRegisterMapBounds={handleRegisterMapBounds}
+      />
 
-      <nav className="mode-tabs" aria-label="Modo de búsqueda">
-        {MODES.map((item) => (
+      <div className="map-ui-layer">
+        <div className="map-top-cluster">
+          <header className="map-top-bar">
+            <button
+              type="button"
+              className="map-menu-btn"
+              onClick={() => setPanelOpen((open) => !open)}
+              aria-expanded={panelOpen}
+              aria-controls="app-side-panel"
+              aria-label={panelOpen ? 'Ocultar panel' : 'Mostrar búsqueda y filtros'}
+            >
+              {panelOpen ? '✕' : '☰'}
+            </button>
+            <div className="map-top-bar__brand">
+              <span className="map-top-bar__title">Electrolineras</span>
+              <span
+                className={`status-pill status-pill--compact ${apiOk ? 'status-pill--ok' : 'status-pill--warn'}`}
+                title={apiOk ? 'API conectada' : 'API no disponible'}
+              >
+                {apiOk ? '●' : '○'}
+              </span>
+            </div>
+            <nav className="map-mode-tabs" aria-label="Modo de búsqueda">
+              {MODES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`map-mode-tab ${mode === item.id ? 'map-mode-tab--active' : ''}`}
+                  onClick={() => handleModeChange(item.id)}
+                  aria-pressed={mode === item.id}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          </header>
+
+          {mode === 'map' && (
+            <MapFloatingSearch
+              value={mapSearchText}
+              focusPlace={mapFocusPlace}
+              onChange={handleMapSearchTextChange}
+              onSelect={handleMapFocusPlace}
+              onClear={clearMapSearch}
+            />
+          )}
+        </div>
+
+        {panelOpen && (
           <button
-            key={item.id}
             type="button"
-            className={`mode-tab ${mode === item.id ? 'mode-tab--active' : ''}`}
-            onClick={() => handleModeChange(item.id)}
-            aria-pressed={mode === item.id}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
+            className="map-scrim"
+            aria-label="Cerrar panel"
+            onClick={() => setPanelOpen(false)}
+          />
+        )}
 
-      <div className="app-main">
-        <MapView
-          className="map-view"
-          theme={theme}
-          loadStations={mode === 'map'}
-          minKw={apiQuery.minKw}
-          maxKw={apiQuery.maxKw}
-          routeData={mode === 'route' ? routeData : null}
-          routeChargePlanData={mode === 'route' ? routeChargePlanData : null}
-          routeSearching={mode === 'route' && routeSearching}
-          chargePlanData={mode === 'charge' ? chargePlanData : null}
-          chargePlanSearching={mode === 'charge' && chargePlanSearching}
-          cityData={mode === 'city' ? cityData : null}
-          citySearching={mode === 'city' && citySearching}
-          focusStation={mode !== 'map' ? selectedStation : null}
-          mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
-          cityPickMode={mode === 'city' && cityPickMode}
-          onCityMapPick={handleCityMapPick}
-          onRegisterMapBounds={handleRegisterMapBounds}
-        />
-        <aside className={`side-panel${mode === 'charge' ? ' side-panel--charge' : ''}`}>
+        <aside
+          id="app-side-panel"
+          className={`map-side-panel${panelOpen ? ' map-side-panel--open' : ''}${mode === 'charge' ? ' map-side-panel--charge' : ''}`}
+          aria-hidden={!panelOpen}
+        >
           <SearchPanel
             mode={mode}
             vehicleProfile={vehicleProfile}
@@ -199,16 +219,9 @@ export function AppShell() {
             onChargePlanResults={handleChargePlanResults}
             onChargePlanSelectStation={setSelectedStation}
             onChargePlanSearchStateChange={handleChargePlanSearchStateChange}
-            onCityResults={handleCityResults}
-            onCitySelectStation={setSelectedStation}
-            onCitySearchStateChange={handleCitySearchStateChange}
-            onCityPickModeChange={setCityPickMode}
-            onRequestMapBounds={requestMapBounds}
-            onMapFocusPlace={handleMapFocusPlace}
-            cityMapPin={cityMapPin}
             selectedStationId={selectedStation?.id ?? null}
           />
-          {mode !== 'charge' && (
+          {mode !== 'map' && mode !== 'charge' && (
             <VehicleProfilePanel
               profile={vehicleProfile}
               onPresetChange={setVehiclePresetId}
@@ -217,11 +230,13 @@ export function AppShell() {
               onTerrainChange={setVehicleTerrain}
             />
           )}
-          <PowerFilterPanel
-            filter={filter}
-            onPresetChange={setPreset}
-            onCustomRangeChange={setCustomRange}
-          />
+          {mode !== 'map' && (
+            <PowerFilterPanel
+              filter={filter}
+              onPresetChange={setPreset}
+              onCustomRangeChange={setCustomRange}
+            />
+          )}
         </aside>
       </div>
     </div>

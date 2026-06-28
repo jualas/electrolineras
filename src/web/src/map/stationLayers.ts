@@ -204,31 +204,42 @@ function formatChargeLine(classification: string, socArrival: unknown): string {
   return `<p class="station-popup__charge"><strong>${escapeHtml(classification)}</strong>${socText}</p>`
 }
 
+function parseExternalComments(raw: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(raw)) {
+    return raw.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>
+      }
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
 function formatExternalReviewsLine(properties: Record<string, unknown>): string {
   const ratingAvg = properties.external_rating_avg
   const ratingCount = properties.external_rating_count
   const avg = ratingAvg != null ? Number(ratingAvg) : NaN
   const count = ratingCount != null ? Number(ratingCount) : 0
-  const comments = properties.external_comments
+  const comments = parseExternalComments(properties.external_comments)
   const parts: string[] = []
   if (!Number.isNaN(avg) && count > 0) {
     parts.push(
       `<p class="station-popup__reviews"><strong>${avg.toFixed(1)}/5</strong> · ${count} valoraciones · Open Charge Map</p>`,
     )
   }
-  if (Array.isArray(comments)) {
-    for (const raw of comments.slice(0, 2)) {
-      if (!raw || typeof raw !== 'object') {
-        continue
-      }
-      const item = raw as Record<string, unknown>
-      const text = item.comment ? String(item.comment) : item.checkin_label ? String(item.checkin_label) : ''
-      if (!text) {
-        continue
-      }
-      const rating = item.rating != null ? `${Number(item.rating)}/5 · ` : ''
-      parts.push(`<p class="station-popup__review">${escapeHtml(rating + text)}</p>`)
+  for (const item of comments.slice(0, 2)) {
+    const text = item.comment ? String(item.comment) : item.checkin_label ? String(item.checkin_label) : ''
+    if (!text) {
+      continue
     }
+    const rating = item.rating != null ? `${Number(item.rating)}/5 · ` : ''
+    parts.push(`<p class="station-popup__review">${escapeHtml(rating + text)}</p>`)
   }
   return parts.join('')
 }

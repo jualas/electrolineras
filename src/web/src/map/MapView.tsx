@@ -2,16 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 
 import { chargingPlanToFeatures } from '../api/chargingPlanFeature'
-import { nearbyToFeatures } from '../api/nearbyFeature'
 import { alongRouteToFeatures } from '../api/route'
 import { fetchStationsGeoJSON } from '../api/stations'
-import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, NearbyResponse, Station } from '../api/types'
+import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../api/types'
 import type { ThemeMode } from '../hooks/useTheme'
 import {
   clearCityOverlay,
   ensureCityLayers,
-  fitMapToBbox,
-  fitMapToCityReference,
   setCityReference,
   setCityRadiusCircle,
   updateCityLayerTheme,
@@ -40,8 +37,18 @@ const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
 const DEFAULT_ZOOM = 5.8
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const LOAD_DEBOUNCE_MS = 350
+const MAP_FOCUS_ZOOM = 14
 
 type MapBoundsGetter = () => MapBounds | null
+
+function getMapUiPadding(): maplibregl.PaddingOptions {
+  const cluster = document.querySelector('.map-top-cluster')
+  let top = 96
+  if (cluster instanceof HTMLElement) {
+    top = Math.ceil(cluster.getBoundingClientRect().bottom) + 16
+  }
+  return { top, bottom: 40, left: 48, right: 48 }
+}
 
 type MapViewProps = {
   className?: string
@@ -49,17 +56,14 @@ type MapViewProps = {
   loadStations?: boolean
   minKw?: number
   maxKw?: number
+  publicOpenOnly?: boolean
   routeData?: AlongRouteResponse | null
   routeSearching?: boolean
   routeChargePlanData?: ChargingPlanResponse | null
   chargePlanData?: ChargingPlanResponse | null
   chargePlanSearching?: boolean
-  cityData?: NearbyResponse | null
-  citySearching?: boolean
   focusStation?: Station | null
   mapFocusPlace?: GeocodeResult | null
-  cityPickMode?: boolean
-  onCityMapPick?: (lat: number, lon: number) => void
   onRegisterMapBounds?: (getter: MapBoundsGetter | null) => void
 }
 
@@ -81,17 +85,14 @@ export function MapView({
   loadStations = true,
   minKw,
   maxKw,
+  publicOpenOnly = false,
   routeData = null,
   routeSearching = false,
   routeChargePlanData = null,
   chargePlanData = null,
   chargePlanSearching = false,
-  cityData = null,
-  citySearching = false,
   focusStation = null,
   mapFocusPlace = null,
-  cityPickMode = false,
-  onCityMapPick,
   onRegisterMapBounds,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -104,7 +105,7 @@ export function MapView({
   const [stationCount, setStationCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [overlayMode, setOverlayMode] = useState<'map' | 'route' | 'charge' | 'city' | 'none'>('none')
+  const [overlayMode, setOverlayMode] = useState<'map' | 'route' | 'charge' | 'none'>('none')
 
   const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse, chargePlan?: ChargingPlanResponse | null) => {
     ensureRouteLayers(map, theme)
@@ -164,27 +165,6 @@ export function MapView({
     setOverlayMode('charge')
   }, [theme])
 
-  const applyCityOverlay = useCallback((map: maplibregl.Map, data: NearbyResponse) => {
-    ensureCityLayers(map, theme)
-    clearRouteOverlay(map)
-    setCityReference(map, data.reference)
-    if (data.bbox && data.bbox.length === 4) {
-      setCityRadiusCircle(map, null, null)
-      fitMapToBbox(map, data.bbox[0], data.bbox[1], data.bbox[2], data.bbox[3])
-    } else {
-      setCityRadiusCircle(map, data.reference, data.radius_m)
-      fitMapToCityReference(map, data.reference, data.radius_m)
-    }
-    setStationData(map, {
-      type: 'FeatureCollection',
-      features: nearbyToFeatures(data.results),
-    })
-    setStationCount(data.results.length)
-    setHasMore(false)
-    setLoadState(data.results.length > 0 ? 'ready' : 'idle')
-    setOverlayMode('city')
-  }, [theme])
-
   const clearSearchOverlays = useCallback((map: maplibregl.Map) => {
     clearRouteOverlay(map)
     clearCityOverlay(map)
@@ -203,6 +183,29 @@ export function MapView({
     [theme],
   )
 
+  const focusMapOnPlace = useCallback(
+    (map: maplibregl.Map, place: GeocodeResult) => {
+      const centerView = () => {
+        applyMapPlacePin(map, place)
+        map.flyTo({
+          center: [place.lon, place.lat],
+          zoom: Math.max(map.getZoom(), MAP_FOCUS_ZOOM),
+          duration: 700,
+          essential: true,
+          padding: getMapUiPadding(),
+        })
+      }
+
+      if (map.isStyleLoaded()) {
+        centerView()
+        return
+      }
+
+      map.once('load', centerView)
+    },
+    [applyMapPlacePin],
+  )
+
   const loadVisibleStations = useCallback(async (map: maplibregl.Map) => {
     if (!loadStations) {
       return
@@ -219,7 +222,13 @@ export function MapView({
       const zoom = map.getZoom()
       const limit = zoom < 7 ? 3000 : zoom < 10 ? 5000 : 4000
       const payload = await fetchStationsGeoJSON(
-        { bbox: boundsFromMap(map), limit, minKw, maxKw },
+        {
+          bbox: boundsFromMap(map),
+          limit,
+          minKw,
+          maxKw,
+          publicOpenOnly,
+        },
         { signal: controller.signal },
       )
 
@@ -245,7 +254,7 @@ export function MapView({
       setErrorMessage(message)
       setLoadState('error')
     }
-  }, [clearSearchOverlays, loadStations, minKw, maxKw, mapFocusPlace, applyMapPlacePin])
+  }, [clearSearchOverlays, loadStations, minKw, maxKw, publicOpenOnly, mapFocusPlace, applyMapPlacePin])
 
   const scheduleLoad = useCallback(
     (map: maplibregl.Map) => {
@@ -398,8 +407,6 @@ export function MapView({
       applyRouteOverlay(map, routeData, routeChargePlanData)
     } else if (chargePlanData) {
       applyChargePlanOverlay(map, chargePlanData)
-    } else if (cityData) {
-      applyCityOverlay(map, cityData)
     } else {
       clearSearchOverlays(map)
       setStationData(map, { type: 'FeatureCollection', features: [] })
@@ -412,13 +419,11 @@ export function MapView({
     routeData,
     routeChargePlanData,
     chargePlanData,
-    cityData,
     minKw,
     maxKw,
     scheduleLoad,
     applyRouteOverlay,
     applyChargePlanOverlay,
-    applyCityOverlay,
     clearSearchOverlays,
   ])
 
@@ -455,96 +460,55 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !map.isStyleLoaded() || !loadStations) {
+    if (!map || !loadStations) {
       return
     }
     if (!mapFocusPlace) {
       clearCityOverlay(map)
       return
     }
-    applyMapPlacePin(map, mapFocusPlace)
-    map.flyTo({
-      center: [mapFocusPlace.lon, mapFocusPlace.lat],
-      zoom: 12,
-      duration: 800,
-    })
-  }, [mapFocusPlace, loadStations, applyMapPlacePin])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !map.isStyleLoaded() || !cityPickMode || !onCityMapPick) {
-      return undefined
-    }
-
-    const handleMapClick = (event: maplibregl.MapMouseEvent) => {
-      const stationHits = map.queryRenderedFeatures(event.point, {
-        layers: [POINT_LAYER_ID, CLUSTER_LAYER_ID],
-      })
-      if (stationHits.length > 0) {
-        return
-      }
-      onCityMapPick(event.lngLat.lat, event.lngLat.lng)
-    }
-
-    map.on('click', handleMapClick)
-    map.getCanvas().style.cursor = 'crosshair'
-
-    return () => {
-      map.off('click', handleMapClick)
-      map.getCanvas().style.cursor = ''
-    }
-  }, [cityPickMode, onCityMapPick])
+    focusMapOnPlace(map, mapFocusPlace)
+  }, [mapFocusPlace, loadStations, focusMapOnPlace])
 
   const showMapBadge =
     loadStations ||
     routeData !== null ||
     chargePlanData !== null ||
-    cityData !== null ||
     routeSearching ||
-    chargePlanSearching ||
-    citySearching
+    chargePlanSearching
 
   const badgeLabel =
     overlayMode === 'route'
       ? `${stationCount} en ruta`
-      : overlayMode === 'charge'
+        : overlayMode === 'charge'
         ? `${stationCount} paradas`
-        : overlayMode === 'city'
-          ? `${stationCount} cerca`
+        : overlayMode === 'map' && publicOpenOnly
+          ? `${stationCount} acceso público`
           : `${stationCount} en vista`
 
   return (
     <div className="map-shell">
-      <div
-        ref={containerRef}
-        className={`${className ?? 'map-view'}${cityPickMode ? ' map-view--pick' : ''}`}
-        aria-label="Mapa peninsular"
-      />
+      <div ref={containerRef} className={className ?? 'map-view'} aria-label="Mapa peninsular" />
       {showMapBadge && (
         <div className="map-overlay" aria-live="polite">
           {routeSearching && <span className="map-badge">Calculando ruta…</span>}
           {chargePlanSearching && !routeSearching && <span className="map-badge">Calculando plan…</span>}
-          {citySearching && !routeSearching && !chargePlanSearching && (
-            <span className="map-badge">Buscando cerca…</span>
+          {!routeSearching && !chargePlanSearching && loadState === 'loading' && (
+            <span className="map-badge">Cargando estaciones…</span>
           )}
-          {!routeSearching &&
-            !chargePlanSearching &&
-            !citySearching &&
-            loadState === 'loading' && <span className="map-badge">Cargando estaciones…</span>}
-          {!routeSearching && !chargePlanSearching && !citySearching && loadState === 'ready' && (
+          {!routeSearching && !chargePlanSearching && loadState === 'ready' && (
             <span className="map-badge map-badge--ok">
               {badgeLabel}
               {overlayMode === 'map' && hasMore ? ' (límite)' : ''}
             </span>
           )}
-          {!routeSearching && !chargePlanSearching && !citySearching && loadState === 'error' && (
+          {!routeSearching && !chargePlanSearching && loadState === 'error' && (
             <span className="map-badge map-badge--error" title={errorMessage ?? undefined}>
               Error de datos
             </span>
           )}
         </div>
       )}
-      {cityPickMode && <div className="map-pick-hint">Toca el mapa para marcar el punto</div>}
     </div>
   )
 }
