@@ -3,6 +3,7 @@ import {
   formatDynamicStatusLabel,
   hasDynamicInfo,
 } from './dynamicDisplay'
+import { formatLivePriceLabel } from './connectorDisplay'
 
 type StationDynamicBadgeProps = {
   status?: string | null
@@ -30,7 +31,7 @@ export function StationDynamicBadge({
         <span className="station-dynamic__sep"> · </span>
       ) : null}
       {priceEurKwh != null && !Number.isNaN(priceEurKwh) ? (
-        <span className="station-dynamic__price">{priceEurKwh.toFixed(2)} €/kWh</span>
+        <span className="station-dynamic__price">{formatLivePriceLabel(priceEurKwh)}</span>
       ) : null}
     </p>
   )

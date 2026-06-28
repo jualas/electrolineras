@@ -5,6 +5,8 @@ import { stationLabel } from '../api/route'
 import type { MapBounds, NearbyResponse, Station } from '../api/types'
 import { StationNavActions } from '../components/navigation/StationNavActions'
 import { StationDynamicBadge } from '../stations/StationDynamicBadge'
+import { StationExternalReviews } from '../stations/StationExternalReviews'
+import { summarizeConnectors } from '../stations/connectorDisplay'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 
 export type CityLocationMode = 'gps' | 'address' | 'map_bbox' | 'map_pin'
@@ -410,7 +412,7 @@ export function CitySearchPanel({
                   </div>
                 </div>
                 <p className="route-result__meta">
-                  <strong>{item.station.max_power_kw.toFixed(0)} kW</strong>
+                  <strong>{summarizeConnectors(item.station.connectors)}</strong>
                   · {formatDistanceKm(item.distance_km, item.distance_m)}
                   {item.access_class && <> · {item.access_class}</>}
                 </p>
@@ -418,6 +420,12 @@ export function CitySearchPanel({
                   status={item.station.dynamic_status}
                   priceEurKwh={item.station.dynamic_price_eur_kwh}
                   className="route-result__dynamic station-dynamic"
+                />
+                <StationExternalReviews
+                  ratingAvg={item.station.external_rating_avg}
+                  ratingCount={item.station.external_rating_count}
+                  comments={item.station.external_comments}
+                  compact
                 />
               </button>
               <StationNavActions

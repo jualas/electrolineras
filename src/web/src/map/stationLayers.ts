@@ -157,6 +157,12 @@ export function stationPopupHtml(
   const operator = properties.operator ? String(properties.operator) : 'Operador desconocido'
   const maxKw = Number(properties.max_power_kw ?? 0)
   const connectors = Number(properties.connector_count ?? 0)
+  const connectorSummary =
+    properties.connector_summary ? String(properties.connector_summary) : `${maxKw.toFixed(0)} kW`
+  const connectorLine =
+    connectors > 0
+      ? `${connectorSummary} · ${connectors} conector${connectors === 1 ? '' : 'es'}`
+      : connectorSummary
   const country = properties.country ? String(properties.country) : ''
   const address = properties.address ? String(properties.address) : ''
   const dynamicStatus = properties.dynamic_status ? String(properties.dynamic_status) : ''
@@ -166,6 +172,7 @@ export function stationPopupHtml(
 
   const addressLine = address ? `<p class="station-popup__address">${address}</p>` : ''
   const dynamicLine = formatDynamicLine(dynamicStatus, dynamicPrice)
+  const externalLine = formatExternalReviewsLine(properties)
   const chargeLine = formatChargeLine(chargingClass, socArrival)
   const navLine = coords ? navigationPopupHtml(coords.lat, coords.lon) : ''
 
@@ -174,11 +181,11 @@ export function stationPopupHtml(
       <p class="station-popup__title">${escapeHtml(siteName)}</p>
       <p class="station-popup__operator">${escapeHtml(operator)}</p>
       <p class="station-popup__meta">
-        <strong>${maxKw.toFixed(0)} kW</strong>
-        · ${connectors} conector${connectors === 1 ? '' : 'es'}
+        <strong>${escapeHtml(connectorLine)}</strong>
         ${country ? ` · ${escapeHtml(country)}` : ''}
       </p>
       ${dynamicLine}
+      ${externalLine}
       ${chargeLine}
       ${addressLine}
       ${navLine}
@@ -197,6 +204,35 @@ function formatChargeLine(classification: string, socArrival: unknown): string {
   return `<p class="station-popup__charge"><strong>${escapeHtml(classification)}</strong>${socText}</p>`
 }
 
+function formatExternalReviewsLine(properties: Record<string, unknown>): string {
+  const ratingAvg = properties.external_rating_avg
+  const ratingCount = properties.external_rating_count
+  const avg = ratingAvg != null ? Number(ratingAvg) : NaN
+  const count = ratingCount != null ? Number(ratingCount) : 0
+  const comments = properties.external_comments
+  const parts: string[] = []
+  if (!Number.isNaN(avg) && count > 0) {
+    parts.push(
+      `<p class="station-popup__reviews"><strong>${avg.toFixed(1)}/5</strong> · ${count} valoraciones · Open Charge Map</p>`,
+    )
+  }
+  if (Array.isArray(comments)) {
+    for (const raw of comments.slice(0, 2)) {
+      if (!raw || typeof raw !== 'object') {
+        continue
+      }
+      const item = raw as Record<string, unknown>
+      const text = item.comment ? String(item.comment) : item.checkin_label ? String(item.checkin_label) : ''
+      if (!text) {
+        continue
+      }
+      const rating = item.rating != null ? `${Number(item.rating)}/5 · ` : ''
+      parts.push(`<p class="station-popup__review">${escapeHtml(rating + text)}</p>`)
+    }
+  }
+  return parts.join('')
+}
+
 function formatDynamicLine(status: string, price: unknown): string {
   if (!status && (price === null || price === undefined || Number.isNaN(Number(price)))) {
     return ''
@@ -208,7 +244,7 @@ function formatDynamicLine(status: string, price: unknown): string {
     )
   }
   if (price !== null && price !== undefined && !Number.isNaN(Number(price))) {
-    parts.push(`<span class="station-popup__price">${Number(price).toFixed(2)} €/kWh</span>`)
+    parts.push(`<span class="station-popup__price">${Number(price).toFixed(2)} €/kWh sin IVA</span>`)
   }
   return `<p class="station-popup__dynamic">${parts.join(' · ')}</p>`
 }

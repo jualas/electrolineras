@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { fetchChargingPlan } from '../api/chargingPlan'
 import { fetchAlongRoute, geocodePlace, stationLabel } from '../api/route'
-import type { AlongRouteResponse, GeocodeResult, Station } from '../api/types'
+import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
 import { StationNavActions } from '../components/navigation/StationNavActions'
 import { StationDynamicBadge } from '../stations/StationDynamicBadge'
+import { StationExternalReviews } from '../stations/StationExternalReviews'
+import { summarizeConnectors } from '../stations/connectorDisplay'
 import { googleMapsRouteUrl } from '../navigation/externalMaps'
+import type { VehicleProfile } from '../vehicle/vehicleProfile'
+import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
+import { ChargingStopList } from './ChargingStopList'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 
 export type RouteEndpointInput = {
@@ -14,9 +20,11 @@ export type RouteEndpointInput = {
 }
 
 type RouteSearchPanelProps = {
+  vehicleProfile: VehicleProfile
   minKw?: number
   maxKw?: number
   onResults: (response: AlongRouteResponse | null) => void
+  onChargePlanResults?: (response: ChargingPlanResponse | null) => void
   onSelectStation?: (station: Station | null) => void
   onSearchStateChange?: (status: SearchStatus) => void
   selectedStationId?: string | null
@@ -30,13 +38,16 @@ const EXAMPLE_ROUTE = {
 }
 
 export function RouteSearchPanel({
+  vehicleProfile,
   minKw,
   maxKw,
   onResults,
+  onChargePlanResults,
   onSelectStation,
   onSearchStateChange,
   selectedStationId,
 }: RouteSearchPanelProps) {
+  const [simulationMode, setSimulationMode] = useState(true)
   const [originText, setOriginText] = useState('')
   const [destText, setDestText] = useState('')
   const [originPoint, setOriginPoint] = useState<RouteEndpointInput | null>(null)
@@ -45,12 +56,19 @@ export function RouteSearchPanel({
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<AlongRouteResponse | null>(null)
+  const [chargePlan, setChargePlan] = useState<ChargingPlanResponse | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
   const lastEndpointsRef = useRef<{ origin: RouteEndpointInput; dest: RouteEndpointInput } | null>(null)
+  const hasSuccessfulSearchRef = useRef(false)
 
   useEffect(() => {
     onSearchStateChange?.(status)
   }, [status, onSearchStateChange])
+
+  const invalidateCachedSearch = useCallback(() => {
+    lastEndpointsRef.current = null
+    hasSuccessfulSearchRef.current = false
+  }, [])
 
   const resolveEndpoint = useCallback(
     async (text: string, point?: RouteEndpointInput | null): Promise<RouteEndpointInput> => {
@@ -77,6 +95,8 @@ export function RouteSearchPanel({
       setStatus('loading')
       setError(null)
       onSelectStation?.(null)
+      setChargePlan(null)
+      onChargePlanResults?.(null)
 
       try {
         const origin = await resolveEndpoint(originInput, originResolved ?? originPoint)
@@ -93,12 +113,37 @@ export function RouteSearchPanel({
           limit: 15,
         })
 
+        let plan: ChargingPlanResponse | null = null
+        try {
+          const vehicleQuery = vehicleProfileToChargingPlanQuery(vehicleProfile)
+          plan = await fetchChargingPlan({
+            originLat: origin.lat!,
+            originLon: origin.lon!,
+            destLat: destination.lat!,
+            destLon: destination.lon!,
+            socPercent: vehicleQuery.soc_percent,
+            usableCapacityKwh: vehicleQuery.usable_capacity_kwh,
+            consumptionWhPerKm: vehicleQuery.consumption_wh_per_km,
+            terrainFactor: vehicleQuery.terrain_factor,
+            reserveSocPercent: vehicleQuery.reserve_soc_percent,
+            minKw,
+            maxKw,
+            corridorKm,
+            limit: 15,
+          })
+        } catch {
+          plan = null
+        }
+
         setLastResponse(response)
+        setChargePlan(plan)
+        onChargePlanResults?.(plan)
         setOriginText(origin.label)
         setDestText(destination.label)
         setOriginPoint(origin)
         setDestPoint(destination)
         lastEndpointsRef.current = { origin, dest: destination }
+        hasSuccessfulSearchRef.current = true
         setStatus('ready')
         onResults(response)
       } catch (err) {
@@ -106,21 +151,37 @@ export function RouteSearchPanel({
         setError(message)
         setStatus('error')
         setLastResponse(null)
+        setChargePlan(null)
+        onChargePlanResults?.(null)
         onResults(null)
       }
     },
-    [corridorKm, destPoint, maxKw, minKw, onResults, onSelectStation, originPoint, resolveEndpoint],
+    [
+      corridorKm,
+      destPoint,
+      maxKw,
+      minKw,
+      onChargePlanResults,
+      onResults,
+      onSelectStation,
+      originPoint,
+      resolveEndpoint,
+      vehicleProfile,
+    ],
   )
 
   useEffect(() => {
+    if (simulationMode || !hasSuccessfulSearchRef.current) {
+      return
+    }
     const endpoints = lastEndpointsRef.current
     if (!endpoints || endpoints.origin.lat == null || endpoints.dest.lat == null) {
       return
     }
     void runSearch(endpoints.origin.label, endpoints.dest.label, endpoints.origin, endpoints.dest)
-    // Solo re-buscar al cambiar filtros/corredor tras una búsqueda previa.
+    // Solo re-buscar al cambiar filtros/corredor tras una búsqueda previa en modo conducción.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minKw, maxKw, corridorKm])
+  }, [minKw, maxKw, corridorKm, simulationMode])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -129,20 +190,37 @@ export function RouteSearchPanel({
 
   const handleOriginSelect = (place: GeocodeResult) => {
     setOriginPoint({ label: place.label, lat: place.lat, lon: place.lon })
+    setOriginText(place.label)
+    invalidateCachedSearch()
   }
 
   const handleDestSelect = (place: GeocodeResult) => {
     setDestPoint({ label: place.label, lat: place.lat, lon: place.lon })
+    setDestText(place.label)
+    invalidateCachedSearch()
   }
 
   const handleOriginChange = (value: string) => {
     setOriginText(value)
     setOriginPoint(null)
+    invalidateCachedSearch()
   }
 
   const handleDestChange = (value: string) => {
     setDestText(value)
     setDestPoint(null)
+    invalidateCachedSearch()
+  }
+
+  const handleSimulationToggle = (enabled: boolean) => {
+    setSimulationMode(enabled)
+    invalidateCachedSearch()
+    setStatus('idle')
+    setError(null)
+    setLastResponse(null)
+    onResults(null)
+    setChargePlan(null)
+    onChargePlanResults?.(null)
   }
 
   const handleUseGps = () => {
@@ -163,7 +241,10 @@ export function RouteSearchPanel({
         }
         setOriginText(label)
         setOriginPoint(point)
-        void runSearch(label, destText, point)
+        invalidateCachedSearch()
+        if (!simulationMode && destPoint) {
+          void runSearch(label, destText, point, destPoint)
+        }
       },
       () => {
         setGpsLoading(false)
@@ -179,6 +260,7 @@ export function RouteSearchPanel({
     setDestText(EXAMPLE_ROUTE.destination)
     setOriginPoint(null)
     setDestPoint(null)
+    invalidateCachedSearch()
     void runSearch(EXAMPLE_ROUTE.origin, EXAMPLE_ROUTE.destination)
   }
 
@@ -186,28 +268,40 @@ export function RouteSearchPanel({
     <section className="panel search-panel route-panel" aria-labelledby="route-search-heading">
       <h2 id="route-search-heading">En ruta</h2>
       <p className="panel-hint">
-        Cargadores en el corredor, ordenados por menor desvío. Para planificar con batería (SOC), usa la pestaña{' '}
-        <strong>Plan carga</strong>.
+        {simulationMode
+          ? 'Simula una ruta con origen y destino manuales. Para comparar estrategias con batería (SOC), usa la pestaña Plan carga.'
+          : 'Cargadores en el corredor, ordenados por menor desvío. Para planificar con batería (SOC), usa la pestaña Plan carga.'}
       </p>
 
       <form className="route-form" onSubmit={handleSubmit}>
+        <label className="field field--checkbox">
+          <input
+            type="checkbox"
+            checked={simulationMode}
+            onChange={(event) => handleSimulationToggle(event.target.checked)}
+          />
+          <span>Modo simulación (sin GPS automático)</span>
+        </label>
+
         <PlaceAutocomplete
           id="route-origin"
           label="Origen"
           value={originText}
-          placeholder="GPS o ciudad"
+          placeholder={simulationMode ? 'Ciudad o dirección de salida' : 'GPS o ciudad'}
           onChange={handleOriginChange}
           onSelect={handleOriginSelect}
-          disabled={status === 'loading'}
         />
-        <button
-          type="button"
-          className="btn btn--secondary"
-          onClick={handleUseGps}
-          disabled={gpsLoading || status === 'loading'}
-        >
-          {gpsLoading ? 'Obteniendo GPS…' : 'Usar mi ubicación'}
-        </button>
+
+        {!simulationMode && (
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={handleUseGps}
+            disabled={gpsLoading}
+          >
+            {gpsLoading ? 'Obteniendo GPS…' : 'Usar mi ubicación'}
+          </button>
+        )}
 
         <PlaceAutocomplete
           id="route-dest"
@@ -216,7 +310,6 @@ export function RouteSearchPanel({
           placeholder="Ciudad o dirección"
           onChange={handleDestChange}
           onSelect={handleDestSelect}
-          disabled={status === 'loading'}
         />
 
         <label className="field">
@@ -231,13 +324,19 @@ export function RouteSearchPanel({
 
         <div className="route-form__actions">
           <button type="submit" className="btn btn--primary" disabled={status === 'loading'}>
-            {status === 'loading' ? 'Calculando…' : 'Buscar cargadores'}
+            {status === 'loading' ? 'Calculando…' : simulationMode ? 'Simular ruta' : 'Buscar cargadores'}
           </button>
           <button type="button" className="btn btn--ghost" onClick={handleExample} disabled={status === 'loading'}>
             Ejemplo Granada → Cartagena
           </button>
         </div>
       </form>
+
+      {status === 'loading' && (
+        <p className="route-message route-message--loading" role="status">
+          Calculando ruta… puedes seguir editando origen y destino.
+        </p>
+      )}
 
       {status === 'error' && error && (
         <p className="route-message route-message--error" role="alert">
@@ -277,44 +376,78 @@ export function RouteSearchPanel({
         </div>
       )}
 
-      {lastResponse && lastResponse.results.length > 0 && (
-        <ol className="route-results" aria-label="Cargadores en ruta">
-          {lastResponse.results.map((item, index) => (
-            <li key={item.station.id} className="route-result-card">
-              <button
-                type="button"
-                className={`route-result ${selectedStationId === item.station.id ? 'route-result--active' : ''}`}
-                onClick={() => onSelectStation?.(item.station)}
-              >
-                <div className="route-result__head">
-                  <span className="route-result__rank">{index + 1}</span>
-                  <div>
-                    <p className="route-result__title">{stationLabel(item.station)}</p>
-                    <p className="route-result__operator">{item.station.operator ?? '—'}</p>
+      {chargePlan && chargePlan.origin_stops.length > 0 && (
+        <>
+          <h3 className="charge-section-title">Carga desde la salida</h3>
+          <p className="panel-hint charge-section-hint">
+            Alcance hasta cargador ~{chargePlan.charging_reach_km} km (llegada ≥5 % SOC) con {vehicleProfile.socPercent}{' '}
+            % SOC. Ordenados por distancia desde el origen.
+          </p>
+          {chargePlan.warnings.length > 0 && (
+            <ul className="charge-warnings" aria-label="Alertas energéticas">
+              {chargePlan.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          )}
+          <ChargingStopList
+            stops={chargePlan.origin_stops}
+            selectedStationId={selectedStationId}
+            onSelectStation={onSelectStation}
+            ariaLabel="Cargadores desde el origen"
+            showRouteDeviation={false}
+            distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km · ${item.soc_arrival_pct.toFixed(0)} % SOC`}
+          />
+        </>
+      )}
+
+      {status === 'ready' && lastResponse && lastResponse.results.length > 0 && (
+        <>
+          <h3 className="charge-section-title">En el corredor de la ruta</h3>
+          <ol className="route-results" aria-label="Cargadores en ruta">
+            {lastResponse.results.map((item, index) => (
+              <li key={item.station.id} className="route-result-card">
+                <button
+                  type="button"
+                  className={`route-result ${selectedStationId === item.station.id ? 'route-result--active' : ''}`}
+                  onClick={() => onSelectStation?.(item.station)}
+                >
+                  <div className="route-result__head">
+                    <span className="route-result__rank">{index + 1}</span>
+                    <div>
+                      <p className="route-result__title">{stationLabel(item.station)}</p>
+                      <p className="route-result__operator">{item.station.operator ?? '—'}</p>
+                    </div>
                   </div>
-                </div>
-                <p className="route-result__meta">
-                  <strong>{item.station.max_power_kw.toFixed(0)} kW</strong>
-                  · +{item.deviation_km.toFixed(1)} km desvío
-                  {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
-                  {item.wrong_side && <span className="route-result__warn"> · sentido contrario</span>}
-                </p>
+                  <p className="route-result__meta">
+                    <strong>{summarizeConnectors(item.station.connectors)}</strong>
+                    · +{item.deviation_km.toFixed(1)} km desvío
+                    {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
+                    {item.wrong_side && <span className="route-result__warn"> · sentido contrario</span>}
+                  </p>
                 <StationDynamicBadge
                   status={item.station.dynamic_status}
                   priceEurKwh={item.station.dynamic_price_eur_kwh}
                   className="route-result__dynamic station-dynamic"
                 />
-                <p className="route-result__dist">A {item.route_distance_km.toFixed(0)} km desde el origen</p>
-              </button>
-              <StationNavActions
-                lat={item.station.location.lat}
-                lon={item.station.location.lon}
-                label={stationLabel(item.station)}
-                compact
-              />
-            </li>
-          ))}
-        </ol>
+                <StationExternalReviews
+                  ratingAvg={item.station.external_rating_avg}
+                  ratingCount={item.station.external_rating_count}
+                  comments={item.station.external_comments}
+                  compact
+                />
+                  <p className="route-result__dist">A {item.route_distance_km.toFixed(0)} km desde el origen</p>
+                </button>
+                <StationNavActions
+                  lat={item.station.location.lat}
+                  lon={item.station.location.lon}
+                  label={stationLabel(item.station)}
+                  compact
+                />
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </section>
   )

@@ -6,76 +6,42 @@ export type VehiclePresetDefinition = {
   brand: string
   model: string
   usableCapacityKwh: number
+  /** Autonomía de referencia al 100 % SOC (como el cuadro del coche / WLTP). */
+  ratedRangeKm: number
+  /** Consumo calibrado: capacidad útil ÷ autonomía nominal. */
   referenceWhPerKm: number
 }
 
 export const DEFAULT_VEHICLE_PRESET_ID: VehiclePresetId = 'tesla-model3-sr-2023'
 
+function preset(
+  id: VehiclePresetId,
+  label: string,
+  brand: string,
+  model: string,
+  usableCapacityKwh: number,
+  ratedRangeKm: number,
+): VehiclePresetDefinition {
+  return {
+    id,
+    label,
+    brand,
+    model,
+    usableCapacityKwh,
+    ratedRangeKm,
+    referenceWhPerKm: Math.round((usableCapacityKwh * 1000) / ratedRangeKm),
+  }
+}
+
 export const VEHICLE_PRESETS: VehiclePresetDefinition[] = [
-  {
-    id: 'tesla-model3-sr-2023',
-    label: 'Tesla Model 3 SR (2023)',
-    brand: 'Tesla',
-    model: 'Model 3 Standard Range',
-    usableCapacityKwh: 57,
-    referenceWhPerKm: 142,
-  },
-  {
-    id: 'tesla-model-y-lr',
-    label: 'Tesla Model Y LR',
-    brand: 'Tesla',
-    model: 'Model Y Long Range',
-    usableCapacityKwh: 75,
-    referenceWhPerKm: 158,
-  },
-  {
-    id: 'vw-id3-pro',
-    label: 'VW ID.3 Pro',
-    brand: 'Volkswagen',
-    model: 'ID.3 Pro',
-    usableCapacityKwh: 58,
-    referenceWhPerKm: 155,
-  },
-  {
-    id: 'hyundai-kona-64',
-    label: 'Hyundai Kona Electric 64 kWh',
-    brand: 'Hyundai',
-    model: 'Kona Electric',
-    usableCapacityKwh: 64,
-    referenceWhPerKm: 168,
-  },
-  {
-    id: 'renault-megane-etech',
-    label: 'Renault Megane E-Tech',
-    brand: 'Renault',
-    model: 'Megane E-Tech Electric',
-    usableCapacityKwh: 60,
-    referenceWhPerKm: 162,
-  },
-  {
-    id: 'bmw-i4-edrive40',
-    label: 'BMW i4 eDrive40',
-    brand: 'BMW',
-    model: 'i4 eDrive40',
-    usableCapacityKwh: 81,
-    referenceWhPerKm: 175,
-  },
-  {
-    id: 'mg4-standard',
-    label: 'MG4 Standard',
-    brand: 'MG',
-    model: 'MG4 Electric',
-    usableCapacityKwh: 51,
-    referenceWhPerKm: 160,
-  },
-  {
-    id: 'nissan-leaf-62',
-    label: 'Nissan Leaf 62 kWh',
-    brand: 'Nissan',
-    model: 'Leaf e+',
-    usableCapacityKwh: 59,
-    referenceWhPerKm: 178,
-  },
+  preset('tesla-model3-sr-2023', 'Tesla Model 3 SR (2023)', 'Tesla', 'Model 3 Standard Range', 57, 420),
+  preset('tesla-model-y-lr', 'Tesla Model Y LR', 'Tesla', 'Model Y Long Range', 75, 533),
+  preset('vw-id3-pro', 'VW ID.3 Pro', 'Volkswagen', 'ID.3 Pro', 58, 426),
+  preset('hyundai-kona-64', 'Hyundai Kona Electric 64 kWh', 'Hyundai', 'Kona Electric', 64, 484),
+  preset('renault-megane-etech', 'Renault Megane E-Tech', 'Renault', 'Megane E-Tech Electric', 60, 450),
+  preset('bmw-i4-edrive40', 'BMW i4 eDrive40', 'BMW', 'i4 eDrive40', 81, 590),
+  preset('mg4-standard', 'MG4 Standard', 'MG', 'MG4 Electric', 51, 435),
+  preset('nissan-leaf-62', 'Nissan Leaf 62 kWh', 'Nissan', 'Leaf e+', 59, 385),
 ]
 
 export type TerrainFactorId = 'flat' | 'rolling' | 'mountain'

@@ -1,3 +1,11 @@
+export type ExternalUserComment = {
+  rating?: number | null
+  comment?: string | null
+  username?: string | null
+  created_at?: string | null
+  checkin_label?: string | null
+}
+
 export type StationFeatureProperties = {
   id: string
   source: string
@@ -7,10 +15,15 @@ export type StationFeatureProperties = {
   max_power_kw: number
   access: string | null
   connector_count: number
+  connector_summary?: string | null
   address: string | null
   dynamic_status?: string | null
   dynamic_price_eur_kwh?: number | null
   dynamic_updated_at?: string | null
+  external_rating_avg?: number | null
+  external_rating_count?: number | null
+  external_comments?: ExternalUserComment[] | null
+  ocm_poi_id?: number | null
   charging_classification?: string | null
   soc_arrival_pct?: number | null
 }
@@ -70,6 +83,10 @@ export type Station = {
   dynamic_status?: string | null
   dynamic_price_eur_kwh?: number | null
   dynamic_updated_at?: string | null
+  external_rating_avg?: number | null
+  external_rating_count?: number | null
+  external_comments?: ExternalUserComment[]
+  ocm_poi_id?: number | null
 }
 
 export type AlongRouteStationResult = {
@@ -148,6 +165,7 @@ export type ChargingPlanStrategyResult = {
 export type ChargingPlanResponse = {
   mode: 'route' | 'emergency'
   range_km: number
+  charging_reach_km: number
   origin: LatLon
   destination: LatLon | null
   corridor_km: number | null
@@ -155,8 +173,10 @@ export type ChargingPlanResponse = {
   route_duration_minutes: number | null
   soc_at_destination_pct: number | null
   reachable_without_stop: boolean
-  route_geometry: RouteLineGeometry | null
+    route_geometry: RouteLineGeometry | null
+  preview_route_geometry?: RouteLineGeometry | null
   stops: ChargingPlanStopResult[]
+  origin_stops: ChargingPlanStopResult[]
   strategies: ChargingPlanStrategyResult[]
   warnings: string[]
   candidates_in_bbox: number

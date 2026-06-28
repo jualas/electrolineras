@@ -3,7 +3,7 @@ export type ChargingClassification = 'safe' | 'adjusted' | 'critical' | 'unreach
 const LABELS: Record<ChargingClassification, string> = {
   safe: 'Segura',
   adjusted: 'Ajustada',
-  critical: 'Crítica',
+  critical: 'Crítica (llegas, carga pronto)',
   unreachable: 'Fuera de alcance',
 }
 

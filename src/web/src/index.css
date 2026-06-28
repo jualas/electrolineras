@@ -248,6 +248,57 @@ button {
   color: var(--color-text-muted);
 }
 
+.station-external-reviews {
+  margin-top: 0.35rem;
+}
+
+.station-external-reviews__rating {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.station-external-reviews__stars {
+  color: #d4a017;
+}
+
+.station-external-reviews__source {
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.station-external-reviews__comments {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+.station-external-reviews__comment {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-top: 0.25rem;
+}
+
+.station-external-reviews__comment-rating {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.station-external-reviews__comment-meta {
+  display: block;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.station-popup__reviews,
+.station-popup__review {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin: 0.25rem 0 0;
+}
 
 .side-panel {
   display: flex;
@@ -668,6 +719,21 @@ button {
   color: var(--color-text-muted);
 }
 
+.charge-section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 1rem 0 0.35rem;
+}
+
+.charge-section-hint {
+  margin-bottom: 0.5rem;
+}
+
+.route-message--loading {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+}
+
 .route-message--error {
   color: #cf222e;
 }
@@ -901,6 +967,19 @@ button {
   font-size: 0.7rem;
   color: var(--color-text-muted);
   font-family: ui-monospace, monospace;
+}
+
+.map-place-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.map-place-readout__label {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.35;
 }
 
 .place-autocomplete {

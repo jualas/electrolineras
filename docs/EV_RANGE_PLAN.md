@@ -23,7 +23,7 @@ Caso de referencia: Granada → Cartagena en [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_
 | **Ubicación** vía GPS del móvil (`navigator.geolocation`) | Bluetooth OBD, APIs de fabricante |
 | Presets de consumo por modelo EV | Histórico personal de consumo |
 
-Referencia de preset inicial (uso interno / default sugerido): **Tesla Model 3 Standard Range 2023** (~57 kWh útil, ~150 Wh/km en mixto).
+Referencia de preset inicial (uso interno / default sugerido): **Tesla Model 3 Standard Range 2023** (~57 kWh útil, **420 km** al 100 % en cuadro, ~136 Wh/km calibrado).
 
 ## Objetivo Fase 2
 
@@ -55,16 +55,18 @@ Todo **manual / local** (localStorage o session; sin backend de cuentas):
 
 Implementación web (`src/web/src/vehicle/`):
 
-| Preset | Capacidad útil | Wh/km ref. |
-|--------|----------------|------------|
-| Tesla Model 3 SR (2023) — **default** | 57 kWh | 142 |
-| Tesla Model Y LR | 75 kWh | 158 |
-| VW ID.3 Pro | 58 kWh | 155 |
-| Hyundai Kona Electric 64 kWh | 64 kWh | 168 |
-| Renault Megane E-Tech | 60 kWh | 162 |
-| BMW i4 eDrive40 | 81 kWh | 175 |
-| MG4 Standard | 51 kWh | 160 |
-| Nissan Leaf 62 kWh | 59 kWh | 178 |
+| Preset | Capacidad útil | km al 100 % | Wh/km ref. |
+|--------|----------------|-------------|------------|
+| Tesla Model 3 SR (2023) — **default** | 57 kWh | 420 | 136 |
+| Tesla Model Y LR | 75 kWh | 533 | 141 |
+| VW ID.3 Pro | 58 kWh | 426 | 136 |
+| Hyundai Kona Electric 64 kWh | 64 kWh | 484 | 132 |
+| Renault Megane E-Tech | 60 kWh | 450 | 133 |
+| BMW i4 eDrive40 | 81 kWh | 590 | 137 |
+| MG4 Standard | 51 kWh | 435 | 117 |
+| Nissan Leaf 62 kWh | 59 kWh | 385 | 153 |
+
+`km al 100 %` = autonomía de referencia como el cuadro del coche (WLTP / estimación del fabricante). El plan de carga descuenta además la reserva SOC (10 %) y el factor de terreno.
 
 Terreno: llano (×1), ondulado (+15 %), sierra (+25 %). Persistencia: `localStorage` clave `electrolineras.vehicleProfile`.
 

@@ -5,7 +5,7 @@ import { chargingPlanToFeatures } from '../api/chargingPlanFeature'
 import { nearbyToFeatures } from '../api/nearbyFeature'
 import { alongRouteToFeatures } from '../api/route'
 import { fetchStationsGeoJSON } from '../api/stations'
-import type { AlongRouteResponse, ChargingPlanResponse, MapBounds, NearbyResponse, Station } from '../api/types'
+import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, NearbyResponse, Station } from '../api/types'
 import type { ThemeMode } from '../hooks/useTheme'
 import {
   clearCityOverlay,
@@ -20,6 +20,7 @@ import {
   clearRouteOverlay,
   ensureRouteLayers,
   fitMapToRoute,
+  fitMapToPoints,
   setRouteEndpoints,
   setRouteLine,
   setRangeCircle,
@@ -50,11 +51,13 @@ type MapViewProps = {
   maxKw?: number
   routeData?: AlongRouteResponse | null
   routeSearching?: boolean
+  routeChargePlanData?: ChargingPlanResponse | null
   chargePlanData?: ChargingPlanResponse | null
   chargePlanSearching?: boolean
   cityData?: NearbyResponse | null
   citySearching?: boolean
   focusStation?: Station | null
+  mapFocusPlace?: GeocodeResult | null
   cityPickMode?: boolean
   onCityMapPick?: (lat: number, lon: number) => void
   onRegisterMapBounds?: (getter: MapBoundsGetter | null) => void
@@ -80,11 +83,13 @@ export function MapView({
   maxKw,
   routeData = null,
   routeSearching = false,
+  routeChargePlanData = null,
   chargePlanData = null,
   chargePlanSearching = false,
   cityData = null,
   citySearching = false,
   focusStation = null,
+  mapFocusPlace = null,
   cityPickMode = false,
   onCityMapPick,
   onRegisterMapBounds,
@@ -101,7 +106,7 @@ export function MapView({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [overlayMode, setOverlayMode] = useState<'map' | 'route' | 'charge' | 'city' | 'none'>('none')
 
-  const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse) => {
+  const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse, chargePlan?: ChargingPlanResponse | null) => {
     ensureRouteLayers(map, theme)
     clearCityOverlay(map)
     if (data.route_geometry) {
@@ -109,40 +114,53 @@ export function MapView({
       fitMapToRoute(map, data.route_geometry)
     }
     setRouteEndpoints(map, data.origin, data.destination)
-    setRangeCircle(map, null, null)
+    if (chargePlan) {
+      setRangeCircle(map, chargePlan.origin, chargePlan.charging_reach_km)
+    } else {
+      setRangeCircle(map, null, null)
+    }
+    const routeFeatures = alongRouteToFeatures(data.results)
+    const originFeatures = chargePlan
+      ? chargingPlanToFeatures([], chargePlan.origin_stops).filter(
+          (feature) => !routeFeatures.some((routeFeature) => routeFeature.id === feature.id),
+        )
+      : []
     setStationData(map, {
       type: 'FeatureCollection',
-      features: alongRouteToFeatures(data.results),
+      features: [...originFeatures, ...routeFeatures],
     })
-    setStationCount(data.results.length)
+    setStationCount(routeFeatures.length + originFeatures.length)
     setHasMore(false)
-    setLoadState(data.results.length > 0 ? 'ready' : 'idle')
+    setLoadState(routeFeatures.length + originFeatures.length > 0 ? 'ready' : 'idle')
     setOverlayMode('route')
   }, [theme])
 
   const applyChargePlanOverlay = useCallback((map: maplibregl.Map, data: ChargingPlanResponse) => {
     ensureRouteLayers(map, theme)
     clearCityOverlay(map)
-    if (data.route_geometry) {
-      setRouteLine(map, data.route_geometry)
-      fitMapToRoute(map, data.route_geometry)
+    const routeGeometry = data.route_geometry ?? data.preview_route_geometry
+    if (routeGeometry) {
+      setRouteLine(map, routeGeometry)
+      fitMapToRoute(map, routeGeometry)
     } else {
       setRouteLine(map, null)
-      map.flyTo({
-        center: [data.origin.lon, data.origin.lat],
-        zoom: 10,
-        duration: 700,
-      })
+      const mapPoints = [
+        data.origin,
+        ...data.origin_stops.map((stop) => stop.station.location),
+        ...data.stops.map((stop) => stop.station.location),
+      ]
+      fitMapToPoints(map, mapPoints)
     }
     setRouteEndpoints(map, data.origin, data.destination)
-    setRangeCircle(map, data.origin, data.range_km)
+    setRangeCircle(map, data.origin, data.charging_reach_km)
+    const features = chargingPlanToFeatures(data.stops, data.origin_stops)
     setStationData(map, {
       type: 'FeatureCollection',
-      features: chargingPlanToFeatures(data.stops),
+      features,
     })
-    setStationCount(data.stops.length)
+    setStationCount(features.length)
     setHasMore(false)
-    setLoadState(data.stops.length > 0 ? 'ready' : 'idle')
+    setLoadState(features.length > 0 ? 'ready' : 'idle')
     setOverlayMode('charge')
   }, [theme])
 
@@ -173,6 +191,18 @@ export function MapView({
     setOverlayMode('none')
   }, [])
 
+  const applyMapPlacePin = useCallback(
+    (map: maplibregl.Map, place: GeocodeResult | null) => {
+      if (!place) {
+        return
+      }
+      ensureCityLayers(map, theme)
+      setCityReference(map, place)
+      setCityRadiusCircle(map, null, null)
+    },
+    [theme],
+  )
+
   const loadVisibleStations = useCallback(async (map: maplibregl.Map) => {
     if (!loadStations) {
       return
@@ -198,6 +228,7 @@ export function MapView({
       }
 
       clearSearchOverlays(map)
+      applyMapPlacePin(map, mapFocusPlace)
       setStationData(map, {
         type: 'FeatureCollection',
         features: payload.features,
@@ -214,7 +245,7 @@ export function MapView({
       setErrorMessage(message)
       setLoadState('error')
     }
-  }, [clearSearchOverlays, loadStations, minKw, maxKw])
+  }, [clearSearchOverlays, loadStations, minKw, maxKw, mapFocusPlace, applyMapPlacePin])
 
   const scheduleLoad = useCallback(
     (map: maplibregl.Map) => {
@@ -364,7 +395,7 @@ export function MapView({
     if (loadStations) {
       scheduleLoad(map)
     } else if (routeData) {
-      applyRouteOverlay(map, routeData)
+      applyRouteOverlay(map, routeData, routeChargePlanData)
     } else if (chargePlanData) {
       applyChargePlanOverlay(map, chargePlanData)
     } else if (cityData) {
@@ -379,6 +410,7 @@ export function MapView({
   }, [
     loadStations,
     routeData,
+    routeChargePlanData,
     chargePlanData,
     cityData,
     minKw,
@@ -411,12 +443,32 @@ export function MapView({
             address: focusStation.location.address ?? null,
             dynamic_status: focusStation.dynamic_status ?? null,
             dynamic_price_eur_kwh: focusStation.dynamic_price_eur_kwh ?? null,
+            external_rating_avg: focusStation.external_rating_avg ?? null,
+            external_rating_count: focusStation.external_rating_count ?? 0,
+            external_comments: focusStation.external_comments ?? [],
           },
           { lat: lat, lon: lon },
         ),
       )
       .addTo(map)
   }, [focusStation])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded() || !loadStations) {
+      return
+    }
+    if (!mapFocusPlace) {
+      clearCityOverlay(map)
+      return
+    }
+    applyMapPlacePin(map, mapFocusPlace)
+    map.flyTo({
+      center: [mapFocusPlace.lon, mapFocusPlace.lat],
+      zoom: 12,
+      duration: 800,
+    })
+  }, [mapFocusPlace, loadStations, applyMapPlacePin])
 
   useEffect(() => {
     const map = mapRef.current

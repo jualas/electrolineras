@@ -1,8 +1,9 @@
-import type { AlongRouteResponse, ChargingPlanResponse, MapBounds, NearbyResponse, Station } from '../api/types'
+import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, NearbyResponse, Station } from '../api/types'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
 import { ChargingPlanPanel } from './ChargingPlanPanel'
 import { CitySearchPanel } from './CitySearchPanel'
+import { MapSearchPanel } from './MapSearchPanel'
 import { RouteSearchPanel } from './RouteSearchPanel'
 
 export type SearchMode = 'map' | 'charge' | 'route' | 'city'
@@ -17,6 +18,7 @@ type SearchPanelProps = {
   minKw?: number
   maxKw?: number
   onRouteResults: (response: AlongRouteResponse | null) => void
+  onRouteChargePlanResults?: (response: ChargingPlanResponse | null) => void
   onRouteSelectStation?: (station: Station | null) => void
   onRouteSearchStateChange?: (status: 'idle' | 'loading' | 'ready' | 'error') => void
   onChargePlanResults: (response: ChargingPlanResponse | null) => void
@@ -27,6 +29,7 @@ type SearchPanelProps = {
   onCitySearchStateChange?: (status: 'idle' | 'loading' | 'ready' | 'error') => void
   onCityPickModeChange?: (active: boolean) => void
   onRequestMapBounds?: () => MapBounds | null
+  onMapFocusPlace?: (place: GeocodeResult | null) => void
   cityMapPin?: { label: string; lat: number; lon: number } | null
   selectedStationId?: string | null
 }
@@ -41,6 +44,7 @@ export function SearchPanel({
   minKw,
   maxKw,
   onRouteResults,
+  onRouteChargePlanResults,
   onRouteSelectStation,
   onRouteSearchStateChange,
   onChargePlanResults,
@@ -51,6 +55,7 @@ export function SearchPanel({
   onCitySearchStateChange,
   onCityPickModeChange,
   onRequestMapBounds,
+  onMapFocusPlace,
   cityMapPin,
   selectedStationId,
 }: SearchPanelProps) {
@@ -75,9 +80,11 @@ export function SearchPanel({
   if (mode === 'route') {
     return (
       <RouteSearchPanel
+        vehicleProfile={vehicleProfile}
         minKw={minKw}
         maxKw={maxKw}
         onResults={onRouteResults}
+        onChargePlanResults={onRouteChargePlanResults}
         onSelectStation={onRouteSelectStation}
         onSearchStateChange={onRouteSearchStateChange}
         selectedStationId={selectedStationId}
@@ -101,10 +108,5 @@ export function SearchPanel({
     )
   }
 
-  return (
-    <section className="panel search-panel" aria-labelledby="map-search-heading">
-      <h2 id="map-search-heading">Mapa peninsular</h2>
-      <p className="panel-hint">Puntos desde la API al mover o hacer zoom en el mapa.</p>
-    </section>
-  )
+  return <MapSearchPanel onFocusPlace={onMapFocusPlace ?? (() => undefined)} />
 }

@@ -22,12 +22,27 @@ export function chargingPlanStopToFeature(stop: ChargingPlanStopResult): Station
       dynamic_status: station.dynamic_status ?? null,
       dynamic_price_eur_kwh: station.dynamic_price_eur_kwh ?? null,
       dynamic_updated_at: station.dynamic_updated_at ?? null,
+      external_rating_avg: station.external_rating_avg ?? null,
+      external_rating_count: station.external_rating_count ?? 0,
+      external_comments: station.external_comments?.slice(0, 3) ?? [],
       charging_classification: stop.classification,
       soc_arrival_pct: stop.soc_arrival_pct,
     },
   }
 }
 
-export function chargingPlanToFeatures(stops: ChargingPlanStopResult[]): StationFeature[] {
-  return stops.map((stop) => chargingPlanStopToFeature(stop))
+export function chargingPlanToFeatures(
+  stops: ChargingPlanStopResult[],
+  originStops: ChargingPlanStopResult[] = [],
+): StationFeature[] {
+  const seen = new Set<string>()
+  const features: StationFeature[] = []
+  for (const stop of [...originStops, ...stops]) {
+    if (seen.has(stop.station.id)) {
+      continue
+    }
+    seen.add(stop.station.id)
+    features.push(chargingPlanStopToFeature(stop))
+  }
+  return features
 }

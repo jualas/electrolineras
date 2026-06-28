@@ -1,6 +1,8 @@
 import {
   DEFAULT_RESERVE_SOC_PERCENT,
-  estimateRangeKm,
+  estimateChargingReachKm,
+  estimateDisplayedRangeKm,
+  estimatePlanningRangeKm,
   formatVehicleSummary,
   SOC_MAX,
   SOC_MIN,
@@ -32,7 +34,9 @@ export function VehicleProfileFields({
   variant = 'full',
 }: VehicleProfileFieldsProps) {
   const preset = getVehiclePreset(profile.presetId)
-  const rangeKm = estimateRangeKm(profile, preset)
+  const displayedRangeKm = estimateDisplayedRangeKm(profile, preset)
+  const planningRangeKm = estimatePlanningRangeKm(profile, preset)
+  const chargingReachKm = estimateChargingReachKm(profile, preset)
   const summary = formatVehicleSummary(profile)
   const compact = variant === 'compact'
   const advanced = variant === 'advanced'
@@ -54,7 +58,8 @@ export function VehicleProfileFields({
             onChange={(event) => onConsumptionChange(Number(event.target.value))}
           />
           <p className="vehicle-panel__hint">
-            Referencia {preset.referenceWhPerKm} Wh/km · capacidad útil {preset.usableCapacityKwh} kWh
+            Referencia {preset.referenceWhPerKm} Wh/km · {preset.ratedRangeKm} km al 100 % ·{' '}
+            {preset.usableCapacityKwh} kWh útil
           </p>
         </div>
 
@@ -89,13 +94,14 @@ export function VehicleProfileFields({
       )}
       {!compact && (
         <p className="panel-hint">
-          Autonomía estimada con reserva {DEFAULT_RESERVE_SOC_PERCENT} % (~{rangeKm} km). Sin conexión al coche.
+          Cuadro ~{displayedRangeKm} km · plan reserva {DEFAULT_RESERVE_SOC_PERCENT} % (~{planningRangeKm} km) · hasta
+          cargador ≥5 % (~{chargingReachKm} km).
         </p>
       )}
 
       {compact && (
         <p className="charge-vehicle-summary" title={summary}>
-          ~{rangeKm} km de autonomía con reserva {DEFAULT_RESERVE_SOC_PERCENT} %
+          ~{displayedRangeKm} km · hasta cargador ~{chargingReachKm} km
         </p>
       )}
 
@@ -110,7 +116,7 @@ export function VehicleProfileFields({
         >
           {VEHICLE_PRESETS.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.label} · {item.usableCapacityKwh} kWh
+              {item.label} · {item.ratedRangeKm} km · {item.usableCapacityKwh} kWh
             </option>
           ))}
         </select>
@@ -148,7 +154,8 @@ export function VehicleProfileFields({
               onChange={(event) => onConsumptionChange(Number(event.target.value))}
             />
             <p className="vehicle-panel__hint">
-              Referencia {preset.referenceWhPerKm} Wh/km · capacidad útil {preset.usableCapacityKwh} kWh
+              Referencia {preset.referenceWhPerKm} Wh/km · {preset.ratedRangeKm} km al 100 % ·{' '}
+              {preset.usableCapacityKwh} kWh útil
             </p>
           </div>
 

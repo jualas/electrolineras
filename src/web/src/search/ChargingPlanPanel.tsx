@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { fetchChargingPlan, stationLabel } from '../api/chargingPlan'
+import { fetchChargingPlan } from '../api/chargingPlan'
 import type { ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
 import { geocodePlace } from '../api/route'
 import {
   classificationClassName,
   formatClassificationLabel,
 } from '../charging/classificationDisplay'
-import { StationNavActions } from '../components/navigation/StationNavActions'
 import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
 import { VehicleProfilePanel } from '../components/vehicle/VehicleProfilePanel'
 import { VehicleProfileFields } from '../components/vehicle/VehicleProfileFields'
 import { useDeviceLocation } from '../hooks/useDeviceLocation'
-import { StationDynamicBadge } from '../stations/StationDynamicBadge'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
+import { ChargingStopList } from './ChargingStopList'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -46,6 +45,7 @@ export function ChargingPlanPanel({
   onSearchStateChange,
   selectedStationId,
 }: ChargingPlanPanelProps) {
+  const [simulationMode, setSimulationMode] = useState(true)
   const [destText, setDestText] = useState('')
   const [destPoint, setDestPoint] = useState<{ label: string; lat: number; lon: number } | null>(null)
   const [emergencyMode, setEmergencyMode] = useState(false)
@@ -54,6 +54,9 @@ export function ChargingPlanPanel({
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<ChargingPlanResponse | null>(null)
   const [manualOriginText, setManualOriginText] = useState('')
+  const [manualOriginPoint, setManualOriginPoint] = useState<{ label: string; lat: number; lon: number } | null>(
+    null,
+  )
   const lastSearchKeyRef = useRef<string | null>(null)
 
   const locationSearchKey = useCallback(
@@ -70,26 +73,45 @@ export function ChargingPlanPanel({
     refreshGps,
     setManualLocation,
     clearManualOverride,
-  } = useDeviceLocation({ autoStart: true, watch: true })
+  } = useDeviceLocation({ autoStart: !simulationMode, watch: !simulationMode })
 
   useEffect(() => {
     onSearchStateChange?.(status)
   }, [status, onSearchStateChange])
 
-  const runPlan = useCallback(async () => {
-    const origin = gpsLocation
-    if (!origin) {
-      setError('Esperando GPS del teléfono o indica origen manual')
-      setStatus('error')
-      onResults(null)
-      return
+  const resolveSimulationOrigin = useCallback(async () => {
+    if (manualOriginPoint) {
+      return manualOriginPoint
     }
+    const trimmed = manualOriginText.trim()
+    if (!trimmed) {
+      throw new Error('Indica origen en modo simulación')
+    }
+    const geocoded = await geocodePlace(trimmed)
+    const point = { label: geocoded.label, lat: geocoded.lat, lon: geocoded.lon }
+    setManualOriginPoint(point)
+    setManualOriginText(geocoded.label)
+    setManualLocation(point)
+    return point
+  }, [manualOriginPoint, manualOriginText, setManualLocation])
 
+  const runPlan = useCallback(async () => {
     setStatus('loading')
     setError(null)
     onSelectStation?.(null)
 
     try {
+      let origin: { lat: number; lon: number; label: string; source?: string }
+      if (simulationMode) {
+        const resolved = await resolveSimulationOrigin()
+        origin = resolved
+      } else {
+        if (!gpsLocation) {
+          throw new Error('Esperando GPS del teléfono o indica origen manual')
+        }
+        origin = gpsLocation
+      }
+
       let destination = destPoint
       if (!emergencyMode && !destination && destText.trim()) {
         const geocoded = await geocodePlace(destText.trim())
@@ -120,6 +142,7 @@ export function ChargingPlanPanel({
       })
 
       const searchKey = JSON.stringify({
+        simulationMode,
         origin: locationSearchKey(origin),
         dest: emergencyMode ? null : destination,
         vehicleQuery,
@@ -138,12 +161,6 @@ export function ChargingPlanPanel({
       setStatus('error')
       setLastResponse(null)
       onResults(null)
-      if (gpsLocation) {
-        lastSearchKeyRef.current = JSON.stringify({
-          origin: locationSearchKey(gpsLocation),
-          failed: message,
-        })
-      }
     }
   }, [
     corridorKm,
@@ -156,18 +173,30 @@ export function ChargingPlanPanel({
     minKw,
     onResults,
     onSelectStation,
+    resolveSimulationOrigin,
+    simulationMode,
     vehicleProfile,
   ])
 
   useEffect(() => {
+    if (simulationMode) {
+      return
+    }
     if (gpsStatus !== 'active' || !gpsLocation) {
       return
     }
     if (status === 'loading') {
       return
     }
+    if (!lastSearchKeyRef.current) {
+      return
+    }
+    if (!emergencyMode && !destPoint) {
+      return
+    }
     const vehicleQuery = vehicleProfileToChargingPlanQuery(vehicleProfile)
     const searchKey = JSON.stringify({
+      simulationMode,
       origin: locationSearchKey(gpsLocation),
       dest: emergencyMode ? null : destPoint,
       vehicleQuery,
@@ -179,20 +208,17 @@ export function ChargingPlanPanel({
     if (searchKey === lastSearchKeyRef.current) {
       return
     }
-    if (!emergencyMode && !destPoint && !destText.trim()) {
-      return
-    }
     void runPlan()
   }, [
     corridorKm,
     destPoint,
-    destText,
     emergencyMode,
     gpsLocation,
     gpsStatus,
     minKw,
     maxKw,
     runPlan,
+    simulationMode,
     status,
     vehicleProfile,
     locationSearchKey,
@@ -206,15 +232,37 @@ export function ChargingPlanPanel({
   const handleDestSelect = (place: GeocodeResult) => {
     setDestPoint({ label: place.label, lat: place.lat, lon: place.lon })
     setDestText(place.label)
+    lastSearchKeyRef.current = null
   }
 
   const handleManualOriginSelect = (place: GeocodeResult) => {
+    const point = { label: place.label, lat: place.lat, lon: place.lon }
     setManualOriginText(place.label)
-    setManualLocation({ lat: place.lat, lon: place.lon, label: place.label })
+    setManualOriginPoint(point)
+    setManualLocation(point)
+    lastSearchKeyRef.current = null
   }
 
-  const originLabel = gpsLocation?.label ?? (gpsStatus === 'loading' ? 'Obteniendo GPS…' : 'Sin ubicación')
-  const showGpsBanner = isGpsActive || gpsStatus === 'loading'
+  const handleManualOriginChange = (value: string) => {
+    setManualOriginText(value)
+    setManualOriginPoint(null)
+    lastSearchKeyRef.current = null
+  }
+
+  const handleSimulationToggle = (enabled: boolean) => {
+    setSimulationMode(enabled)
+    lastSearchKeyRef.current = null
+    setStatus('idle')
+    setError(null)
+    setLastResponse(null)
+    onResults(null)
+  }
+
+  const originLabel = simulationMode
+    ? manualOriginPoint?.label ?? (manualOriginText.trim() || 'Indica origen')
+    : (gpsLocation?.label ?? (gpsStatus === 'loading' ? 'Obteniendo GPS…' : 'Sin ubicación'))
+  const showGpsBanner = !simulationMode && (isGpsActive || gpsStatus === 'loading')
+  const canSubmit = simulationMode ? manualOriginText.trim().length > 0 : Boolean(gpsLocation)
 
   return (
     <section className="panel search-panel charge-panel" aria-labelledby="charge-plan-heading">
@@ -245,7 +293,9 @@ export function ChargingPlanPanel({
       </details>
 
       <p className="panel-hint charge-panel__hint">
-        Origen: GPS del teléfono (Android Auto). Indica destino y pulsa calcular.
+        {simulationMode
+          ? 'Simula un viaje: origen y destino manuales, SOC y estrategias sin GPS en vivo.'
+          : 'Origen: GPS del teléfono (Android Auto). Indica destino y pulsa calcular.'}
       </p>
 
       {showGpsBanner && (
@@ -265,32 +315,53 @@ export function ChargingPlanPanel({
       )}
 
       <form className="route-form" onSubmit={handleSubmit}>
-        <div className="field">
-          <span className="field__label">Origen (GPS)</span>
-          <p className="charge-origin-readout" title={originLabel}>
-            {originLabel}
-          </p>
-          <div className="charge-origin-actions">
-            <button type="button" className="btn btn--secondary" onClick={refreshGps}>
-              Actualizar GPS
-            </button>
-            {gpsLocation?.source === 'manual' && (
-              <button type="button" className="btn btn--ghost" onClick={clearManualOverride}>
-                Volver a GPS
-              </button>
-            )}
-          </div>
-        </div>
+        <label className="field field--checkbox">
+          <input
+            type="checkbox"
+            checked={simulationMode}
+            onChange={(event) => handleSimulationToggle(event.target.checked)}
+          />
+          <span>Modo simulación (planificar sin GPS en vivo)</span>
+        </label>
 
-        <PlaceAutocomplete
-          id="charge-origin-manual"
-          label="Origen manual (fallback)"
-          value={manualOriginText}
-          placeholder="Solo si el GPS falla"
-          onChange={setManualOriginText}
-          onSelect={handleManualOriginSelect}
-          disabled={status === 'loading'}
-        />
+        {simulationMode ? (
+          <PlaceAutocomplete
+            id="charge-origin-sim"
+            label="Origen"
+            value={manualOriginText}
+            placeholder="Ciudad o dirección de salida"
+            onChange={handleManualOriginChange}
+            onSelect={handleManualOriginSelect}
+          />
+        ) : (
+          <>
+            <div className="field">
+              <span className="field__label">Origen (GPS)</span>
+              <p className="charge-origin-readout" title={originLabel}>
+                {originLabel}
+              </p>
+              <div className="charge-origin-actions">
+                <button type="button" className="btn btn--secondary" onClick={refreshGps}>
+                  Actualizar GPS
+                </button>
+                {gpsLocation?.source === 'manual' && (
+                  <button type="button" className="btn btn--ghost" onClick={clearManualOverride}>
+                    Volver a GPS
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <PlaceAutocomplete
+              id="charge-origin-manual"
+              label="Origen manual (fallback)"
+              value={manualOriginText}
+              placeholder="Solo si el GPS falla"
+              onChange={handleManualOriginChange}
+              onSelect={handleManualOriginSelect}
+            />
+          </>
+        )}
 
         <label className="field field--checkbox">
           <input
@@ -317,7 +388,6 @@ export function ChargingPlanPanel({
                 lastSearchKeyRef.current = null
               }}
               onSelect={handleDestSelect}
-              disabled={status === 'loading'}
             />
 
             <label className="field">
@@ -336,8 +406,8 @@ export function ChargingPlanPanel({
         )}
 
         <div className="route-form__actions">
-          <button type="submit" className="btn btn--primary" disabled={status === 'loading' || !gpsLocation}>
-            {status === 'loading' ? 'Calculando plan…' : 'Calcular plan de carga'}
+          <button type="submit" className="btn btn--primary" disabled={status === 'loading' || !canSubmit}>
+            {status === 'loading' ? 'Calculando plan…' : simulationMode ? 'Simular plan de carga' : 'Calcular plan de carga'}
           </button>
         </div>
       </form>
@@ -355,10 +425,18 @@ export function ChargingPlanPanel({
           <div className="charge-summary">
             <p className="route-summary__meta">
               {lastResponse.mode === 'emergency' ? (
-                <>Modo emergencia · alcance {lastResponse.range_km} km</>
+                <>
+                  Modo emergencia · hasta cargador {lastResponse.charging_reach_km} km
+                  {lastResponse.route_distance_km != null && (
+                    <> · ruta al más cercano {lastResponse.route_distance_km.toFixed(1)} km</>
+                  )}
+                </>
               ) : (
                 <>
-                  Ruta {lastResponse.route_distance_km?.toFixed(0)} km · alcance {lastResponse.range_km} km
+                  Ruta {lastResponse.route_distance_km?.toFixed(0)} km · hasta cargador {lastResponse.charging_reach_km} km
+                  {lastResponse.range_km < lastResponse.charging_reach_km && (
+                    <> · plan reserva {lastResponse.range_km} km</>
+                  )}
                   {lastResponse.reachable_without_stop ? ' · llegas sin parar' : ''}
                   {lastResponse.soc_at_destination_pct != null && !lastResponse.reachable_without_stop && (
                     <> · ~{lastResponse.soc_at_destination_pct.toFixed(0)} % SOC al destino</>
@@ -386,50 +464,78 @@ export function ChargingPlanPanel({
             ))}
           </div>
 
-          {lastResponse.stops.length === 0 ? (
-            <p className="route-message">No hay paradas viables con el SOC y filtros actuales.</p>
-          ) : (
-            <ol className="route-results" aria-label="Paradas del plan de carga">
-              {lastResponse.stops.map((item, index) => (
-                <li key={item.station.id} className="route-result-card">
-                  <button
-                    type="button"
-                    className={`route-result ${selectedStationId === item.station.id ? 'route-result--active' : ''}`}
-                    onClick={() => onSelectStation?.(item.station)}
-                  >
-                    <div className="route-result__head">
-                      <span className="route-result__rank">{index + 1}</span>
-                      <div>
-                        <p className="route-result__title">{stationLabel(item.station)}</p>
-                        <p className="route-result__operator">{item.station.operator ?? '—'}</p>
-                      </div>
-                    </div>
-                    <span className={classificationClassName(item.classification, 'charging-class')}>
-                      {formatClassificationLabel(item.classification)} · {item.soc_arrival_pct.toFixed(0)} % SOC
-                    </span>
-                    <p className="route-result__meta">
-                      <strong>{item.station.max_power_kw.toFixed(0)} kW</strong>
-                      · +{item.deviation_km.toFixed(1)} km desvío
-                      {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
-                    </p>
-                    <StationDynamicBadge
-                      status={item.station.dynamic_status}
-                      priceEurKwh={item.station.dynamic_price_eur_kwh}
-                      className="route-result__dynamic station-dynamic"
-                    />
-                    <p className="route-result__dist">
-                      A {item.distance_from_origin_km.toFixed(0)} km desde el origen
-                    </p>
-                  </button>
-                  <StationNavActions
-                    lat={item.station.location.lat}
-                    lon={item.station.location.lon}
-                    label={stationLabel(item.station)}
-                    compact
+          {lastResponse.mode === 'emergency' ? (
+            <>
+              {lastResponse.stops.some((stop) => stop.classification !== 'unreachable') ? (
+                <>
+                  <h3 className="charge-section-title">Alcanzables desde tu posición</h3>
+                  <ChargingStopList
+                    stops={lastResponse.stops.filter((stop) => stop.classification !== 'unreachable')}
+                    selectedStationId={selectedStationId}
+                    onSelectStation={onSelectStation}
+                    ariaLabel="Cargadores alcanzables"
+                    showRouteDeviation={false}
+                    distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km desde la salida`}
                   />
-                </li>
-              ))}
-            </ol>
+                </>
+              ) : null}
+              {lastResponse.stops.some((stop) => stop.classification === 'unreachable') ? (
+                <>
+                  <h3 className="charge-section-title">
+                    {lastResponse.stops.some((stop) => stop.classification !== 'unreachable')
+                      ? 'Otros cercanos'
+                      : 'Más cercanos (fuera de alcance actual)'}
+                  </h3>
+                  <p className="panel-hint charge-section-hint">
+                    Tu alcance hasta cargador es {lastResponse.charging_reach_km} km. Los listados están más lejos;
+                    la ruta en el mapa muestra el camino al más cercano.
+                  </p>
+                  <ChargingStopList
+                    stops={lastResponse.stops.filter((stop) => stop.classification === 'unreachable')}
+                    selectedStationId={selectedStationId}
+                    onSelectStation={onSelectStation}
+                    ariaLabel="Cargadores fuera de alcance"
+                    showRouteDeviation={false}
+                    distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km desde la salida`}
+                  />
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {lastResponse.origin_stops.length > 0 && (
+                <>
+                  <h3 className="charge-section-title">Desde tu salida (por distancia)</h3>
+                  <p className="panel-hint charge-section-hint">
+                    Cargadores alcanzables desde el origen con tu SOC actual. Útiles si no llegas a los de la ruta.
+                  </p>
+                  <ChargingStopList
+                    stops={lastResponse.origin_stops}
+                    selectedStationId={selectedStationId}
+                    onSelectStation={onSelectStation}
+                    ariaLabel="Cargadores desde el origen"
+                    showRouteDeviation={false}
+                    distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km desde la salida`}
+                  />
+                </>
+              )}
+
+              <h3 className="charge-section-title">En la ruta (corredor)</h3>
+              {lastResponse.stops.length === 0 ? (
+                <p className="route-message">
+                  No hay paradas en el corredor alcanzables con el SOC actual. Revisa la sección anterior o baja el
+                  filtro de kW.
+                </p>
+              ) : (
+                <ChargingStopList
+                  stops={lastResponse.stops}
+                  selectedStationId={selectedStationId}
+                  onSelectStation={onSelectStation}
+                  ariaLabel="Paradas en la ruta"
+                  showRouteDeviation
+                />
+              )}
+            </>
           )}
         </>
       )}

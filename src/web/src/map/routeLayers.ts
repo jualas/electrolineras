@@ -252,3 +252,19 @@ export function fitMapToRoute(map: maplibregl.Map, geometry: RouteLineGeometry, 
   }
   map.fitBounds(bounds, { padding, maxZoom: 11, duration: 800 })
 }
+
+export function fitMapToPoints(
+  map: maplibregl.Map,
+  points: LatLon[],
+  padding = 56,
+  maxZoom = 11,
+): void {
+  if (points.length === 0) {
+    return
+  }
+  const bounds = new maplibregl.LngLatBounds()
+  for (const point of points) {
+    bounds.extend([point.lon, point.lat])
+  }
+  map.fitBounds(bounds, { padding, maxZoom, duration: 800 })
+}

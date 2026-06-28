@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { checkApiHealth } from '../../api/client'
-import type { AlongRouteResponse, ChargingPlanResponse, MapBounds, NearbyResponse, Station } from '../../api/types'
+import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, NearbyResponse, Station } from '../../api/types'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
@@ -29,6 +29,7 @@ export function AppShell() {
   const [mode, setMode] = useState<SearchMode>('map')
   const [apiOk, setApiOk] = useState(false)
   const [routeData, setRouteData] = useState<AlongRouteResponse | null>(null)
+  const [routeChargePlanData, setRouteChargePlanData] = useState<ChargingPlanResponse | null>(null)
   const [routeSearching, setRouteSearching] = useState(false)
   const [chargePlanData, setChargePlanData] = useState<ChargingPlanResponse | null>(null)
   const [chargePlanSearching, setChargePlanSearching] = useState(false)
@@ -37,6 +38,7 @@ export function AppShell() {
   const [cityPickMode, setCityPickMode] = useState(false)
   const [cityMapPin, setCityMapPin] = useState<{ label: string; lat: number; lon: number } | null>(null)
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
+  const [mapFocusPlace, setMapFocusPlace] = useState<GeocodeResult | null>(null)
   const mapBoundsGetterRef = useRef<(() => MapBounds | null) | null>(null)
   const { filter, setPreset, setCustomRange, apiQuery } = usePowerFilter('all')
   const {
@@ -59,6 +61,7 @@ export function AppShell() {
     }
     if (nextMode !== 'route') {
       setRouteData(null)
+      setRouteChargePlanData(null)
       setRouteSearching(false)
     }
     if (nextMode !== 'charge') {
@@ -71,12 +74,19 @@ export function AppShell() {
       setCityPickMode(false)
       setCityMapPin(null)
     }
+    if (nextMode !== 'map') {
+      setMapFocusPlace(null)
+    }
     setSelectedStation(null)
   }
 
   const handleRouteResults = useCallback((response: AlongRouteResponse | null) => {
     setRouteData(response)
     setSelectedStation(null)
+  }, [])
+
+  const handleRouteChargePlanResults = useCallback((response: ChargingPlanResponse | null) => {
+    setRouteChargePlanData(response)
   }, [])
 
   const handleRouteSearchStateChange = useCallback((status: 'idle' | 'loading' | 'ready' | 'error') => {
@@ -107,6 +117,11 @@ export function AppShell() {
       lat,
       lon,
     })
+  }, [])
+
+  const handleMapFocusPlace = useCallback((place: GeocodeResult | null) => {
+    setMapFocusPlace(place)
+    setSelectedStation(null)
   }, [])
 
   const handleRegisterMapBounds = useCallback((getter: (() => MapBounds | null) | null) => {
@@ -155,12 +170,14 @@ export function AppShell() {
           minKw={apiQuery.minKw}
           maxKw={apiQuery.maxKw}
           routeData={mode === 'route' ? routeData : null}
+          routeChargePlanData={mode === 'route' ? routeChargePlanData : null}
           routeSearching={mode === 'route' && routeSearching}
           chargePlanData={mode === 'charge' ? chargePlanData : null}
           chargePlanSearching={mode === 'charge' && chargePlanSearching}
           cityData={mode === 'city' ? cityData : null}
           citySearching={mode === 'city' && citySearching}
           focusStation={mode !== 'map' ? selectedStation : null}
+          mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
           cityPickMode={mode === 'city' && cityPickMode}
           onCityMapPick={handleCityMapPick}
           onRegisterMapBounds={handleRegisterMapBounds}
@@ -176,6 +193,7 @@ export function AppShell() {
             minKw={apiQuery.minKw}
             maxKw={apiQuery.maxKw}
             onRouteResults={handleRouteResults}
+            onRouteChargePlanResults={handleRouteChargePlanResults}
             onRouteSelectStation={setSelectedStation}
             onRouteSearchStateChange={handleRouteSearchStateChange}
             onChargePlanResults={handleChargePlanResults}
@@ -186,6 +204,7 @@ export function AppShell() {
             onCitySearchStateChange={handleCitySearchStateChange}
             onCityPickModeChange={setCityPickMode}
             onRequestMapBounds={requestMapBounds}
+            onMapFocusPlace={handleMapFocusPlace}
             cityMapPin={cityMapPin}
             selectedStationId={selectedStation?.id ?? null}
           />
