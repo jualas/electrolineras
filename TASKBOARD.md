@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-06-25T21:10:08Z -->
+<!-- taskboard-exported-at: 2026-06-28T15:58:23Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-06-25 21:10 UTC  
-**Git:** `main` @ `3b03ca7`  
+**Exportado:** 2026-06-28 15:58 UTC  
+**Git:** `main` @ `6582b686`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,8 +23,8 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 15 |
-| Completada (`completed`) | 23 |
+| Pendiente (`pending`) | 12 |
+| Completada (`completed`) | 26 |
 
 ---
 
@@ -165,36 +165,6 @@ Para #6030 en prod: desplegar Nominatim self-hosted (ES+PT) o definir proveedor 
 
 ---
 
-<a id="task-6047"></a>
-### [#6047] Prod — Runbook y docs/DEPLOYMENT.md
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6047` |
-| Estado | `pending` |
-| Complejidad | simple |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-06-24 18:40 UTC |
-
-Documento operativo: requisitos VPS (CPU/RAM/disco), pasos primer despliegue, actualizar OSRM mapa, restaurar backup, rotar secretos, checklist pre-go-live. Enlazar desde README y STATUS.md (Fase prod).
-
----
-
-<a id="task-6051"></a>
-### [#6051] Fase 2 — UI optimizada navegador Tesla
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6051` |
-| Estado | `pending` |
-| Complejidad | media |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-06-25 18:31 UTC |
-
-Contraste alto, targets táctiles grandes, modo conducción (pocos clics), pruebas en viewport Tesla.
-
----
-
 <a id="task-6052"></a>
 ### [#6052] Prod — Activación host post-#6040 (logrotate + webhook)
 
@@ -207,21 +177,6 @@ Contraste alto, targets táctiles grandes, modo conducción (pocos clics), prueb
 | Actualizado | 2026-06-25 19:56 UTC |
 
 Pasos manuales en mini PC pendientes tras cerrar #6040 (scripts/cron ya desplegados): (1) instalar logrotate — `sudo cp scripts/cron/logrotate.electrolineras.example /etc/logrotate.d/electrolineras`; (2) configurar `INGEST_WEBHOOK_URL` en `scripts/cron/electrolineras.env` y probar POST en fallo simulado; (3) documentar en runbook (#6047). Complementa #6045 (monitoring integral). Ver DEPLOYMENT.md §5.
-
----
-
-<a id="task-6056"></a>
-### [#6056] Fase 3 — Contrato API/tools agente plan de carga (OpenAPI)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6056` |
-| Estado | `pending` |
-| Complejidad | media |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-06-25 20:48 UTC |
-
-Diseñar e implementar el contrato estable para que Dify (mini PC) invoque el motor de #6054 sin recalcular SOC: endpoints/tools documentados en OpenAPI (p. ej. get_route_alternatives, score_charging_plan, list_viable_stops). Salida JSON Schema estricta (route_id, station_ids, strategy, soc_arrival_pct, classification). Prerrequisito: #6054 cerrado. Documentar en docs/EV_RANGE_PLAN.md § Fase 3. Auth: red interna o token de servicio.
 
 ---
 
@@ -528,6 +483,21 @@ Activar cron/systemd en producción para ingest-es (diario) e ingest-pt (cada 6�
 
 ---
 
+<a id="task-6047"></a>
+### [#6047] Prod — Runbook y docs/DEPLOYMENT.md
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6047` |
+| Estado | `completed` |
+| Complejidad | simple |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-06-28 15:58 UTC |
+
+Documento operativo: requisitos VPS (CPU/RAM/disco), pasos primer despliegue, actualizar OSRM mapa, restaurar backup, rotar secretos, checklist pre-go-live. Enlazar desde README y STATUS.md (Fase prod).
+
+---
+
 <a id="task-6048"></a>
 ### [#6048] Fase 2 — Cliente API pública REVE (mapareve.es)
 
@@ -573,6 +543,21 @@ Exponer dynamic_status, dynamic_price en API/GeoJSON. Popup del mapa con badge d
 
 ---
 
+<a id="task-6051"></a>
+### [#6051] Fase 2 — UI optimizada navegador Tesla
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6051` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-06-28 15:58 UTC |
+
+Contraste alto, targets táctiles grandes, modo conducción (pocos clics), pruebas en viewport Tesla.
+
+---
+
 <a id="task-6053"></a>
 ### [#6053] Fase 2 — Perfil vehículo genérico (presets + SOC manual)
 
@@ -615,6 +600,21 @@ Motor de viabilidad de carga para cualquier viaje EV (no solo sierra): dado orig
 | Actualizado | 2026-06-25 21:10 UTC |
 
 UI «Plan de carga» en web móvil: origen vía GPS (navigator.geolocation, reutilizar patrón RouteSearchPanel) o manual; SOC % y preset vehículo manual (#6053); destino y preset potencia; presentar 2–3 estrategias comparables (cargar ya / siguiente parada segura / alternativa más rápida, barata o por ruta secundaria). Mapa: corredor, autonomía restante, badges crítico/ok; lista con SOC estimado al llegar, desvío km, kW, €/kWh y disponibilidad REVE. Alertas antes de quedar sin opción viable. Navegación externa (#6036). Sin conexión al coche. Sinergia con #6051 (viewport Tesla browser). Depende de #6053 y #6054.
+
+---
+
+<a id="task-6056"></a>
+### [#6056] Fase 3 — Contrato API/tools agente plan de carga (OpenAPI)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6056` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-06-28 15:58 UTC |
+
+Diseñar e implementar el contrato estable para que Dify (mini PC) invoque el motor de #6054 sin recalcular SOC: endpoints/tools documentados en OpenAPI (p. ej. get_route_alternatives, score_charging_plan, list_viable_stops). Salida JSON Schema estricta (route_id, station_ids, strategy, soc_arrival_pct, classification). Prerrequisito: #6054 cerrado. Documentar en docs/EV_RANGE_PLAN.md § Fase 3. Auth: red interna o token de servicio.
 
 ---
 
