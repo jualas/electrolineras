@@ -8,7 +8,7 @@
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
 **Exportado:** 2026-06-28 15:58 UTC  
-**Git:** `main` @ `6582b686`  
+**Git:** `main` @ `a72f8af`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
