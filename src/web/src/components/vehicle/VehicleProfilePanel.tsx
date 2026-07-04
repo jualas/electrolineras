@@ -10,6 +10,8 @@ type VehicleProfilePanelProps = {
   onTerrainChange: (terrainFactorId: TerrainFactorId) => void
   variant?: 'full' | 'compact' | 'advanced'
   className?: string
+  socReadOnly?: boolean
+  socSourceLabel?: string
 }
 
 export function VehicleProfilePanel({
@@ -20,6 +22,8 @@ export function VehicleProfilePanel({
   onTerrainChange,
   variant = 'full',
   className,
+  socReadOnly,
+  socSourceLabel,
 }: VehicleProfilePanelProps) {
   const compact = variant === 'compact'
   const advanced = variant === 'advanced'
@@ -50,6 +54,8 @@ export function VehicleProfilePanel({
         onConsumptionChange={onConsumptionChange}
         onTerrainChange={onTerrainChange}
         variant={variant}
+        socReadOnly={socReadOnly}
+        socSourceLabel={socSourceLabel}
       />
     </section>
   )

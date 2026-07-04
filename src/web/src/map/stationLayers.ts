@@ -9,6 +9,7 @@ export const STATIONS_SOURCE_ID = 'stations'
 export const CLUSTER_LAYER_ID = 'station-clusters'
 export const CLUSTER_COUNT_LAYER_ID = 'station-cluster-count'
 export const POINT_LAYER_ID = 'station-points'
+export const PLANNED_STOP_LABEL_LAYER_ID = 'planned-stop-labels'
 
 type ThemeMode = 'light' | 'dark'
 
@@ -38,6 +39,8 @@ function pointColorExpression(theme: ThemeMode): maplibregl.ExpressionSpecificat
   const colors = palette(theme)
   return [
     'case',
+    ['has', 'planned_stop_order'],
+    '#2563eb',
     ['has', 'charging_classification'],
     [
       'match',
@@ -119,10 +122,31 @@ export function ensureStationLayers(map: maplibregl.Map, theme: ThemeMode): void
     filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-color': pointColorExpression(theme),
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7, 14, 10],
-      'circle-stroke-width': 1.5,
+      'circle-radius': [
+        'case',
+        ['has', 'planned_stop_order'],
+        ['interpolate', ['linear'], ['zoom'], 6, 7, 10, 11, 14, 14],
+        ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7, 14, 10],
+      ],
+      'circle-stroke-width': ['case', ['has', 'planned_stop_order'], 2.5, 1.5],
       'circle-stroke-color': colors.pointStroke,
       'circle-opacity': 0.92,
+    },
+  })
+
+  map.addLayer({
+    id: PLANNED_STOP_LABEL_LAYER_ID,
+    type: 'symbol',
+    source: STATIONS_SOURCE_ID,
+    filter: ['all', ['!', ['has', 'point_count']], ['has', 'planned_stop_order']],
+    layout: {
+      'text-field': ['to-string', ['get', 'planned_stop_order']],
+      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+      'text-size': 11,
+      'text-allow-overlap': true,
+    },
+    paint: {
+      'text-color': '#ffffff',
     },
   })
 }
@@ -137,6 +161,9 @@ export function updateStationLayerTheme(map: maplibregl.Map, theme: ThemeMode): 
   map.setPaintProperty(CLUSTER_COUNT_LAYER_ID, 'text-color', colors.clusterText)
   map.setPaintProperty(POINT_LAYER_ID, 'circle-color', pointColorExpression(theme))
   map.setPaintProperty(POINT_LAYER_ID, 'circle-stroke-color', colors.pointStroke)
+  if (map.getLayer(PLANNED_STOP_LABEL_LAYER_ID)) {
+    map.setPaintProperty(PLANNED_STOP_LABEL_LAYER_ID, 'text-color', '#ffffff')
+  }
 }
 
 export function setStationData(map: maplibregl.Map, data: FeatureCollection): void {
@@ -169,11 +196,14 @@ export function stationPopupHtml(
   const dynamicPrice = properties.dynamic_price_eur_kwh
   const chargingClass = properties.charging_classification ? String(properties.charging_classification) : ''
   const socArrival = properties.soc_arrival_pct
+  const plannedOrder = properties.planned_stop_order
+  const socDeparture = properties.soc_departure_pct
+  const chargeMinutes = properties.charge_minutes
 
   const addressLine = address ? `<p class="station-popup__address">${address}</p>` : ''
   const dynamicLine = formatDynamicLine(dynamicStatus, dynamicPrice)
   const externalLine = formatExternalReviewsLine(properties)
-  const chargeLine = formatChargeLine(chargingClass, socArrival)
+  const chargeLine = formatChargeLine(chargingClass, socArrival, plannedOrder, socDeparture, chargeMinutes)
   const navLine = coords ? navigationPopupHtml(coords.lat, coords.lon) : ''
 
   return `
@@ -193,15 +223,34 @@ export function stationPopupHtml(
   `
 }
 
-function formatChargeLine(classification: string, socArrival: unknown): string {
-  if (!classification) {
+function formatChargeLine(
+  classification: string,
+  socArrival: unknown,
+  plannedOrder: unknown,
+  socDeparture: unknown,
+  chargeMinutes: unknown,
+): string {
+  if (!classification && plannedOrder == null) {
     return ''
   }
+  const orderText =
+    plannedOrder != null && !Number.isNaN(Number(plannedOrder))
+      ? `<strong>Parada ${Number(plannedOrder)}</strong> · `
+      : ''
   const socText =
     socArrival !== null && socArrival !== undefined && !Number.isNaN(Number(socArrival))
-      ? ` · ${Number(socArrival).toFixed(0)} % SOC`
+      ? ` llegada ${Number(socArrival).toFixed(0)} %`
       : ''
-  return `<p class="station-popup__charge"><strong>${escapeHtml(classification)}</strong>${socText}</p>`
+  const departureText =
+    socDeparture !== null && socDeparture !== undefined && !Number.isNaN(Number(socDeparture))
+      ? ` · salida ${Number(socDeparture).toFixed(0)} %`
+      : ''
+  const chargeText =
+    chargeMinutes !== null && chargeMinutes !== undefined && Number(chargeMinutes) > 0
+      ? ` · ~${Number(chargeMinutes).toFixed(0)} min carga`
+      : ''
+  const classText = classification ? escapeHtml(classification) : 'planificada'
+  return `<p class="station-popup__charge">${orderText}${classText}${socText}${departureText}${chargeText}</p>`
 }
 
 function parseExternalComments(raw: unknown): Array<Record<string, unknown>> {

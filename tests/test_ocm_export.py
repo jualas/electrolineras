@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from ingest.ocm_export import iter_pois_from_export
 
 

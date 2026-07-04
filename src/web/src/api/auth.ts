@@ -1,0 +1,142 @@
+import type { AuthConfigResponse, AuthSessionResponse } from '../api/types'
+
+import { fetchApi } from './client'
+import { chargingPreferencesToQueryParams } from '../charging/chargingPreferences'
+
+export async function fetchAuthConfig(): Promise<AuthConfigResponse> {
+  return fetchApi<AuthConfigResponse>('/api/v1/auth/config')
+}
+
+export async function fetchAuthSession(): Promise<AuthSessionResponse> {
+  return fetchApi<AuthSessionResponse>('/api/v1/auth/session')
+}
+
+export async function loginWithTotp(password: string, totpCode: string): Promise<void> {
+  await fetchApi('/api/v1/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password, totp_code: totpCode }),
+  })
+}
+
+export async function logoutSession(): Promise<void> {
+  await fetchApi('/api/v1/auth/logout', { method: 'POST' })
+}
+
+export async function fetchVehicleState(): Promise<import('../api/types').VehicleTelemetryResult> {
+  return fetchApi('/api/v1/private/vehicle/state')
+}
+
+export async function fetchTripAdviceFromCar(params: {
+  destLat: number
+  destLon: number
+  terrainFactor?: number
+  reserveSocPercent?: number
+  localMobilityKm?: number
+  includeRoute?: boolean
+  routePreference?: import('./types').RoutePreference
+  avoidHighways?: boolean
+  departureSocPercent?: number
+  preferredOperators?: string[]
+  maxPriceEurKwh?: number | null
+}): Promise<import('../api/types').TripAdviceResponse> {
+  const query = new URLSearchParams({
+    dest_lat: String(params.destLat),
+    dest_lon: String(params.destLon),
+  })
+  if (params.terrainFactor != null) {
+    query.set('terrain_factor', String(params.terrainFactor))
+  }
+  if (params.reserveSocPercent != null) {
+    query.set('reserve_soc_percent', String(params.reserveSocPercent))
+  }
+  if (params.localMobilityKm != null) {
+    query.set('local_mobility_km', String(params.localMobilityKm))
+  }
+  if (params.includeRoute) {
+    query.set('include_route', 'true')
+  }
+  if (params.routePreference) {
+    query.set('route_preference', params.routePreference)
+  }
+  if (params.avoidHighways) {
+    query.set('avoid_highways', 'true')
+  }
+  if (params.departureSocPercent != null) {
+    query.set('departure_soc_percent', String(params.departureSocPercent))
+  }
+  for (const [key, value] of Object.entries(
+    chargingPreferencesToQueryParams({
+      preferredOperators: params.preferredOperators ?? [],
+      maxPriceEurKwh: params.maxPriceEurKwh ?? null,
+    }),
+  )) {
+    query.set(key, value)
+  }
+  return fetchApi(`/api/v1/private/trip-advice-from-car?${query}`)
+}
+
+export async function fetchTripGuideFromCar(params: {
+  destLat: number
+  destLon: number
+  destLabel?: string
+  terrainFactor?: number
+  reserveSocPercent?: number
+  localMobilityKm?: number
+  includeRoute?: boolean
+  culturalPoi?: boolean
+  invokeDify?: boolean
+  userNote?: string
+  routePreference?: import('./types').RoutePreference
+  avoidHighways?: boolean
+  departureSocPercent?: number
+  preferredOperators?: string[]
+  maxPriceEurKwh?: number | null
+}): Promise<import('../api/types').TripGuideResponse> {
+  const query = new URLSearchParams({
+    dest_lat: String(params.destLat),
+    dest_lon: String(params.destLon),
+  })
+  if (params.destLabel) {
+    query.set('dest_label', params.destLabel)
+  }
+  if (params.terrainFactor != null) {
+    query.set('terrain_factor', String(params.terrainFactor))
+  }
+  if (params.reserveSocPercent != null) {
+    query.set('reserve_soc_percent', String(params.reserveSocPercent))
+  }
+  if (params.localMobilityKm != null) {
+    query.set('local_mobility_km', String(params.localMobilityKm))
+  }
+  if (params.includeRoute) {
+    query.set('include_route', 'true')
+  }
+  if (params.culturalPoi === false) {
+    query.set('cultural_poi', 'false')
+  }
+  if (params.invokeDify === false) {
+    query.set('invoke_dify', 'false')
+  }
+  if (params.userNote) {
+    query.set('user_note', params.userNote)
+  }
+  if (params.routePreference) {
+    query.set('route_preference', params.routePreference)
+  }
+  if (params.avoidHighways) {
+    query.set('avoid_highways', 'true')
+  }
+  if (params.departureSocPercent != null) {
+    query.set('departure_soc_percent', String(params.departureSocPercent))
+  }
+  for (const [key, value] of Object.entries(
+    chargingPreferencesToQueryParams({
+      preferredOperators: params.preferredOperators ?? [],
+      maxPriceEurKwh: params.maxPriceEurKwh ?? null,
+    }),
+  )) {
+    query.set(key, value)
+  }
+  return fetchApi(`/api/v1/private/trip-guide-from-car?${query}`)
+}

@@ -1,5 +1,5 @@
 import { fetchApi } from './client'
-import type { AlongRouteResponse, GeocodeResult, NearbyReferenceResponse, Station } from './types'
+import type { AlongRouteResponse, GeocodeResult, NearbyReferenceResponse, RoutePreference, Station } from './types'
 import { stationToFeature } from './stationFeature'
 
 export type AlongRouteQuery = {
@@ -11,6 +11,8 @@ export type AlongRouteQuery = {
   maxKw?: number
   corridorKm?: number
   limit?: number
+  routePreference?: RoutePreference
+  avoidHighways?: boolean
 }
 
 export async function geocodePlace(query: string): Promise<GeocodeResult> {
@@ -59,6 +61,12 @@ export async function fetchAlongRoute(
   }
   if (query.limit !== undefined) {
     params.set('limit', String(query.limit))
+  }
+  if (query.routePreference !== undefined) {
+    params.set('route_preference', query.routePreference)
+  }
+  if (query.avoidHighways) {
+    params.set('avoid_highways', 'true')
   }
 
   return fetchApi<AlongRouteResponse>(`/api/v1/stations/along-route?${params.toString()}`, init)

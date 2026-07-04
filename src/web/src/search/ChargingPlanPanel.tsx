@@ -3,20 +3,32 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchChargingPlan } from '../api/chargingPlan'
 import type { ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
 import { geocodePlace } from '../api/route'
-import {
-  classificationClassName,
-  formatClassificationLabel,
-} from '../charging/classificationDisplay'
+import { VehicleTelemetryStrip } from '../components/vehicle/VehicleTelemetryStrip'
 import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
+import { getTerrainFactor } from '../vehicle/vehiclePresets'
 import { VehicleProfilePanel } from '../components/vehicle/VehicleProfilePanel'
 import { VehicleProfileFields } from '../components/vehicle/VehicleProfileFields'
 import { useDeviceLocation } from '../hooks/useDeviceLocation'
+import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
+import { LoginPanel } from '../auth/LoginPanel'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
-import { ChargingStopList } from './ChargingStopList'
+import {
+  carOriginFromTelemetry,
+  telemetryToChargingPlanQuery,
+} from '../vehicle/telemetryProfile'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
+import { RoutePreferenceFields } from './RoutePreferenceFields'
+import { ChargingPreferenceFields } from './ChargingPreferenceFields'
+import { buildPlanSearchKey } from '../charging/planSearchKey'
+import { useActiveTrip } from '../hooks/useActiveTrip'
+import { ChargingPlanResults } from './ChargingPlanResults'
+import { ReplanOnRouteBar } from './ReplanOnRouteBar'
+import { useChargingPreferences } from '../hooks/useChargingPreferences'
+import type { RoutePreference } from '../api/types'
 
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error'
+type OriginMode = 'car' | 'gps' | 'simulation'
 
 type ChargingPlanPanelProps = {
   vehicleProfile: VehicleProfile
@@ -45,11 +57,14 @@ export function ChargingPlanPanel({
   onSearchStateChange,
   selectedStationId,
 }: ChargingPlanPanelProps) {
-  const [simulationMode, setSimulationMode] = useState(true)
+  const [originMode, setOriginMode] = useState<OriginMode>('simulation')
+  const originModeTouchedRef = useRef(false)
   const [destText, setDestText] = useState('')
   const [destPoint, setDestPoint] = useState<{ label: string; lat: number; lon: number } | null>(null)
   const [emergencyMode, setEmergencyMode] = useState(false)
   const [corridorKm, setCorridorKm] = useState(10)
+  const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
+  const [avoidTolls, setAvoidTolls] = useState(false)
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<ChargingPlanResponse | null>(null)
@@ -58,12 +73,58 @@ export function ChargingPlanPanel({
     null,
   )
   const lastSearchKeyRef = useRef<string | null>(null)
+  const recalcOnPreferenceRef = useRef(false)
+  const tripRestoredRef = useRef(false)
+  const { preferences: chargingPreferences, toggleOperator, setMaxPriceEurKwh } = useChargingPreferences()
+  const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow } = useActiveTrip()
 
-  const locationSearchKey = useCallback(
-    (point: { lat: number; lon: number; source?: string }) =>
-      `${point.lat.toFixed(3)},${point.lon.toFixed(3)},${point.source ?? 'gps'}`,
-    [],
-  )
+  const {
+    vehicle: carTelemetry,
+    loading: carTelemetryLoading,
+    error: carTelemetryError,
+    refresh: refreshCarTelemetry,
+    available: carTelemetryAvailable,
+    authenticated,
+    privateStackEnabled,
+    loginEnabled,
+    authLoading,
+  } = useVehicleTelemetry({
+    syncSoc: true,
+    currentSocPercent: vehicleProfile.socPercent,
+    onSocChange: onVehicleSocChange,
+    pollIntervalMs: TELEMETRY_POLL_INTERVAL_MS,
+  })
+
+  const simulationMode = originMode === 'simulation'
+  const useCarOrigin = originMode === 'car' && carTelemetryAvailable
+
+  useEffect(() => {
+    if (!carTelemetryAvailable || originModeTouchedRef.current) {
+      return
+    }
+    setOriginMode('car')
+  }, [carTelemetryAvailable])
+
+  useEffect(() => {
+    if (tripRestoredRef.current || !activeTrip || destPoint) {
+      return
+    }
+    tripRestoredRef.current = true
+    setDestPoint(activeTrip.destination)
+    setDestText(activeTrip.destination.label)
+    setCorridorKm(activeTrip.corridorKm)
+    setRoutePreference(activeTrip.routePreference)
+    setAvoidTolls(activeTrip.avoidTolls)
+    if (carTelemetryAvailable && activeTrip.originMode === 'car') {
+      setOriginMode('car')
+    } else if (activeTrip.originMode === 'gps') {
+      setOriginMode('gps')
+    }
+  }, [activeTrip, carTelemetryAvailable, destPoint])
+
+  useEffect(() => {
+    onSearchStateChange?.(status)
+  }, [status, onSearchStateChange])
 
   const {
     location: gpsLocation,
@@ -73,11 +134,21 @@ export function ChargingPlanPanel({
     refreshGps,
     setManualLocation,
     clearManualOverride,
-  } = useDeviceLocation({ autoStart: !simulationMode, watch: !simulationMode })
+  } = useDeviceLocation({ autoStart: originMode === 'gps', watch: originMode === 'gps' })
 
-  useEffect(() => {
-    onSearchStateChange?.(status)
-  }, [status, onSearchStateChange])
+  const resolveVehicleQuery = useCallback(() => {
+    const terrain = getTerrainFactor(vehicleProfile.terrainFactorId)
+    if (carTelemetryAvailable && carTelemetry) {
+      return telemetryToChargingPlanQuery(
+        carTelemetry,
+        terrain.factor,
+        undefined,
+        undefined,
+        vehicleProfile.presetId,
+      )
+    }
+    return vehicleProfileToChargingPlanQuery(vehicleProfile)
+  }, [carTelemetry, carTelemetryAvailable, vehicleProfile])
 
   const resolveSimulationOrigin = useCallback(async () => {
     if (manualOriginPoint) {
@@ -102,7 +173,9 @@ export function ChargingPlanPanel({
 
     try {
       let origin: { lat: number; lon: number; label: string; source?: string }
-      if (simulationMode) {
+      if (useCarOrigin && carTelemetry) {
+        origin = carOriginFromTelemetry(carTelemetry)
+      } else if (simulationMode) {
         const resolved = await resolveSimulationOrigin()
         origin = resolved
       } else {
@@ -124,7 +197,7 @@ export function ChargingPlanPanel({
         throw new Error('Indica destino o activa modo emergencia')
       }
 
-      const vehicleQuery = vehicleProfileToChargingPlanQuery(vehicleProfile)
+      const vehicleQuery = resolveVehicleQuery()
       const response = await fetchChargingPlan({
         originLat: origin.lat,
         originLon: origin.lon,
@@ -139,22 +212,47 @@ export function ChargingPlanPanel({
         maxKw,
         corridorKm: emergencyMode ? undefined : corridorKm,
         limit: 15,
+        routePreference: emergencyMode ? undefined : routePreference,
+        avoidHighways: emergencyMode ? undefined : avoidTolls,
+        vehiclePresetId: vehicleQuery.vehicle_preset_id,
+        preferredOperators: chargingPreferences.preferredOperators,
+        maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
       })
 
-      const searchKey = JSON.stringify({
-        simulationMode,
-        origin: locationSearchKey(origin),
-        dest: emergencyMode ? null : destination,
+      const searchKey = buildPlanSearchKey({
+        originMode,
+        origin,
+        dest: emergencyMode ? null : destination!,
         vehicleQuery,
         minKw,
         maxKw,
         corridorKm,
         emergencyMode,
+        routePreference,
+        avoidTolls,
+        chargingPreferences,
       })
       lastSearchKeyRef.current = searchKey
       setLastResponse(response)
       setStatus('ready')
       onResults(response)
+      if (!emergencyMode && destination) {
+        saveActiveTrip({
+          destination: {
+            label: destination.label,
+            lat: destination.lat,
+            lon: destination.lon,
+          },
+          corridorKm,
+          routePreference,
+          avoidTolls,
+          chargingPreferences,
+          originMode,
+          updatedAt: Date.now(),
+        })
+      } else if (emergencyMode) {
+        clearActiveTrip()
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al calcular el plan'
       setError(message)
@@ -163,23 +261,30 @@ export function ChargingPlanPanel({
       onResults(null)
     }
   }, [
+    carTelemetry,
     corridorKm,
     destPoint,
     destText,
     emergencyMode,
+    routePreference,
+    avoidTolls,
+    chargingPreferences,
     gpsLocation,
-    locationSearchKey,
     maxKw,
     minKw,
     onResults,
     onSelectStation,
     resolveSimulationOrigin,
+    resolveVehicleQuery,
     simulationMode,
-    vehicleProfile,
+    originMode,
+    clearActiveTrip,
+    saveActiveTrip,
+    useCarOrigin,
   ])
 
   useEffect(() => {
-    if (simulationMode) {
+    if (originMode !== 'gps' || !enMarchaSettings.autoFollow) {
       return
     }
     if (gpsStatus !== 'active' || !gpsLocation) {
@@ -194,35 +299,102 @@ export function ChargingPlanPanel({
     if (!emergencyMode && !destPoint) {
       return
     }
-    const vehicleQuery = vehicleProfileToChargingPlanQuery(vehicleProfile)
-    const searchKey = JSON.stringify({
-      simulationMode,
-      origin: locationSearchKey(gpsLocation),
+    const vehicleQuery = resolveVehicleQuery()
+    const searchKey = buildPlanSearchKey({
+      originMode,
+      origin: gpsLocation,
       dest: emergencyMode ? null : destPoint,
       vehicleQuery,
       minKw,
       maxKw,
       corridorKm,
       emergencyMode,
+      routePreference,
+      avoidTolls,
+      chargingPreferences,
     })
     if (searchKey === lastSearchKeyRef.current) {
       return
     }
     void runPlan()
   }, [
+    avoidTolls,
+    chargingPreferences,
     corridorKm,
     destPoint,
     emergencyMode,
+    enMarchaSettings.autoFollow,
     gpsLocation,
     gpsStatus,
     minKw,
     maxKw,
+    originMode,
+    resolveVehicleQuery,
+    routePreference,
     runPlan,
-    simulationMode,
     status,
-    vehicleProfile,
-    locationSearchKey,
   ])
+
+  useEffect(() => {
+    if (!useCarOrigin || !carTelemetry || !enMarchaSettings.autoFollow) {
+      return
+    }
+    if (status === 'loading') {
+      return
+    }
+    if (!lastSearchKeyRef.current) {
+      return
+    }
+    if (!emergencyMode && !destPoint) {
+      return
+    }
+    const origin = carOriginFromTelemetry(carTelemetry)
+    const vehicleQuery = resolveVehicleQuery()
+    const searchKey = buildPlanSearchKey({
+      originMode,
+      origin,
+      dest: emergencyMode ? null : destPoint,
+      vehicleQuery,
+      minKw,
+      maxKw,
+      corridorKm,
+      emergencyMode,
+      routePreference,
+      avoidTolls,
+      chargingPreferences,
+    })
+    if (searchKey === lastSearchKeyRef.current) {
+      return
+    }
+    void runPlan()
+  }, [
+    avoidTolls,
+    carTelemetry,
+    chargingPreferences,
+    corridorKm,
+    destPoint,
+    emergencyMode,
+    enMarchaSettings.autoFollow,
+    maxKw,
+    minKw,
+    originMode,
+    resolveVehicleQuery,
+    routePreference,
+    runPlan,
+    status,
+    useCarOrigin,
+  ])
+
+  useEffect(() => {
+    if (!recalcOnPreferenceRef.current || emergencyMode) {
+      return
+    }
+    if (status === 'loading') {
+      return
+    }
+    recalcOnPreferenceRef.current = false
+    void runPlan()
+  }, [routePreference, avoidTolls, chargingPreferences, emergencyMode, runPlan, status])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -249,8 +421,9 @@ export function ChargingPlanPanel({
     lastSearchKeyRef.current = null
   }
 
-  const handleSimulationToggle = (enabled: boolean) => {
-    setSimulationMode(enabled)
+  const handleOriginModeChange = (nextMode: OriginMode) => {
+    originModeTouchedRef.current = true
+    setOriginMode(nextMode)
     lastSearchKeyRef.current = null
     setStatus('idle')
     setError(null)
@@ -258,15 +431,42 @@ export function ChargingPlanPanel({
     onResults(null)
   }
 
-  const originLabel = simulationMode
-    ? manualOriginPoint?.label ?? (manualOriginText.trim() || 'Indica origen')
-    : (gpsLocation?.label ?? (gpsStatus === 'loading' ? 'Obteniendo GPS…' : 'Sin ubicación'))
-  const showGpsBanner = !simulationMode && (isGpsActive || gpsStatus === 'loading')
-  const canSubmit = simulationMode ? manualOriginText.trim().length > 0 : Boolean(gpsLocation)
+  const handleSimulationToggle = (enabled: boolean) => {
+    handleOriginModeChange(enabled ? 'simulation' : carTelemetryAvailable ? 'car' : 'gps')
+  }
+
+  const originLabel = useCarOrigin && carTelemetry
+    ? carOriginFromTelemetry(carTelemetry).label
+    : simulationMode
+      ? manualOriginPoint?.label ?? (manualOriginText.trim() || 'Indica origen')
+      : (gpsLocation?.label ?? (gpsStatus === 'loading' ? 'Obteniendo GPS…' : 'Sin ubicación'))
+  const showGpsBanner = originMode === 'gps' && (isGpsActive || gpsStatus === 'loading')
+  const canSubmit =
+    useCarOrigin && carTelemetry
+      ? true
+      : simulationMode
+        ? manualOriginText.trim().length > 0
+        : Boolean(gpsLocation)
+  const telemetrySocLocked = carTelemetryAvailable
+  const liveOriginMode = useCarOrigin || originMode === 'gps'
+  const replanDestination = destPoint ?? activeTrip?.destination ?? null
+  const showReplanBar =
+    !emergencyMode && Boolean(replanDestination) && Boolean(lastResponse) && liveOriginMode
+  const resolveVehicleQueryForDisplay = resolveVehicleQuery()
 
   return (
     <section className="panel search-panel charge-panel" aria-labelledby="charge-plan-heading">
       <h2 id="charge-plan-heading">Plan de carga</h2>
+
+      {privateStackEnabled && loginEnabled && !authLoading && !authenticated && (
+        <details className="telemetry-login">
+          <summary>SOC en vivo desde TeslaMate (requiere sesión)</summary>
+          <p className="panel-hint">
+            Tras iniciar sesión, el planificador usará SOC y posición del coche vía MQTT sin entrada manual.
+          </p>
+          <LoginPanel />
+        </details>
+      )}
 
       <VehicleProfilePanel
         className="charge-panel__vehicle"
@@ -276,7 +476,19 @@ export function ChargingPlanPanel({
         onSocChange={onVehicleSocChange}
         onConsumptionChange={onVehicleConsumptionChange}
         onTerrainChange={onVehicleTerrainChange}
+        socReadOnly={telemetrySocLocked}
+        socSourceLabel={telemetrySocLocked ? 'TeslaMate en vivo' : undefined}
       />
+
+      {privateStackEnabled && authenticated && (
+        <VehicleTelemetryStrip
+          vehicle={carTelemetry}
+          loading={carTelemetryLoading}
+          error={carTelemetryError}
+          onRefresh={() => void refreshCarTelemetry()}
+          compact
+        />
+      )}
 
       <details className="vehicle-advanced">
         <summary>Consumo y terreno (avanzado)</summary>
@@ -293,9 +505,13 @@ export function ChargingPlanPanel({
       </details>
 
       <p className="panel-hint charge-panel__hint">
-        {simulationMode
-          ? 'Simula un viaje: origen y destino manuales, SOC y estrategias sin GPS en vivo.'
-          : 'Origen: GPS del teléfono (Android Auto). Indica destino y pulsa calcular.'}
+        {useCarOrigin
+          ? 'Origen y SOC desde TeslaMate. El plan se recalcula al cambiar batería o posición.'
+          : simulationMode
+            ? carTelemetryAvailable
+              ? 'Simulación manual. Puedes usar origen del coche arriba; el SOC sigue sincronizado con TeslaMate.'
+              : 'Simula un viaje: origen y destino manuales, SOC y estrategias sin GPS en vivo.'
+            : 'Origen: GPS del teléfono (Android Auto). Indica destino y pulsa calcular.'}
       </p>
 
       {showGpsBanner && (
@@ -315,16 +531,60 @@ export function ChargingPlanPanel({
       )}
 
       <form className="route-form" onSubmit={handleSubmit}>
-        <label className="field field--checkbox">
-          <input
-            type="checkbox"
-            checked={simulationMode}
-            onChange={(event) => handleSimulationToggle(event.target.checked)}
-          />
-          <span>Modo simulación (planificar sin GPS en vivo)</span>
-        </label>
+        {carTelemetryAvailable && (
+          <fieldset className="origin-mode" aria-label="Origen del plan">
+            <span className="field__label">Origen</span>
+            <div className="chip-row" role="list">
+              <button
+                type="button"
+                role="listitem"
+                className={`chip ${originMode === 'car' ? 'chip--active' : ''}`}
+                aria-pressed={originMode === 'car'}
+                onClick={() => handleOriginModeChange('car')}
+              >
+                Coche (TeslaMate)
+              </button>
+              <button
+                type="button"
+                role="listitem"
+                className={`chip ${originMode === 'gps' ? 'chip--active' : ''}`}
+                aria-pressed={originMode === 'gps'}
+                onClick={() => handleOriginModeChange('gps')}
+              >
+                GPS móvil
+              </button>
+              <button
+                type="button"
+                role="listitem"
+                className={`chip ${originMode === 'simulation' ? 'chip--active' : ''}`}
+                aria-pressed={originMode === 'simulation'}
+                onClick={() => handleOriginModeChange('simulation')}
+              >
+                Simulación
+              </button>
+            </div>
+          </fieldset>
+        )}
 
-        {simulationMode ? (
+        {!carTelemetryAvailable && (
+          <label className="field field--checkbox">
+            <input
+              type="checkbox"
+              checked={simulationMode}
+              onChange={(event) => handleSimulationToggle(event.target.checked)}
+            />
+            <span>Modo simulación (planificar sin GPS en vivo)</span>
+          </label>
+        )}
+
+        {useCarOrigin && carTelemetry ? (
+          <div className="field">
+            <span className="field__label">Origen (coche)</span>
+            <p className="charge-origin-readout" title={originLabel}>
+              {originLabel} · {carTelemetry.lat.toFixed(4)}, {carTelemetry.lon.toFixed(4)}
+            </p>
+          </div>
+        ) : simulationMode ? (
           <PlaceAutocomplete
             id="charge-origin-sim"
             label="Origen"
@@ -402,143 +662,110 @@ export function ChargingPlanPanel({
                 <option value={20}>20 km</option>
               </select>
             </label>
+
+            <RoutePreferenceFields
+              routePreference={routePreference}
+              avoidTolls={avoidTolls}
+              onRoutePreferenceChange={(value) => {
+                setRoutePreference(value)
+                if (status === 'ready' && lastResponse && !emergencyMode) {
+                  recalcOnPreferenceRef.current = true
+                } else {
+                  lastSearchKeyRef.current = null
+                }
+              }}
+              onAvoidTollsChange={(value) => {
+                setAvoidTolls(value)
+                if (status === 'ready' && lastResponse && !emergencyMode) {
+                  recalcOnPreferenceRef.current = true
+                } else {
+                  lastSearchKeyRef.current = null
+                }
+              }}
+              disabled={status === 'loading'}
+              comparisonPlan={status === 'ready' ? lastResponse : null}
+            />
+
+            <ChargingPreferenceFields
+              preferences={chargingPreferences}
+              onToggleOperator={(operator) => {
+                toggleOperator(operator)
+                if (status === 'ready' && lastResponse && !emergencyMode) {
+                  recalcOnPreferenceRef.current = true
+                } else {
+                  lastSearchKeyRef.current = null
+                }
+              }}
+              onMaxPriceChange={(value) => {
+                setMaxPriceEurKwh(value)
+                if (status === 'ready' && lastResponse && !emergencyMode) {
+                  recalcOnPreferenceRef.current = true
+                } else {
+                  lastSearchKeyRef.current = null
+                }
+              }}
+              disabled={status === 'loading'}
+            />
           </>
         )}
 
         <div className="route-form__actions">
           <button type="submit" className="btn btn--primary" disabled={status === 'loading' || !canSubmit}>
-            {status === 'loading' ? 'Calculando plan…' : simulationMode ? 'Simular plan de carga' : 'Calcular plan de carga'}
+            {status === 'loading'
+              ? 'Calculando plan…'
+              : useCarOrigin
+                ? 'Calcular plan desde el coche'
+                : simulationMode
+                  ? 'Simular plan de carga'
+                  : 'Calcular plan de carga'}
           </button>
         </div>
       </form>
 
-      {status === 'ready' && lastResponse && (
+      {activeTrip && destPoint && status === 'idle' && !emergencyMode ? (
+        <p className="panel-hint active-trip-restore" role="status">
+          Viaje activo a {activeTrip.destination.label}. Calcula o recalcula el plan con tu posición y SOC actuales.
+        </p>
+      ) : null}
+
+      {showReplanBar && replanDestination && lastResponse ? (
+        <ReplanOnRouteBar
+          destinationLabel={replanDestination.label}
+          originLabel={originLabel}
+          socPercent={resolveVehicleQueryForDisplay.soc_percent}
+          socSourceLabel={telemetrySocLocked ? 'TeslaMate' : undefined}
+          loading={status === 'loading'}
+          autoFollow={enMarchaSettings.autoFollow}
+          onAutoFollowChange={setAutoFollow}
+          onReplan={() => void runPlan()}
+          onRefreshOrigin={
+            useCarOrigin
+              ? () => void refreshCarTelemetry()
+              : originMode === 'gps'
+                ? refreshGps
+                : undefined
+          }
+          canReplan={canSubmit && Boolean(replanDestination)}
+          lastUpdatedAt={activeTrip?.updatedAt ?? null}
+          showAutoFollow={liveOriginMode}
+        />
+      ) : null}
+
+      {status === 'ready' && lastResponse ? (
         <>
-          {lastResponse.warnings.length > 0 && (
-            <ul className="charge-warnings" aria-label="Alertas del plan">
-              {lastResponse.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          )}
+          <ChargingPlanResults
+            plan={lastResponse}
+            selectedStationId={selectedStationId}
+            onSelectStation={onSelectStation}
+          />
 
-          <div className="charge-summary">
-            <p className="route-summary__meta">
-              {lastResponse.mode === 'emergency' ? (
-                <>
-                  Modo emergencia · hasta cargador {lastResponse.charging_reach_km} km
-                  {lastResponse.route_distance_km != null && (
-                    <> · ruta al más cercano {lastResponse.route_distance_km.toFixed(1)} km</>
-                  )}
-                </>
-              ) : (
-                <>
-                  Ruta {lastResponse.route_distance_km?.toFixed(0)} km · hasta cargador {lastResponse.charging_reach_km} km
-                  {lastResponse.range_km < lastResponse.charging_reach_km && (
-                    <> · plan reserva {lastResponse.range_km} km</>
-                  )}
-                  {lastResponse.reachable_without_stop ? ' · llegas sin parar' : ''}
-                  {lastResponse.soc_at_destination_pct != null && !lastResponse.reachable_without_stop && (
-                    <> · ~{lastResponse.soc_at_destination_pct.toFixed(0)} % SOC al destino</>
-                  )}
-                </>
-              )}
-            </p>
-          </div>
-
-          <div className="charge-strategies" aria-label="Estrategias recomendadas">
-            {lastResponse.strategies.map((strategy) => (
-              <article
-                key={strategy.id}
-                className={`charge-strategy ${strategy.station_id ? '' : 'charge-strategy--empty'}`}
-              >
-                <h3 className="charge-strategy__title">{strategy.label}</h3>
-                <p className="charge-strategy__summary">{strategy.summary}</p>
-                {strategy.classification && (
-                  <span className={classificationClassName(strategy.classification, 'charging-class')}>
-                    {formatClassificationLabel(strategy.classification)}
-                    {strategy.soc_arrival_pct != null && <> · {strategy.soc_arrival_pct.toFixed(0)} % SOC</>}
-                  </span>
-                )}
-              </article>
-            ))}
-          </div>
-
-          {lastResponse.mode === 'emergency' ? (
-            <>
-              {lastResponse.stops.some((stop) => stop.classification !== 'unreachable') ? (
-                <>
-                  <h3 className="charge-section-title">Alcanzables desde tu posición</h3>
-                  <ChargingStopList
-                    stops={lastResponse.stops.filter((stop) => stop.classification !== 'unreachable')}
-                    selectedStationId={selectedStationId}
-                    onSelectStation={onSelectStation}
-                    ariaLabel="Cargadores alcanzables"
-                    showRouteDeviation={false}
-                    distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km desde la salida`}
-                  />
-                </>
-              ) : null}
-              {lastResponse.stops.some((stop) => stop.classification === 'unreachable') ? (
-                <>
-                  <h3 className="charge-section-title">
-                    {lastResponse.stops.some((stop) => stop.classification !== 'unreachable')
-                      ? 'Otros cercanos'
-                      : 'Más cercanos (fuera de alcance actual)'}
-                  </h3>
-                  <p className="panel-hint charge-section-hint">
-                    Tu alcance hasta cargador es {lastResponse.charging_reach_km} km. Los listados están más lejos;
-                    la ruta en el mapa muestra el camino al más cercano.
-                  </p>
-                  <ChargingStopList
-                    stops={lastResponse.stops.filter((stop) => stop.classification === 'unreachable')}
-                    selectedStationId={selectedStationId}
-                    onSelectStation={onSelectStation}
-                    ariaLabel="Cargadores fuera de alcance"
-                    showRouteDeviation={false}
-                    distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km desde la salida`}
-                  />
-                </>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {lastResponse.origin_stops.length > 0 && (
-                <>
-                  <h3 className="charge-section-title">Desde tu salida (por distancia)</h3>
-                  <p className="panel-hint charge-section-hint">
-                    Cargadores alcanzables desde el origen con tu SOC actual. Útiles si no llegas a los de la ruta.
-                  </p>
-                  <ChargingStopList
-                    stops={lastResponse.origin_stops}
-                    selectedStationId={selectedStationId}
-                    onSelectStation={onSelectStation}
-                    ariaLabel="Cargadores desde el origen"
-                    showRouteDeviation={false}
-                    distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km desde la salida`}
-                  />
-                </>
-              )}
-
-              <h3 className="charge-section-title">En la ruta (corredor)</h3>
-              {lastResponse.stops.length === 0 ? (
-                <p className="route-message">
-                  No hay paradas en el corredor alcanzables con el SOC actual. Revisa la sección anterior o baja el
-                  filtro de kW.
-                </p>
-              ) : (
-                <ChargingStopList
-                  stops={lastResponse.stops}
-                  selectedStationId={selectedStationId}
-                  onSelectStation={onSelectStation}
-                  ariaLabel="Paradas en la ruta"
-                  showRouteDeviation
-                />
-              )}
-            </>
-          )}
+          {activeTrip && !emergencyMode ? (
+            <button type="button" className="btn btn--ghost replan-bar__clear" onClick={clearActiveTrip}>
+              Finalizar viaje activo
+            </button>
+          ) : null}
         </>
-      )}
+      ) : null}
     </section>
   )
 }

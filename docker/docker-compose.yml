@@ -17,11 +17,17 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: sqlite:////app/data/db/stations.db
       SERVE_WEB_STATIC: "true"
       WEB_DIST_PATH: /app/src/web/dist
       API_RELOAD: "false"
+      API_ENVIRONMENT: production
+      API_RATE_LIMIT_ENABLED: "true"
+      API_TRUST_PROXY_HEADERS: "true"
+      API_DOCS_ENABLED: "false"
     ports:
       # 0.0.0.0 = acceso LAN (<IP-LAN-SERVIDOR>:8015). Usar 127.0.0.1:8015:8000 si solo túnel Cloudflare.
       - "${ELECTROLINERAS_PORT:-0.0.0.0:8015:8000}"

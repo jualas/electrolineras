@@ -1,0 +1,88 @@
+# Electrolineras — stack producción (#6038)
+#
+#   API (uvicorn) + nginx (SPA Vite + reverse proxy) + Cloudflare Tunnel opcional
+#   OSRM: red externa osrm_default (docker/osrm/docker-compose.yml)
+#
+# Despliegue operativo (mini PC):
+#   /mnt/datos/docker/electrolineras/
+#
+#   make docker-sync-prod
+#   cd /mnt/datos/docker/electrolineras
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  electrolineras-api:
+    build:
+      context: ${ELECTROLINERAS_SRC:-/mnt/datos/Proyectos/Electrolineras}
+      dockerfile: docker/Dockerfile.api
+    image: electrolineras-api:local
+    container_name: electrolineras-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DATABASE_URL: sqlite:////app/data/db/stations.db
+      SERVE_WEB_STATIC: "false"
+      API_RELOAD: "false"
+      API_ENVIRONMENT: production
+      API_RATE_LIMIT_ENABLED: "true"
+      API_TRUST_PROXY_HEADERS: "true"
+      API_DOCS_ENABLED: "false"
+    expose:
+      - "8000"
+    volumes:
+      - ${ELECTROLINERAS_DATA:-/mnt/datos/docker/volumes/electrolineras-data}:/app/data
+    networks:
+      - default
+      - osrm
+    healthcheck:
+      test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\")"']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  electrolineras-nginx:
+    build:
+      context: ${ELECTROLINERAS_SRC:-/mnt/datos/Proyectos/Electrolineras}
+      dockerfile: docker/Dockerfile.nginx
+    image: electrolineras-nginx:local
+    container_name: electrolineras-nginx
+    restart: unless-stopped
+    ports:
+      # 0.0.0.0 = LAN; 127.0.0.1:8015:80 si solo túnel Cloudflare
+      - "${ELECTROLINERAS_PORT:-0.0.0.0:8015:80}"
+    depends_on:
+      electrolineras-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health | grep -q ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Túnel Cloudflare — network_mode: host + origen 127.0.0.1:8015 en Zero Trust
+  electrolineras-cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: electrolineras-cloudflared
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - ${CLOUDFLARED_TOKEN}
+    depends_on:
+      electrolineras-nginx:
+        condition: service_healthy
+
+networks:
+  osrm:
+    external: true
+    name: osrm_default

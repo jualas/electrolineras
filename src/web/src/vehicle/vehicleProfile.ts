@@ -184,6 +184,7 @@ export function vehicleProfileToChargingPlanQuery(profile: VehicleProfile): {
   consumption_wh_per_km: number
   terrain_factor: number
   reserve_soc_percent: number
+  vehicle_preset_id: string
 } {
   const preset = getVehiclePreset(profile.presetId)
   const terrain = getTerrainFactor(profile.terrainFactorId)
@@ -193,5 +194,6 @@ export function vehicleProfileToChargingPlanQuery(profile: VehicleProfile): {
     consumption_wh_per_km: profile.consumptionWhPerKm,
     terrain_factor: terrain.factor,
     reserve_soc_percent: DEFAULT_RESERVE_SOC_PERCENT,
+    vehicle_preset_id: preset.id,
   }
 }

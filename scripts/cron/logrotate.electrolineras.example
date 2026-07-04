@@ -7,8 +7,20 @@
 # Ajustar la ruta si ELECTROLINERAS_LOG_DIR difiere.
 
 /mnt/datos/docker/volumes/electrolineras-data/logs/cron/*.log {
+    su jualas jualas
     weekly
     rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+
+/mnt/datos/docker/volumes/electrolineras-data/logs/monitor/*.log {
+    su jualas jualas
+    weekly
+    rotate 4
     compress
     delaycompress
     missingok

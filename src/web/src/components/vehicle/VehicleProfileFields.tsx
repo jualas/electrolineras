@@ -22,7 +22,9 @@ type VehicleProfileFieldsProps = {
   onSocChange: (socPercent: number) => void
   onConsumptionChange: (consumptionWhPerKm: number) => void
   onTerrainChange: (terrainFactorId: TerrainFactorId) => void
-  variant?: 'full' | 'compact' | 'advanced'
+  variant?: 'full' | 'compact' | 'advanced' | 'assistant'
+  socReadOnly?: boolean
+  socSourceLabel?: string
 }
 
 export function VehicleProfileFields({
@@ -32,6 +34,8 @@ export function VehicleProfileFields({
   onConsumptionChange,
   onTerrainChange,
   variant = 'full',
+  socReadOnly = false,
+  socSourceLabel,
 }: VehicleProfileFieldsProps) {
   const preset = getVehiclePreset(profile.presetId)
   const displayedRangeKm = estimateDisplayedRangeKm(profile, preset)
@@ -40,6 +44,7 @@ export function VehicleProfileFields({
   const summary = formatVehicleSummary(profile)
   const compact = variant === 'compact'
   const advanced = variant === 'advanced'
+  const assistant = variant === 'assistant'
 
   if (advanced) {
     return (
@@ -87,15 +92,21 @@ export function VehicleProfileFields({
 
   return (
     <>
-      {!compact && (
+      {!compact && !assistant && (
         <p className="vehicle-panel__summary" title={summary}>
           {summary}
         </p>
       )}
-      {!compact && (
+      {!compact && !assistant && (
         <p className="panel-hint">
           Cuadro ~{displayedRangeKm} km · plan reserva {DEFAULT_RESERVE_SOC_PERCENT} % (~{planningRangeKm} km) · hasta
           cargador ≥5 % (~{chargingReachKm} km).
+        </p>
+      )}
+
+      {assistant && (
+        <p className="panel-hint">
+          SOC y posición desde TeslaMate (arriba). Aquí ajustas modelo, consumo y terreno para el cálculo.
         </p>
       )}
 
@@ -123,19 +134,30 @@ export function VehicleProfileFields({
       </div>
 
       <div className="custom-range vehicle-panel__soc" aria-label="Estado de carga">
-        <div className="custom-range__row">
-          <label htmlFor="vehicle-soc">Batería (SOC)</label>
-          <input
-            id="vehicle-soc"
-            type="range"
-            min={SOC_MIN}
-            max={SOC_MAX}
-            step={1}
-            value={profile.socPercent}
-            onChange={(event) => onSocChange(Number(event.target.value))}
-          />
-          <span className="custom-range__value">{profile.socPercent} %</span>
-        </div>
+        {!assistant && socReadOnly ? (
+          <p className="vehicle-panel__live-soc">
+            Batería: <strong>{profile.socPercent} %</strong>
+            {socSourceLabel ? (
+              <span className="vehicle-panel__live-soc-source"> · {socSourceLabel}</span>
+            ) : null}
+          </p>
+        ) : (
+          !assistant && (
+            <div className="custom-range__row">
+              <label htmlFor="vehicle-soc">Batería (SOC)</label>
+              <input
+                id="vehicle-soc"
+                type="range"
+                min={SOC_MIN}
+                max={SOC_MAX}
+                step={1}
+                value={profile.socPercent}
+                onChange={(event) => onSocChange(Number(event.target.value))}
+              />
+              <span className="custom-range__value">{profile.socPercent} %</span>
+            </div>
+          )
+        )}
       </div>
 
       {!compact && (

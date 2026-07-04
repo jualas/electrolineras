@@ -5,6 +5,8 @@ import { CLUSTER_LAYER_ID, POINT_LAYER_ID } from './stationLayers'
 
 export const ROUTE_SOURCE_ID = 'route-line'
 export const ROUTE_LAYER_ID = 'route-line-layer'
+export const ROUTE_ALT_SOURCE_ID = 'route-line-alt'
+export const ROUTE_ALT_LAYER_ID = 'route-line-alt-layer'
 export const ROUTE_ORIGIN_LAYER_ID = 'route-origin'
 export const ROUTE_DEST_LAYER_ID = 'route-destination'
 export const ROUTE_ENDPOINTS_SOURCE_ID = 'route-endpoints'
@@ -37,6 +39,13 @@ export function ensureRouteLayers(map: maplibregl.Map, theme: ThemeMode): void {
     })
   }
 
+  if (!map.getSource(ROUTE_ALT_SOURCE_ID)) {
+    map.addSource(ROUTE_ALT_SOURCE_ID, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    })
+  }
+
   if (!map.getSource(ROUTE_ENDPOINTS_SOURCE_ID)) {
     map.addSource(ROUTE_ENDPOINTS_SOURCE_ID, {
       type: 'geojson',
@@ -62,7 +71,7 @@ export function ensureRouteLayers(map: maplibregl.Map, theme: ThemeMode): void {
         paint: {
           'line-color': colors.line,
           'line-width': 4,
-          'line-opacity': 0.85,
+          'line-opacity': 0.9,
         },
         layout: {
           'line-cap': 'round',
@@ -70,6 +79,27 @@ export function ensureRouteLayers(map: maplibregl.Map, theme: ThemeMode): void {
         },
       },
       map.getLayer(CLUSTER_LAYER_ID) ? CLUSTER_LAYER_ID : undefined,
+    )
+  }
+
+  if (!map.getLayer(ROUTE_ALT_LAYER_ID)) {
+    map.addLayer(
+      {
+        id: ROUTE_ALT_LAYER_ID,
+        type: 'line',
+        source: ROUTE_ALT_SOURCE_ID,
+        paint: {
+          'line-color': colors.line,
+          'line-width': 2.5,
+          'line-opacity': 0.45,
+          'line-dasharray': [2, 1.5],
+        },
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+      },
+      ROUTE_LAYER_ID,
     )
   }
 
@@ -150,6 +180,9 @@ export function updateRouteLayerTheme(map: maplibregl.Map, theme: ThemeMode): vo
   }
   const colors = routeColors(theme)
   map.setPaintProperty(ROUTE_LAYER_ID, 'line-color', colors.line)
+  if (map.getLayer(ROUTE_ALT_LAYER_ID)) {
+    map.setPaintProperty(ROUTE_ALT_LAYER_ID, 'line-color', colors.line)
+  }
   if (map.getLayer(ROUTE_DEST_LAYER_ID)) {
     map.setPaintProperty(ROUTE_DEST_LAYER_ID, 'circle-color', colors.destination)
   }
@@ -162,18 +195,37 @@ export function updateRouteLayerTheme(map: maplibregl.Map, theme: ThemeMode): vo
 }
 
 export function setRouteLine(map: maplibregl.Map, geometry: RouteLineGeometry | null): void {
-  const source = map.getSource(ROUTE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-  if (!source) {
+  setRouteComparisonLines(map, geometry, [])
+}
+
+export function setRouteComparisonLines(
+  map: maplibregl.Map,
+  activeGeometry: RouteLineGeometry | null,
+  alternateGeometries: RouteLineGeometry[],
+): void {
+  const activeSource = map.getSource(ROUTE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+  const altSource = map.getSource(ROUTE_ALT_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+  if (!activeSource || !altSource) {
     return
   }
-  if (!geometry) {
-    source.setData({ type: 'FeatureCollection', features: [] })
-    return
+
+  if (!activeGeometry) {
+    activeSource.setData({ type: 'FeatureCollection', features: [] })
+  } else {
+    activeSource.setData({
+      type: 'Feature',
+      properties: { role: 'active' },
+      geometry: activeGeometry,
+    })
   }
-  source.setData({
-    type: 'Feature',
-    properties: {},
-    geometry,
+
+  altSource.setData({
+    type: 'FeatureCollection',
+    features: alternateGeometries.map((geometry, index) => ({
+      type: 'Feature' as const,
+      properties: { role: 'alternate', index },
+      geometry,
+    })),
   })
 }
 
@@ -201,7 +253,7 @@ export function setRouteEndpoints(map: maplibregl.Map, origin: LatLon | null, de
 }
 
 export function clearRouteOverlay(map: maplibregl.Map): void {
-  setRouteLine(map, null)
+  setRouteComparisonLines(map, null, [])
   setRouteEndpoints(map, null, null)
   setRangeCircle(map, null, null)
 }
@@ -246,9 +298,24 @@ export function setRangeCircle(map: maplibregl.Map, center: LatLon | null, radiu
 }
 
 export function fitMapToRoute(map: maplibregl.Map, geometry: RouteLineGeometry, padding = 48): void {
+  fitMapToGeometries(map, [geometry], padding)
+}
+
+export function fitMapToGeometries(
+  map: maplibregl.Map,
+  geometries: RouteLineGeometry[],
+  padding = 48,
+): void {
   const bounds = new maplibregl.LngLatBounds()
-  for (const [lon, lat] of geometry.coordinates) {
-    bounds.extend([lon, lat])
+  let hasPoints = false
+  for (const geometry of geometries) {
+    for (const [lon, lat] of geometry.coordinates) {
+      bounds.extend([lon, lat])
+      hasPoints = true
+    }
+  }
+  if (!hasPoints) {
+    return
   }
   map.fitBounds(bounds, { padding, maxZoom: 11, duration: 800 })
 }

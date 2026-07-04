@@ -118,7 +118,11 @@ def download_to_file(
     chunk_size = settings.fetch_stream_chunk_size
     timeout = timeout_seconds or settings.fetch_timeout_seconds
 
-    request_headers = {"User-Agent": settings.fetch_user_agent}
+    request_headers = {
+        "User-Agent": settings.fetch_user_agent,
+        # Evita gzip: httpx descomprime el cuerpo pero Content-Length suele ser el comprimido.
+        "Accept-Encoding": "identity",
+    }
     if headers:
         request_headers.update(headers)
 
@@ -128,6 +132,7 @@ def download_to_file(
     expected_total_bytes: int | None = None
 
     for attempt in range(1, settings.fetch_max_retries + 1):
+        expected_total_bytes = None
         try:
             resume_from = 0
             if allow_resume and temp_path.exists():
@@ -162,13 +167,20 @@ def download_to_file(
                     resume_from = 0
                     resumed_from_bytes = 0
 
+                content_encoding = response.headers.get("content-encoding")
                 content_length = response.headers.get("content-length")
-                if content_length is not None:
+                if content_length is not None and not content_encoding:
                     declared = int(content_length)
                     if response.status_code == 206:
                         expected_total_bytes = resume_from + declared
                     else:
                         expected_total_bytes = declared
+                elif content_encoding:
+                    logger.warning(
+                        "Respuesta con Content-Encoding=%s; omitiendo validación Content-Length",
+                        content_encoding,
+                    )
+                    expected_total_bytes = None
 
                 sha256: hashlib._Hash | None = None
                 if resume_from:

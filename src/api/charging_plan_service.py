@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from fastapi import HTTPException
 
 from api.config import settings
 from api.query_params import parse_country_list
+from api.routing.charging_preferences import ChargingPreferences, parse_preferred_operators
 from api.routing.charging_plan import (
     VehicleEnergyProfile,
     build_emergency_charging_plan,
@@ -17,7 +18,12 @@ from api.routing.charging_plan import (
 )
 from api.routing.corridor import RoutePolyline, rank_stations_along_route
 from api.routing.destination_stay import analyze_destination_stay, append_destination_strategy
-from api.routing.osrm import RoutingError, fetch_osrm_route
+from api.routing.osrm import (
+    RoutePreference,
+    RoutingError,
+    fetch_osrm_route,
+    fetch_osrm_route_with_alternatives,
+)
 from api.schemas import DestinationStayAdviceResult
 from db.repository import StationRepository
 from db.spatial import haversine_m
@@ -35,11 +41,35 @@ class ChargingPlanBuildResult:
     corridor_km: float | None
     route_distance_km: float | None
     route_duration_minutes: float | None
+    route_shortest_distance_km: float | None
+    route_fastest_distance_km: float | None
+    geodesic_distance_km: float | None
+    route_conventional_distance_km: float | None
+    route_conventional_duration_minutes: float | None
+    shortest_excess_km: float | None
+    route_variants_approximate: bool
     route_geometry: dict | None
     preview_route_geometry: dict | None
+    route_preference: RoutePreference | None
+    avoid_highways: bool
     computation: object
     candidates_in_bbox: int
     destination_stay: DestinationStayAdviceResult | None
+    route_shortest_geometry: dict | None = None
+    route_fastest_geometry: dict | None = None
+    route_conventional_geometry: dict | None = None
+    preferred_operators: tuple[str, ...] = ()
+    max_price_eur_kwh: float | None = None
+
+
+def charging_preferences_from_inputs(
+    preferred_operators: str | None = None,
+    max_price_eur_kwh: float | None = None,
+) -> ChargingPreferences:
+    return ChargingPreferences(
+        preferred_operators=parse_preferred_operators(preferred_operators),
+        max_price_eur_kwh=max_price_eur_kwh,
+    )
 
 
 def rank_stations_near_point(
@@ -84,6 +114,7 @@ def vehicle_profile_from_inputs(
     consumption_wh_per_km: float,
     terrain_factor: float,
     reserve_soc_percent: float,
+    vehicle_preset_id: str | None = None,
 ) -> VehicleEnergyProfile:
     if usable_capacity_kwh <= 0:
         raise HTTPException(status_code=422, detail="usable_capacity_kwh debe ser mayor que 0")
@@ -91,12 +122,16 @@ def vehicle_profile_from_inputs(
         raise HTTPException(status_code=422, detail="consumption_wh_per_km debe ser mayor que 0")
     if terrain_factor <= 0:
         raise HTTPException(status_code=422, detail="terrain_factor debe ser mayor que 0")
+    preset_id = vehicle_preset_id.strip() if vehicle_preset_id else None
+    if preset_id == "":
+        preset_id = None
     return VehicleEnergyProfile(
         soc_percent=soc_percent,
         usable_capacity_kwh=usable_capacity_kwh,
         consumption_wh_per_km=consumption_wh_per_km,
         terrain_factor=terrain_factor,
         reserve_soc_percent=reserve_soc_percent,
+        vehicle_preset_id=preset_id,
     )
 
 
@@ -140,7 +175,7 @@ def _enrich_with_destination_stay(
         strategies=append_destination_strategy(computation.strategies, advice),
         warnings=[*computation.warnings, *advice.warnings],
     )
-    return enriched, destination_stay_to_schema(advice)
+    return enriched, destination_stay_to_schema(advice, dest_ranked)
 
 
 def build_charging_plan(
@@ -167,6 +202,11 @@ def build_charging_plan(
     emergency_radius_km: float = 80.0,
     destination_radius_km: float = 10.0,
     local_mobility_km: float = 40.0,
+    route_preference: RoutePreference = "fastest",
+    avoid_highways: bool = False,
+    vehicle_preset_id: str | None = None,
+    preferred_operators: str | None = None,
+    max_price_eur_kwh: float | None = None,
 ) -> ChargingPlanBuildResult:
     if min_kw is not None and max_kw is not None and min_kw > max_kw:
         raise HTTPException(status_code=422, detail="min_kw no puede ser mayor que max_kw")
@@ -181,8 +221,13 @@ def build_charging_plan(
         consumption_wh_per_km,
         terrain_factor,
         reserve_soc_percent,
+        vehicle_preset_id,
     )
     countries = parse_country_list(country)
+    charging_preferences = charging_preferences_from_inputs(
+        preferred_operators,
+        max_price_eur_kwh,
+    )
 
     if not has_destination:
         range_km = estimate_range_km(vehicle)
@@ -203,6 +248,7 @@ def build_charging_plan(
             safe_margin_pct=safe_margin_pct,
             adjusted_min_pct=adjusted_min_pct,
             limit=limit,
+            preferences=charging_preferences,
         )
         preview_route_geometry = None
         route_distance_km = None
@@ -232,15 +278,33 @@ def build_charging_plan(
             corridor_km=None,
             route_distance_km=route_distance_km,
             route_duration_minutes=route_duration_minutes,
+            route_shortest_distance_km=None,
+            route_fastest_distance_km=None,
+            geodesic_distance_km=None,
+            route_conventional_distance_km=None,
+            route_conventional_duration_minutes=None,
+            shortest_excess_km=None,
+            route_variants_approximate=False,
             route_geometry=None,
             preview_route_geometry=preview_route_geometry,
+            route_preference=None,
+            avoid_highways=avoid_highways,
             computation=computation,
             candidates_in_bbox=len(ranked),
             destination_stay=None,
+            preferred_operators=charging_preferences.preferred_operators,
+            max_price_eur_kwh=charging_preferences.max_price_eur_kwh,
         )
 
     try:
-        osrm_route = fetch_osrm_route(origin_lat, origin_lon, dest_lat, dest_lon)
+        osrm_route, route_alternatives, osrm_warnings, variant_routes = fetch_osrm_route_with_alternatives(
+            origin_lat,
+            origin_lon,
+            dest_lat,
+            dest_lon,
+            route_preference=route_preference,
+            avoid_highways=avoid_highways,
+        )
     except RoutingError as exc:
         raise HTTPException(
             status_code=502,
@@ -296,6 +360,7 @@ def build_charging_plan(
         safe_margin_pct=safe_margin_pct,
         adjusted_min_pct=adjusted_min_pct,
         limit=min(limit, 15),
+        preferences=charging_preferences,
     )
 
     computation = build_route_charging_plan(
@@ -307,6 +372,7 @@ def build_charging_plan(
         safe_margin_pct=safe_margin_pct,
         adjusted_min_pct=adjusted_min_pct,
         limit=limit,
+        preferences=charging_preferences,
     )
 
     computation, destination_stay = _enrich_with_destination_stay(
@@ -321,6 +387,12 @@ def build_charging_plan(
         projected_soc_at_arrival_pct=computation.soc_at_destination_pct,
     )
 
+    if osrm_warnings:
+        computation = replace(
+            computation,
+            warnings=[*computation.warnings, *osrm_warnings],
+        )
+
     return ChargingPlanBuildResult(
         mode="route",
         vehicle=vehicle,
@@ -331,9 +403,35 @@ def build_charging_plan(
         corridor_km=corridor_km,
         route_distance_km=round(osrm_route.distance_m / 1000.0, 2),
         route_duration_minutes=round(osrm_route.duration_s / 60.0, 1),
+        route_shortest_distance_km=route_alternatives.shortest_distance_km,
+        route_fastest_distance_km=route_alternatives.fastest_distance_km,
+        geodesic_distance_km=route_alternatives.geodesic_distance_km,
+        route_conventional_distance_km=route_alternatives.conventional_distance_km,
+        route_conventional_duration_minutes=route_alternatives.conventional_duration_minutes,
+        shortest_excess_km=route_alternatives.shortest_excess_km,
+        route_variants_approximate=route_alternatives.variants_approximate,
         route_geometry=osrm_route.geojson_geometry if include_route else None,
         preview_route_geometry=None,
+        route_shortest_geometry=(
+            variant_routes["shortest"].geojson_geometry
+            if include_route and "shortest" in variant_routes
+            else None
+        ),
+        route_fastest_geometry=(
+            variant_routes["fastest"].geojson_geometry
+            if include_route and "fastest" in variant_routes
+            else None
+        ),
+        route_conventional_geometry=(
+            variant_routes["conventional"].geojson_geometry
+            if include_route and "conventional" in variant_routes
+            else None
+        ),
+        route_preference=route_preference,
+        avoid_highways=avoid_highways,
         computation=computation,
         candidates_in_bbox=len(candidates),
         destination_stay=destination_stay,
+        preferred_operators=charging_preferences.preferred_operators,
+        max_price_eur_kwh=charging_preferences.max_price_eur_kwh,
     )

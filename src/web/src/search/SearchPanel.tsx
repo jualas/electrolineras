@@ -1,3 +1,4 @@
+import { AssistantPanel } from '../auth/AssistantPanel'
 import type { AlongRouteResponse, ChargingPlanResponse, Station } from '../api/types'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
@@ -5,7 +6,7 @@ import { ChargingPlanPanel } from './ChargingPlanPanel'
 import { MapSearchPanel } from './MapSearchPanel'
 import { RouteSearchPanel } from './RouteSearchPanel'
 
-export type SearchMode = 'map' | 'charge' | 'route'
+export type SearchMode = 'map' | 'charge' | 'route' | 'assistant'
 
 type SearchPanelProps = {
   mode: SearchMode
@@ -44,6 +45,20 @@ export function SearchPanel({
   onChargePlanSearchStateChange,
   selectedStationId,
 }: SearchPanelProps) {
+  if (mode === 'assistant') {
+    return (
+      <AssistantPanel
+        vehicleProfile={vehicleProfile}
+        onVehicleSocChange={onVehicleSocChange}
+        onVehicleTerrainChange={onVehicleTerrainChange}
+        onPlanResults={onChargePlanResults}
+        onPlanStateChange={onChargePlanSearchStateChange}
+        onSelectStation={onChargePlanSelectStation}
+        selectedStationId={selectedStationId}
+      />
+    )
+  }
+
   if (mode === 'charge') {
     return (
       <ChargingPlanPanel

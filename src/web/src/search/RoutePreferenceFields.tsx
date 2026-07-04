@@ -1,0 +1,166 @@
+import type { RoutePreference } from '../api/types'
+
+type RoutePreferenceFieldsProps = {
+  routePreference: RoutePreference
+  avoidTolls: boolean
+  onRoutePreferenceChange: (value: RoutePreference) => void
+  onAvoidTollsChange: (value: boolean) => void
+  disabled?: boolean
+  /** Asistente: texto más explícito sobre autovía vs peaje */
+  variant?: 'default' | 'assistant'
+  comparisonPlan?: RouteAlternativesKm | null
+}
+
+export function RoutePreferenceFields({
+  routePreference,
+  avoidTolls,
+  onRoutePreferenceChange,
+  onAvoidTollsChange,
+  disabled = false,
+  variant = 'default',
+  comparisonPlan = null,
+}: RoutePreferenceFieldsProps) {
+  const fastestHint =
+    variant === 'assistant'
+      ? 'Menor tiempo con velocidades reales de cada vía; autovía si compensa.'
+      : 'Menor tiempo; autovía cuando reduce duración.'
+
+  return (
+    <fieldset className="route-preference" disabled={disabled}>
+      <legend className="field__label">Tipo de ruta</legend>
+      <div className="route-preference__options" role="radiogroup" aria-label="Tipo de ruta">
+        <label className="route-preference__option">
+          <input
+            type="radio"
+            name="route-preference"
+            value="shortest"
+            checked={routePreference === 'shortest'}
+            onChange={() => onRoutePreferenceChange('shortest')}
+          />
+          <span>
+            Más directa (menos km)
+            <span className="route-preference__hint">
+              Prioriza la ruta más recta posible; puede ser más lenta que la rápida.
+            </span>
+          </span>
+        </label>
+        <label className="route-preference__option">
+          <input
+            type="radio"
+            name="route-preference"
+            value="fastest"
+            checked={routePreference === 'fastest'}
+            onChange={() => onRoutePreferenceChange('fastest')}
+          />
+          <span>
+            Más rápida
+            <span className="route-preference__hint">{fastestHint}</span>
+          </span>
+        </label>
+        <label className="route-preference__option">
+          <input
+            type="radio"
+            name="route-preference"
+            value="conventional"
+            checked={routePreference === 'conventional'}
+            onChange={() => onRoutePreferenceChange('conventional')}
+          />
+          <span>
+            Solo convencionales
+            <span className="route-preference__hint">
+              Nacionales y locales; sin autovía. El tiempo no importa.
+            </span>
+          </span>
+        </label>
+      </div>
+      <label className="field field--checkbox route-preference__avoid">
+        <input
+          type="checkbox"
+          checked={avoidTolls}
+          onChange={(event) => onAvoidTollsChange(event.target.checked)}
+        />
+        <span>Evitar autopistas de peaje (sin telepeaje)</span>
+      </label>
+      {comparisonPlan && hasRouteComparison(comparisonPlan) ? (
+        <p className="route-comparison-legend" role="note">
+          En el mapa: línea <strong>sólida</strong> = ruta del plan (
+          {routePreferenceLabel(comparisonPlan.route_preference)}). Líneas <strong>discontinuas</strong> = alternativas
+          directa/rápida. Cambiar tipo recalcula paradas.
+        </p>
+      ) : null}
+    </fieldset>
+  )
+}
+
+function hasRouteComparison(plan: RouteAlternativesKm): boolean {
+  const shortest = plan.route_shortest_distance_km ?? plan.route_distance_km
+  const fastest = plan.route_fastest_distance_km ?? plan.route_distance_km
+  return shortest != null && fastest != null && Math.abs(shortest - fastest) >= 1
+}
+
+export function routePreferenceLabel(preference: RoutePreference | null | undefined): string {
+  if (preference === 'shortest') {
+    return 'Ruta más directa'
+  }
+  if (preference === 'fastest') {
+    return 'Ruta más rápida'
+  }
+  if (preference === 'conventional') {
+    return 'Ruta convencional'
+  }
+  return 'Ruta'
+}
+
+export function avoidTollsLabel(avoidTolls: boolean | undefined): string {
+  return avoidTolls ? ' · sin peajes' : ''
+}
+
+type RouteAlternativesKm = {
+  route_preference?: RoutePreference | null
+  route_distance_km?: number | null
+  geodesic_distance_km?: number | null
+  route_shortest_distance_km?: number | null
+  route_fastest_distance_km?: number | null
+  route_conventional_distance_km?: number | null
+  shortest_excess_km?: number | null
+  route_variants_approximate?: boolean
+}
+
+export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
+  const geodesic = plan.geodesic_distance_km
+  const shortest = plan.route_shortest_distance_km ?? plan.route_distance_km
+  const fastest = plan.route_fastest_distance_km ?? plan.route_distance_km
+  const conventional = plan.route_conventional_distance_km
+  const parts: string[] = []
+
+  if (geodesic != null) {
+    parts.push(`Línea recta: ${geodesic.toFixed(0)} km`)
+  }
+  if (shortest != null) {
+    const excess =
+      plan.shortest_excess_km != null && plan.shortest_excess_km > 0
+        ? ` (+${plan.shortest_excess_km.toFixed(0)} km)`
+        : ''
+    parts.push(`Directa: ${shortest.toFixed(0)} km${excess}`)
+  }
+  if (fastest != null) {
+    parts.push(`Rápida: ${fastest.toFixed(0)} km`)
+  }
+  if (conventional != null) {
+    parts.push(`Convencionales: ${conventional.toFixed(0)} km`)
+  }
+
+  const selectedKm = plan.route_distance_km
+  if (selectedKm != null && plan.route_preference) {
+    const selectedLabel =
+      plan.route_preference === 'shortest'
+        ? 'directa'
+        : plan.route_preference === 'fastest'
+          ? 'rápida'
+          : 'convencionales'
+    const approx = plan.route_variants_approximate ? ' ~aprox.' : ''
+    parts.push(`Plan: ${selectedLabel} (${selectedKm.toFixed(0)} km${approx})`)
+  }
+
+  return parts.join(' · ')
+}

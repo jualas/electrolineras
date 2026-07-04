@@ -7,8 +7,6 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VERIFY_SCRIPT = REPO_ROOT / "scripts" / "cron" / "verify_ingest.py"
 

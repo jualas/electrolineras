@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 from pathlib import Path
 
@@ -84,6 +85,41 @@ def test_fetch_spain_retries_on_failure(tmp_path: Path, monkeypatch: pytest.Monk
     result = fetch_spain_entry()
     assert attempts["count"] == 2
     assert result.http_status == 200
+
+
+def test_fetch_spain_accepts_gzip_content_length_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Content-Length comprimido vs cuerpo descomprimido por httpx (regresión DGT NAP)."""
+    ingest_settings = IngestSettings(
+        nap_es_url="https://example.test/electrolineras.xml",
+        data_raw_dir=tmp_path / "data" / "raw",
+        fetch_max_retries=1,
+    )
+    monkeypatch.setattr("ingest.fetch_spain.settings", ingest_settings)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        compressed = gzip.compress(SAMPLE_XML)
+        return httpx.Response(
+            200,
+            content=compressed,
+            headers={
+                "content-encoding": "gzip",
+                "content-length": str(len(compressed)),
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(
+        httpx,
+        "stream",
+        lambda *args, **kwargs: httpx.Client(transport=transport).stream(*args, **kwargs),
+    )
+
+    result = fetch_spain_entry()
+    assert result.bytes_written == len(SAMPLE_XML)
+    assert result.output_path.read_bytes() == SAMPLE_XML
 
 
 @pytest.mark.integration

@@ -34,14 +34,11 @@ LOCK_FILE="$LOCK_DIR/${JOB}.lock"
 export DATABASE_URL
 export PYTHONPATH="$REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/notify_ingest_failure.sh"
+
 notify_failure() {
-  local message="$1"
-  if [[ -n "${INGEST_WEBHOOK_URL:-}" ]] && command -v curl >/dev/null; then
-    curl -sf -X POST "$INGEST_WEBHOOK_URL" \
-      -H "Content-Type: application/json" \
-      -d "{\"text\":\"Electrolineras cron ${JOB} FAILED: ${message}\"}" \
-      >/dev/null 2>&1 || true
-  fi
+  notify_ingest_failure "$JOB" "$1"
 }
 
 exec 200>"$LOCK_FILE"
@@ -61,6 +58,9 @@ set +e
       "$VENV/electrolineras-ingest" --es-only --summary
       ;;
     pt)
+      if [[ -x "$REPO/scripts/backup/run_backup.sh" ]]; then
+        bash "$REPO/scripts/backup/run_backup.sh" pre-pt || true
+      fi
       "$VENV/electrolineras-ingest" --pt-only --summary
       ;;
     reve)

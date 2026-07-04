@@ -1,0 +1,20 @@
+[Unit]
+Description=Cursor CLI bridge for Dify / Electrolineras (HTTP :18765 -> cursor agent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jualas
+Group=jualas
+WorkingDirectory=/mnt/datos/docker/dify/integrations/dify-cursor/cursor-cli-bridge
+Environment=PATH=/home/jualas/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=CURSOR_BRIDGE_ENV=/mnt/datos/Proyectos/Electrolineras/scripts/dify/cursor-bridge.env
+EnvironmentFile=-/mnt/datos/Proyectos/Electrolineras/scripts/dify/cursor-bridge.env
+ExecStart=/mnt/datos/Proyectos/Electrolineras/scripts/dify/run_cursor_bridge.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

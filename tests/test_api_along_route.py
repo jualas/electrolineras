@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from osrm_mocks import MOCK_OSRM
 
 from api.dependencies import get_repository
 from api.main import app
-from api.routing.osrm import OsrmRoute
 from db.repository import StationRepository
 from models.station import Connector, Station, StationLocation
 
@@ -32,13 +32,6 @@ def sample_station(station_id: str, lat: float, lon: float, kw: float = 150.0) -
     )
 
 
-MOCK_ROUTE = OsrmRoute(
-    coordinates=[(0.0, 40.0), (0.5, 40.0), (1.0, 40.0)],
-    distance_m=111_320.0,
-    duration_s=3600.0,
-)
-
-
 @pytest.fixture
 def api_client() -> TestClient:
     repo = memory_repo()
@@ -59,7 +52,7 @@ def api_client() -> TestClient:
     app.dependency_overrides.clear()
 
 
-@patch("api.routes.along_route.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.routes.along_route.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)
 def test_along_route_returns_ranked_results(mock_fetch, api_client: TestClient) -> None:
     response = api_client.get(
         "/api/v1/stations/along-route",
@@ -75,14 +68,18 @@ def test_along_route_returns_ranked_results(mock_fetch, api_client: TestClient) 
     assert response.status_code == 200
     payload = response.json()
     assert payload["route_distance_km"] > 0
+    assert payload["route_shortest_distance_km"] == 111.32
+    assert payload["route_fastest_distance_km"] == 115.0
     assert payload["route_geometry"]["type"] == "LineString"
+    assert payload["route_shortest_geometry"]["type"] == "LineString"
+    assert payload["route_fastest_geometry"]["type"] == "LineString"
     assert len(payload["results"]) == 1
     assert payload["results"][0]["station"]["id"] == "ahead"
     assert payload["results"][0]["deviation_km"] >= 0
     mock_fetch.assert_called_once()
 
 
-@patch("api.routes.along_route.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.routes.along_route.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)
 def test_along_route_excludes_low_kw(mock_fetch, api_client: TestClient) -> None:
     response = api_client.get(
         "/api/v1/stations/along-route",
@@ -98,7 +95,7 @@ def test_along_route_excludes_low_kw(mock_fetch, api_client: TestClient) -> None
     assert "low-kw" not in ids
 
 
-@patch("api.routes.along_route.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.routes.along_route.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)
 def test_along_route_without_geometry(mock_fetch, api_client: TestClient) -> None:
     response = api_client.get(
         "/api/v1/stations/along-route",

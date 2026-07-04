@@ -6,7 +6,7 @@ export function apiUrl(path: string): string {
 }
 
 export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), init)
+  const response = await fetch(apiUrl(path), { ...init, credentials: 'include' })
   if (!response.ok) {
     let message = `API ${path}: HTTP ${response.status}`
     try {

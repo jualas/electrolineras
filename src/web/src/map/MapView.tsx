@@ -14,12 +14,17 @@ import {
   updateCityLayerTheme,
 } from './cityLayers'
 import {
+  activeRouteGeometry,
+  inactiveRouteGeometries,
+  routeVariantGeometriesFromResponse,
+} from './routeComparison'
+import {
   clearRouteOverlay,
   ensureRouteLayers,
-  fitMapToRoute,
+  fitMapToGeometries,
   fitMapToPoints,
+  setRouteComparisonLines,
   setRouteEndpoints,
-  setRouteLine,
   setRangeCircle,
   updateRouteLayerTheme,
 } from './routeLayers'
@@ -110,9 +115,16 @@ export function MapView({
   const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse, chargePlan?: ChargingPlanResponse | null) => {
     ensureRouteLayers(map, theme)
     clearCityOverlay(map)
-    if (data.route_geometry) {
-      setRouteLine(map, data.route_geometry)
-      fitMapToRoute(map, data.route_geometry)
+    const variantGeometries = routeVariantGeometriesFromResponse(data)
+    const preference = data.route_preference ?? chargePlan?.route_preference ?? 'fastest'
+    const activeGeometry = activeRouteGeometry(preference, variantGeometries, data.route_geometry)
+    const alternateGeometries = inactiveRouteGeometries(preference, variantGeometries)
+    if (activeGeometry) {
+      setRouteComparisonLines(map, activeGeometry, alternateGeometries)
+      const fitGeometries = [activeGeometry, ...alternateGeometries]
+      fitMapToGeometries(map, fitGeometries)
+    } else {
+      setRouteComparisonLines(map, null, [])
     }
     setRouteEndpoints(map, data.origin, data.destination)
     if (chargePlan) {
@@ -139,12 +151,19 @@ export function MapView({
   const applyChargePlanOverlay = useCallback((map: maplibregl.Map, data: ChargingPlanResponse) => {
     ensureRouteLayers(map, theme)
     clearCityOverlay(map)
-    const routeGeometry = data.route_geometry ?? data.preview_route_geometry
+    const variantGeometries = routeVariantGeometriesFromResponse(data)
+    const preference = data.route_preference ?? 'fastest'
+    const routeGeometry = activeRouteGeometry(
+      preference,
+      variantGeometries,
+      data.route_geometry ?? data.preview_route_geometry,
+    )
+    const alternateGeometries = inactiveRouteGeometries(preference, variantGeometries)
     if (routeGeometry) {
-      setRouteLine(map, routeGeometry)
-      fitMapToRoute(map, routeGeometry)
+      setRouteComparisonLines(map, routeGeometry, alternateGeometries)
+      fitMapToGeometries(map, [routeGeometry, ...alternateGeometries])
     } else {
-      setRouteLine(map, null)
+      setRouteComparisonLines(map, null, [])
       const mapPoints = [
         data.origin,
         ...data.origin_stops.map((stop) => stop.station.location),
@@ -154,7 +173,7 @@ export function MapView({
     }
     setRouteEndpoints(map, data.origin, data.destination)
     setRangeCircle(map, data.origin, data.charging_reach_km)
-    const features = chargingPlanToFeatures(data.stops, data.origin_stops)
+    const features = chargingPlanToFeatures(data.stops, data.origin_stops, data.planned_stops ?? [])
     setStationData(map, {
       type: 'FeatureCollection',
       features,

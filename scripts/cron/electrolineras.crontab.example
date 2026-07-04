@@ -12,6 +12,12 @@
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 
+# Backup diario — 05:30 (antes de ingest ES 06:15) — #6041
+30 5 * * * /mnt/datos/Proyectos/Electrolineras/scripts/backup/run_backup.sh daily
+
+# Monitoring — cada 15 min (#6045)
+*/15 * * * * /mnt/datos/Proyectos/Electrolineras/scripts/monitoring/run_health_checks.sh
+
 # España — NAP DGT, diario 06:15
 15 6 * * * /mnt/datos/Proyectos/Electrolineras/scripts/cron/run_scheduled_job.sh es
 
@@ -23,3 +29,7 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 # Open Charge Map — valoraciones/comentarios, semanal (domingo 04:30)
 30 4 * * 0 /mnt/datos/Proyectos/Electrolineras/scripts/cron/run_scheduled_job.sh ocm
+
+# Nominatim — configurar prod cuando termine import (#6046); quitar tras éxito
+# */30 * * * * /mnt/datos/Proyectos/Electrolineras/scripts/nominatim/wait_and_finish_prod.sh >> /mnt/datos/docker/volumes/electrolineras-data/logs/cron/nominatim-finish.log 2>&1
+# Instalar con: make nominatim-install-finish-cron

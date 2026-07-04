@@ -1,5 +1,6 @@
 import { fetchApi } from './client'
-import type { ChargingPlanResponse } from './types'
+import { chargingPreferencesToQueryParams } from '../charging/chargingPreferences'
+import type { ChargingPlanResponse, RoutePreference } from './types'
 
 export type ChargingPlanQuery = {
   originLat: number
@@ -15,6 +16,11 @@ export type ChargingPlanQuery = {
   maxKw?: number
   corridorKm?: number
   limit?: number
+  routePreference?: RoutePreference
+  avoidHighways?: boolean
+  vehiclePresetId?: string
+  preferredOperators?: string[]
+  maxPriceEurKwh?: number | null
 }
 
 export async function fetchChargingPlan(
@@ -49,6 +55,22 @@ export async function fetchChargingPlan(
   }
   if (query.limit !== undefined) {
     params.set('limit', String(query.limit))
+  }
+  if (query.routePreference !== undefined) {
+    params.set('route_preference', query.routePreference)
+  }
+  if (query.avoidHighways) {
+    params.set('avoid_highways', 'true')
+  }
+  if (query.vehiclePresetId) {
+    params.set('vehicle_preset_id', query.vehiclePresetId)
+  }
+  const preferenceParams = chargingPreferencesToQueryParams({
+    preferredOperators: query.preferredOperators ?? [],
+    maxPriceEurKwh: query.maxPriceEurKwh ?? null,
+  })
+  for (const [key, value] of Object.entries(preferenceParams)) {
+    params.set(key, value)
   }
 
   return fetchApi<ChargingPlanResponse>(`/api/v1/stations/charging-plan?${params.toString()}`, init)

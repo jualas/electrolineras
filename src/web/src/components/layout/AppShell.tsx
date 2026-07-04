@@ -4,6 +4,7 @@ import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
+import { useActiveTrip } from '../../hooks/useActiveTrip'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
 import { useTheme } from '../../hooks/useTheme'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
@@ -16,6 +17,7 @@ const MODES: { id: SearchMode; label: string }[] = [
   { id: 'map', label: 'Mapa' },
   { id: 'charge', label: 'Plan carga' },
   { id: 'route', label: 'En ruta' },
+  { id: 'assistant', label: 'Asistente' },
 ]
 
 const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
@@ -45,6 +47,7 @@ export function AppShell() {
     setConsumptionWhPerKm: setVehicleConsumption,
     setTerrainFactorId: setVehicleTerrain,
   } = useVehicleProfile()
+  const { activeTrip } = useActiveTrip()
 
   useEffect(() => {
     checkApiHealth().then(setApiOk)
@@ -61,13 +64,16 @@ export function AppShell() {
       setRouteChargePlanData(null)
       setRouteSearching(false)
     }
-    if (nextMode !== 'charge') {
+    if (nextMode !== 'charge' && nextMode !== 'assistant') {
       setChargePlanData(null)
       setChargePlanSearching(false)
     }
     if (nextMode !== 'map') {
       setMapFocusPlace(null)
       setMapSearchText('')
+    }
+    if (nextMode === 'assistant') {
+      setPanelOpen(true)
     }
     setSelectedStation(null)
     setPanelOpen(nextMode !== 'map')
@@ -133,8 +139,8 @@ export function AppShell() {
         routeData={mode === 'route' ? routeData : null}
         routeChargePlanData={mode === 'route' ? routeChargePlanData : null}
         routeSearching={mode === 'route' && routeSearching}
-        chargePlanData={mode === 'charge' ? chargePlanData : null}
-        chargePlanSearching={mode === 'charge' && chargePlanSearching}
+        chargePlanData={mode === 'charge' || mode === 'assistant' ? chargePlanData : null}
+        chargePlanSearching={(mode === 'charge' || mode === 'assistant') && chargePlanSearching}
         focusStation={mode !== 'map' ? selectedStation : null}
         mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
         onRegisterMapBounds={handleRegisterMapBounds}
@@ -178,6 +184,24 @@ export function AppShell() {
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </header>
 
+          {mode === 'map' && activeTrip ? (
+            <div className="active-trip-banner" role="status">
+              <span>
+                Viaje activo → <strong>{activeTrip.destination.label}</strong>
+              </span>
+              <button
+                type="button"
+                className="btn btn--secondary btn--compact"
+                onClick={() => {
+                  setMode('charge')
+                  setPanelOpen(true)
+                }}
+              >
+                Recalcular plan
+              </button>
+            </div>
+          ) : null}
+
           {mode === 'map' && (
             <MapFloatingSearch
               value={mapSearchText}
@@ -192,7 +216,7 @@ export function AppShell() {
         {panelOpen && (
           <button
             type="button"
-            className="map-scrim"
+            className={`map-scrim map-scrim--mode-${mode}`}
             aria-label="Cerrar panel"
             onClick={() => setPanelOpen(false)}
           />
@@ -200,7 +224,7 @@ export function AppShell() {
 
         <aside
           id="app-side-panel"
-          className={`map-side-panel${panelOpen ? ' map-side-panel--open' : ''}${mode === 'charge' ? ' map-side-panel--charge' : ''}`}
+          className={`map-side-panel${panelOpen ? ' map-side-panel--open' : ''}${mode === 'charge' || mode === 'assistant' ? ' map-side-panel--charge' : ''}`}
           aria-hidden={!panelOpen}
         >
           <SearchPanel
@@ -221,7 +245,7 @@ export function AppShell() {
             onChargePlanSearchStateChange={handleChargePlanSearchStateChange}
             selectedStationId={selectedStation?.id ?? null}
           />
-          {mode !== 'map' && mode !== 'charge' && (
+          {mode !== 'map' && mode !== 'charge' && mode !== 'assistant' && (
             <VehicleProfilePanel
               profile={vehicleProfile}
               onPresetChange={setVehiclePresetId}

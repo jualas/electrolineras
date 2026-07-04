@@ -87,16 +87,21 @@ Comprueba `/health`, conteo de estaciones y un endpoint de listado.
 Stack en **`/mnt/datos/docker/electrolineras/`** (patrón del resto de servicios en `mnt/datos/docker/`).
 
 ```bash
-mkdir -p /mnt/datos/docker/volumes/electrolineras-data/db
+mkdir -p /mnt/datos/docker/volumes/electrolineras-data/{db,raw/es,raw/pt,processed,logs}
 cp /mnt/datos/Proyectos/Electrolineras/data/db/stations.db \
   /mnt/datos/docker/volumes/electrolineras-data/db/   # primera vez
+make docker-sync-prod
 cd /mnt/datos/docker/electrolineras
-docker compose up -d --build
+cp env.example .env   # si no existe
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-- **URL local:** http://127.0.0.1:8015 (API + SPA en un solo contenedor)
-- **Datos:** `/mnt/datos/docker/volumes/electrolineras-data/`
-- Detalle: [`docker/README.md`](../docker/README.md) en el repo
+- **URL local:** http://127.0.0.1:8015 — **nginx** sirve la SPA y hace proxy de `/api/*` y `/health` hacia **FastAPI** (puerto interno 8000)
+- **Datos:** `/mnt/datos/docker/volumes/electrolineras-data/` (db, raw, processed, logs)
+- **OSRM:** red Docker `osrm_default` (`docker/osrm/docker-compose.yml`)
+- Detalle: [`docker/README.md`](../docker/README.md)
+
+Targets útiles: `make docker-build`, `make docker-up`, `make docker-down`, `make deploy`.
 
 ## 3. Producción con Cloudflare Tunnel (HTTPS)
 
@@ -108,9 +113,11 @@ No hace falta abrir puertos en el router ni certificados locales: **Cloudflare**
 flowchart LR
   User[Tesla / móvil] --> CF[Cloudflare HTTPS]
   CF --> Tunnel[cloudflared minipc]
-  Tunnel --> App[FastAPI :8000]
-  App --> DB[(stations.db)]
-  App --> OSRM[OSRM interno o público]
+  Tunnel --> Nginx[nginx :8015]
+  Nginx --> API[FastAPI :8000]
+  Nginx --> Static[SPA estática]
+  API --> DB[(stations.db)]
+  API --> OSRM[OSRM interno o público]
 ```
 
 ### Paso A — DNS y túnel (dashboard Cloudflare)
@@ -213,6 +220,79 @@ docker compose up -d electrolineras-cloudflared
 
 En Zero Trust, el **Service URL** debe ser `http://127.0.0.1:8015` (no `<IP-LAN-SERVIDOR>`).
 
+Con el stack prod (#6038), el origen es **nginx** en `:8015` (HTTP); FastAPI queda solo en la red Docker interna.
+
+```bash
+cd /mnt/datos/docker/electrolineras
+docker compose -f docker-compose.prod.yml up -d electrolineras-cloudflared
+```
+
+### TLS, dominio y decisión arquitectónica (#6039 / #6084)
+
+**Estado:** cerrado. HTTPS y dominio público operativos vía **Cloudflare Tunnel** — no se despliega Let's Encrypt, Caddy TLS ni certificados locales en el mini PC.
+
+| Aspecto | Implementación actual | Notas |
+|---------|----------------------|-------|
+| **Dominio público** | `https://electro.jualas.es` | Un solo hostname para SPA + API (mismo origen) |
+| **DNS** | Cloudflare (registro proxied ☁️) | Creado al configurar Public Hostname del túnel |
+| **Certificados TLS** | Cloudflare (edge) | Emisión y renovación automáticas; sin `certbot` en el host |
+| **Terminación TLS** | Cloudflare → cliente | Tráfico usuario↔Cloudflare siempre HTTPS |
+| **Origen (túnel → app)** | `http://127.0.0.1:8015` | HTTP en localhost; aceptable porque no sale de la máquina |
+| **Reverse proxy app** | nginx (`electrolineras-nginx`) | Sirve estáticos Vite; proxy `/api/*` y `/health` → FastAPI |
+| **Forzar HTTPS** | Dashboard Cloudflare → SSL/TLS → **Always Use HTTPS** | Redirección HTTP→HTTPS en el edge |
+| **HSTS** | FastAPI `SecurityHeadersMiddleware` con `API_TRUST_PROXY_HEADERS=true` | Solo cuando la petición llega vía Cloudflare (header `CF-Connecting-IP`) |
+| **Headers básicos** | nginx + middleware API (#6042) | `X-Content-Type-Options`, `X-Frame-Options`, etc. |
+| **www** | No configurado | Solo `electro.jualas.es`; añadir CNAME `www` solo si se necesita alias |
+| **Puertos router** | Cerrados | El túnel es saliente; no hace falta NAT 443→minipc |
+
+#### Flujo de una petición
+
+```mermaid
+sequenceDiagram
+  participant U as Cliente (Tesla/móvil)
+  participant CF as Cloudflare (TLS)
+  participant T as cloudflared (host)
+  participant N as nginx :8015
+  participant A as FastAPI :8000
+
+  U->>CF: GET https://electro.jualas.es/api/...
+  CF->>T: túnel cifrado Cloudflare
+  T->>N: HTTP 127.0.0.1:8015
+  N->>A: proxy /api/...
+  A-->>N: JSON
+  N-->>T: respuesta
+  T-->>CF: respuesta
+  CF-->>U: HTTPS + certificado Cloudflare
+```
+
+#### Qué **no** implementar (duplicaría infraestructura)
+
+- Certificados Let's Encrypt en nginx del mini PC
+- Caddy con TLS local en `:443`
+- Abrir puerto 443 en el router hacia el minipc
+
+El nginx del stack prod escucha **HTTP** en `:8015`; la capa TLS la aporta Cloudflare.
+
+#### Checklist operativo (#6039 cerrado)
+
+| # | Comprobación | Comando / ubicación |
+|---|--------------|---------------------|
+| 1 | Health HTTPS público | `curl -4 -s https://electro.jualas.es/health` |
+| 2 | API vía dominio | `curl -s 'https://electro.jualas.es/api/v1/meta/stats'` |
+| 3 | CORS acota al dominio | `API_CORS_ORIGINS` incluye `https://electro.jualas.es` |
+| 4 | Túnel activo | `docker logs electrolineras-cloudflared --tail 20` |
+| 5 | Origen local OK | `curl -s http://127.0.0.1:8015/health` |
+| 6 | Always Use HTTPS | Cloudflare dashboard → SSL/TLS |
+| 7 | User-Agent geocoding | `NOMINATIM_USER_AGENT` con URL de contacto real |
+
+#### Renovación de certificados
+
+No hay acción en el mini PC. Cloudflare renueva los certificados del edge de forma automática. Si cambias de dominio o añades un hostname nuevo, configúralo en **Zero Trust → Tunnels → Public Hostname** (Cloudflare crea/actualiza DNS).
+
+#### Alternativa futura (no recomendada hoy)
+
+Si algún día se deja Cloudflare Tunnel: haría falta TLS en el origen (Caddy/Let's Encrypt) **y** abrir puertos en el router. Documentar entonces un runbook aparte; no mezclar con el setup actual.
+
 ---
 
 ## 3b. No carga `electro.jualas.es` (troubleshooting)
@@ -244,12 +324,12 @@ curl -6 -s https://electro.jualas.es/health    # Error: red inaccesible
 ### 3. Túnel y origen
 
 ```bash
-docker ps --filter electrolineras
+docker ps --filter name=electrolineras
 curl -s http://127.0.0.1:8015/health
 docker logs electrolineras-cloudflared --tail 30
 ```
 
-- Contenedor `electrolineras` → **healthy**
+- Contenedores `electrolineras-api` y `electrolineras-nginx` → **healthy** (stack prod #6038)
 - `electrolineras-cloudflared` → **Up**, `network_mode: host`
 - Zero Trust → Public Hostname → `http://127.0.0.1:8015`
 
@@ -340,6 +420,8 @@ crontab -e
 
 # Logrotate (opcional — tarea #6052)
 sudo cp scripts/cron/logrotate.electrolineras.example /etc/logrotate.d/electrolineras
+# Ajustar `su usuario grupo` en el fichero si el dueño de los logs no es jualas.
+sudo logrotate -d /etc/logrotate.d/electrolineras   # dry-run
 ```
 
 ### Jobs programados
@@ -362,7 +444,15 @@ Tras cada job, `scripts/cron/verify_ingest.py` comprueba:
 
 Logs: `/mnt/datos/docker/volumes/electrolineras-data/logs/cron/ingest-{es,pt,reve}.log`
 
-Alertas opcionales: `INGEST_WEBHOOK_URL` en `electrolineras.env` (POST JSON en fallo). Cierre operativo: tarea [#6052](../TASKBOARD.md#task-6052); monitoring integral: [#6045](../TASKBOARD.md#task-6045).
+Alertas opcionales: `INGEST_WEBHOOK_URL` en `electrolineras.env` (POST en fallo). Formatos soportados: **ntfy** (`https://ntfy.sh/topic-secreto`), Slack, Discord, n8n. Cierre operativo: [#6052](../TASKBOARD.md#task-6052); monitoring integral: [#6045](../TASKBOARD.md#task-6045).
+
+**ntfy (recomendado):** instala [ntfy](https://ntfy.sh) en el móvil → *Subscribe to topic* → mismo nombre que en la URL (p. ej. `electrolineras-ingest-b4e8f21a`).
+
+```bash
+# Webhook (#6052)
+bash scripts/cron/test_ingest_webhook.sh
+bash scripts/cron/test_ingest_failure_notify.sh   # mismo camino que run_scheduled_job.sh en fallo
+```
 
 ### Probar manualmente
 
@@ -385,28 +475,179 @@ El cron usa el `.venv` del repo (ingest/sync). Docker necesita rebuild solo si c
 
 ---
 
-## 6. Orden sugerido tareas Fase Prod
+## 6. Backups SQLite y data/ (#6041)
+
+Destino por defecto: `/mnt/datos/docker/backups/electrolineras/`
+
+| Tipo | Cuándo | Contenido | Retención |
+|------|--------|-----------|-----------|
+| **daily** | Cron 05:30 | `stations.db` (backup online), `stations.geojson`, último XML es/pt + manifests | 7 días (+ domingos 30 días) |
+| **pre-pt** | Antes de cada ingest PT | Solo `stations.db` | 7 días |
+
+Variables en `scripts/cron/electrolineras.env`: `BACKUP_ROOT`, `BACKUP_RAW_DIR`, `BACKUP_*_RETENTION_DAYS`.
+
+### Activar cron de backup
+
+Añadir a `crontab -e` (incluido en `electrolineras.crontab.example`):
+
+```cron
+30 5 * * * /mnt/datos/Proyectos/Electrolineras/scripts/backup/run_backup.sh daily
+```
+
+### Comandos
+
+```bash
+make backup-run          # backup manual daily
+make backup-verify       # restauración de prueba en /tmp + conteo estaciones
+bash scripts/backup/run_backup.sh pre-pt
+
+# Restaurar producción (detener API antes)
+cd /mnt/datos/docker/electrolineras && docker compose stop electrolineras
+bash scripts/backup/restore_backup.sh --date 2026-07-04
+docker compose up -d electrolineras
+```
+
+Logs: `{ELECTROLINERAS_DATA}/logs/backup/backup-daily-YYYYMMDD.log`
+
+---
+
+## 7. Monitoring y alertas (#6045)
+
+Script: `scripts/monitoring/run_health_checks.sh` (cron **cada 15 min**).
+
+| Check | Qué comprueba |
+|-------|----------------|
+| API | `GET /health` (default `http://127.0.0.1:8015/health`) |
+| OSRM car / shortest | Ruta smoke Madrid (~200 m) en `:5000` y `:5001` |
+| SQLite | `PRAGMA integrity_check` + conteos mínimos |
+| Ingest | Frescura `ingest_run` es / pt / reve (mismas reglas que `verify_ingest.py`) |
+| Disco | Uso % en volumen data y carpeta backups (umbral `MONITOR_DISK_WARN_PCT`, default 85) |
+
+Alertas vía **`INGEST_WEBHOOK_URL`** (ntfy/Slack/Discord) con **cooldown** `MONITOR_ALERT_COOLDOWN_MINUTES` (default 180) para no spamear.
+
+```bash
+make monitor-test          # sin alertas
+make monitor-check         # con alertas + log
+```
+
+Logs: `{ELECTROLINERAS_DATA}/logs/monitor/health-YYYYMMDD.log`  
+Estado cooldown: `{ELECTROLINERAS_DATA}/logs/monitor/state.json`
+
+Cron (incluido en `electrolineras.crontab.example`):
+
+```cron
+*/15 * * * * /mnt/datos/Proyectos/Electrolineras/scripts/monitoring/run_health_checks.sh
+```
+
+---
+
+## 8. Hardening API (#6042)
+
+Middleware en `src/api/security/` (rate limit, cabeceras, tamaño de body, docs).
+
+| Variable | Prod recomendado | Efecto |
+|----------|------------------|--------|
+| `API_ENVIRONMENT` | `production` | CORS más estricto; `/docs` desactivado por defecto |
+| `API_CORS_ORIGINS` | `https://electro.jualas.es` (+ LAN si hace falta) | Solo orígenes permitidos |
+| `API_TRUST_PROXY_HEADERS` | `true` (Cloudflare Tunnel) | IP real (`CF-Connecting-IP`) + HSTS |
+| `API_RATE_LIMIT_ENABLED` | `true` | Límite por IP y tipo de endpoint |
+| `API_RATE_LIMIT_ROUTING_PER_MINUTE` | `30` | OSRM: along-route, charging-plan, agent/private |
+| `API_RATE_LIMIT_GEOCODE_PER_MINUTE` | `45` | Nominatim: nearby, geocode |
+| `API_RATE_LIMIT_AUTH_PER_MINUTE` | `15` | Login TOTP |
+| `API_MAX_REQUEST_BODY_BYTES` | `65536` | Rechaza POST > 64 KiB |
+| `API_DOCS_ENABLED` | `false` | Sin Swagger/OpenAPI público |
+| `OSRM_TIMEOUT_SECONDS` | `30` | Timeout httpx hacia OSRM (ya existente) |
+
+Respuesta **429** incluye `Retry-After` y cabeceras `X-RateLimit-*`. `/health` queda exento (monitoring).
+
+Si necesitas `/docs` en prod: `API_DOCS_ENABLED=true` + `API_DOCS_BASIC_AUTH_USER/PASSWORD`.
+
+Tras cambiar variables en `/mnt/datos/docker/electrolineras/.env`:
+
+```bash
+cd /mnt/datos/docker/electrolineras
+docker compose up -d --build electrolineras
+```
+
+---
+
+## 9. Variables de entorno y secretos (#6043)
+
+Guía completa: [`docs/ENV.md`](ENV.md).
+
+| Plantilla | Destino real |
+|-----------|--------------|
+| `.env.production.example` | Referencia prod / systemd |
+| `docker/env.example` | `/mnt/datos/docker/electrolineras/.env` |
+| `scripts/cron/electrolineras.env.example` | Cron host |
+
+```bash
+cp docker/env.example /mnt/datos/docker/electrolineras/.env
+nano /mnt/datos/docker/electrolineras/.env
+make env-check-prod ENV_FILE=/mnt/datos/docker/electrolineras/.env
+make env-secure
+```
+
+Obligatorias en prod: `DATABASE_URL`, `API_CORS_ORIGINS`, `OSRM_BASE_URL`, `NOMINATIM_USER_AGENT`, `API_ENVIRONMENT=production`, `API_RELOAD=false`. Build frontend con `VITE_API_URL` vacío.
+
+Secretos: permisos `600`, no commitear; generar auth con `python scripts/auth/setup_private_auth.py`.
+
+CI/CD (#6044): [`docs/CI_CD.md`](CI_CD.md) — GitHub Actions (lint/test/build) + deploy con runner self-hosted o `make deploy`.
+
+---
+
+## 11. Nominatim self-hosted (#6046)
+
+Guía completa: [`docs/NOMINATIM.md`](NOMINATIM.md).
+
+```bash
+make nominatim-prepare    # PBF Iberia (reutiliza OSRM)
+make nominatim-up         # importación inicial (horas)
+```
+
+API prod:
+
+```env
+NOMINATIM_BASE_URL=http://host.docker.internal:8092
+NOMINATIM_FALLBACK_BASE_URL=
+NOMINATIM_CACHE_ENABLED=true
+```
+
+Tras arrancar Nominatim, activar monitoring opcional en `electrolineras.env`:
+
+```env
+MONITOR_NOMINATIM_URL=http://127.0.0.1:8092/search?q=Madrid&format=json&limit=1&countrycodes=es
+```
+
+---
+
+## 10. Orden sugerido tareas Fase Prod
 
 Tras validar el MVP en dev y el primer acceso HTTPS:
 
 | Orden | Tarea | Relación con HTTPS |
 |-------|-------|-------------------|
 | 1 | **#6047** Runbook (este doc) | Base operativa |
-| 2 | **#6043** `.env.production.example` | Variables prod |
-| 3 | **#6039** HTTPS + dominio | **Cloudflare Tunnel** (este enfoque) |
-| 4 | **#6038** Docker Compose | Opcional; simplifica minipc |
+| 2 | **#6043** `.env.production.example` | **Ver [`ENV.md`](ENV.md)** |
+| 3 | **#6039** HTTPS + dominio | ✅ **Cloudflare Tunnel** — sección 3 y «TLS, dominio…» |
+| 4 | **#6038** Docker Compose | ✅ nginx + API (origen `:8015`) |
 | 5 | **#6037** OSRM self-hosted | Sustituir OSRM público |
 | 6 | **#6040** Cron ingestión DATEX + REVE | **Ver sección 5** |
-| 7 | **#6041–6047** | Backups, CI, monitoring… |
+| 6a | **#6041** Backups SQLite + data/ | **Ver sección 6** |
+| 6b | **#6045** Monitoring y alertas | **Ver sección 7** |
+| 6c | **#6042** Rate limiting + hardening API | **Ver sección 8** |
+| 6d | **#6043** Variables de entorno y secretos | **Ver sección 9** |
+| 6e | **#6044** CI/CD despliegue automatizado | [`CI_CD.md`](CI_CD.md) |
+| 7 | **#6046** | Nominatim self-hosted — [`NOMINATIM.md`](NOMINATIM.md) |
 
-Con el túnel Cloudflare, **#6039** se reduce a: hostname + túnel + CORS + `NOMINATIM_USER_AGENT` correcto. No necesitas nginx/Let's Encrypt en el minipc.
+**#6039** no requiere Let's Encrypt local: hostname `electro.jualas.es`, túnel `cloudflared`, CORS acotado y `NOMINATIM_USER_AGENT` con URL de contacto. Ver checklist en la sección «TLS, dominio y decisión arquitectónica».
 
 ---
 
 ## 4. Limitaciones conocidas (MVP)
 
 - **OSRM público:** límites de uso; en prod planificar #6037.
-- **Nominatim público:** rate limit; en prod #6046.
+- **Nominatim público:** rate limit; en prod usar self-hosted — [`NOMINATIM.md`](NOMINATIM.md) (#6046).
 - **Sin Tesla Fleet API:** navegación vía Google/Apple Maps (#6036).
 - **Datos:** cron host (#6040) — DATEX diario/6h + REVE cada 3h; ver [`DEPLOYMENT.md`](DEPLOYMENT.md#5-cron-de-ingestión-producción-6040).
 

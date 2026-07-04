@@ -57,6 +57,13 @@ Detalle técnico en [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
 - [`docs/STATUS.md`](docs/STATUS.md) — fase actual, roadmap con IDs de tarea
 - [`TASKBOARD.md`](TASKBOARD.md) — espejo del backlog en [TaskBoard](https://kanban.jualas.es) (proyecto `id=7`)
 
+### Operación / prod
+
+- [`docs/ENV.md`](docs/ENV.md) — variables de entorno, secretos y plantillas (#6043)
+- [`docs/CI_CD.md`](docs/CI_CD.md) — GitHub Actions, deploy y rollback (#6044)
+- [`docs/NOMINATIM.md`](docs/NOMINATIM.md) — geocodificación self-hosted ES+PT (#6046)
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — runbook despliegue mini PC
+
 ## Estructura del repo
 
 ```
@@ -76,7 +83,7 @@ Electrolineras/
 ├── tests/
 ├── pyproject.toml
 ├── Makefile
-└── .env.example
+└── .env.example          # dev — ver docs/ENV.md y .env.production.example
 ```
 
 ## Requisitos
@@ -90,6 +97,8 @@ Electrolineras/
 ```bash
 # 1. Variables de entorno
 cp .env.example .env
+
+Configuración prod y secretos: [`docs/ENV.md`](docs/ENV.md) · validación: `make env-check-prod ENV_FILE=…`
 
 # 2. Backend (venv + dependencias + tests)
 make install-dev

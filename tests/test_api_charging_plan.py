@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from osrm_mocks import MOCK_OSRM, MOCK_ROUTE
 
 from api.dependencies import get_repository
 from api.main import app
-from api.routing.osrm import OsrmRoute
 from db.repository import StationRepository
 from models.station import Connector, Station, StationLocation
 
@@ -33,12 +33,6 @@ def sample_station(station_id: str, lat: float, lon: float, kw: float = 150.0, p
         dynamic_status="available",
     )
 
-
-MOCK_ROUTE = OsrmRoute(
-    coordinates=[(0.0, 40.0), (0.5, 40.0), (1.0, 40.0)],
-    distance_m=111_320.0,
-    duration_s=3600.0,
-)
 
 VEHICLE_PARAMS = {
     "soc_percent": 45,
@@ -69,7 +63,7 @@ def api_client() -> TestClient:
     app.dependency_overrides.clear()
 
 
-@patch("api.charging_plan_service.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)
 def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     response = api_client.get(
         "/api/v1/stations/charging-plan",
@@ -94,11 +88,15 @@ def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     assert isinstance(payload["origin_stops"], list)
     assert payload["stops"][0]["classification"] in {"safe", "adjusted", "critical", "unreachable"}
     assert payload["route_geometry"]["type"] == "LineString"
+    assert payload["route_shortest_geometry"]["type"] == "LineString"
+    assert payload["route_fastest_geometry"]["type"] == "LineString"
+    assert payload["route_shortest_distance_km"] == 111.32
+    assert payload["route_fastest_distance_km"] == 115.0
     assert payload["destination_stay"] is not None
     assert payload["destination_stay"]["bands"]["total"] >= 0
 
 
-@patch("api.charging_plan_service.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)
 def test_charging_plan_route_destination_slow_infra(mock_fetch, api_client: TestClient) -> None:
     repo = memory_repo()
     repo.upsert_stations(

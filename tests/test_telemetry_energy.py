@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+import pytest
+
+from api.integrations.telemetry_energy import (
+    charging_reach_km,
+    current_range_from_nominal,
+    planning_range_km,
+    vehicle_energy_from_telemetry,
+)
+from api.integrations.teslamate import TeslaMateError, VehicleTelemetry, build_car_model_label
+
+
+def _telemetry(**kwargs) -> VehicleTelemetry:
+    defaults = {
+        "car_id": 1,
+        "display_name": "The Ship",
+        "state": "online",
+        "lat": 40.0,
+        "lon": -3.0,
+        "battery_level_pct": 75.0,
+        "usable_battery_level_pct": 75.0,
+        "est_battery_range_km": 483.0,
+        "rated_battery_range_km": 305.12,
+        "source": "teslamate-mqtt",
+    }
+    defaults.update(kwargs)
+    return VehicleTelemetry(**defaults)
+
+
+def test_build_car_model_label() -> None:
+    assert build_car_model_label("3", "SR+") == "Model 3 SR+"
+
+
+def test_current_range_from_nominal() -> None:
+    telemetry = _telemetry()
+    assert round(current_range_from_nominal(telemetry), 1) == round(305.12 * 0.75, 1)
+
+
+def test_planning_range_from_nominal() -> None:
+    assert planning_range_km(305.12, 75.0, 10.0) == 305.12 * 65 / 100
+
+
+def test_vehicle_energy_ignores_est_uses_nominal() -> None:
+    telemetry = _telemetry(est_battery_range_km=483.0, rated_battery_range_km=305.12)
+    soc, capacity, consumption, reserve = vehicle_energy_from_telemetry(telemetry, terrain_factor=1.0)
+    assert soc == 75.0
+    assert capacity == 100.0
+    assert reserve == 10.0
+    range_km = capacity * (soc - reserve) / 100 / (consumption / 1000)
+    assert round(range_km) == round(planning_range_km(305.12, soc, reserve))
+
+
+def test_vehicle_energy_requires_rated() -> None:
+    telemetry = _telemetry(rated_battery_range_km=None, est_battery_range_km=483.0)
+    with pytest.raises(TeslaMateError):
+        vehicle_energy_from_telemetry(telemetry)
+
+
+def test_charging_reach_from_nominal() -> None:
+    assert charging_reach_km(305.0, 75.0, 5.0) == 305.0 * 70 / 100

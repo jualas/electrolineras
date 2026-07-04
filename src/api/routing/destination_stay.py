@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 from api.routing.charging_plan import (
     ChargingStrategyOption,
-    STRATEGY_CHARGE_NOW,
     VehicleEnergyProfile,
+    clamp_display_soc_pct,
     effective_consumption_wh_per_km,
 )
 from models.station import Station
@@ -138,11 +138,21 @@ def analyze_destination_stay(
     local_soc_needed = round(local_soc_needed, 1)
 
     arrival_gap = None
+    projected_display = (
+        round(clamp_display_soc_pct(projected_soc_at_arrival_pct), 1)
+        if projected_soc_at_arrival_pct is not None
+        else None
+    )
     if projected_soc_at_arrival_pct is not None:
-        arrival_gap = round(recommended_soc - projected_soc_at_arrival_pct, 1)
-        if arrival_gap > 5:
+        projected_for_gap = clamp_display_soc_pct(projected_soc_at_arrival_pct)
+        arrival_gap = round(recommended_soc - projected_for_gap, 1)
+        if projected_soc_at_arrival_pct < profile.reserve_soc_percent:
             warnings.append(
-                f"Con el plan actual llegarías con ~{projected_soc_at_arrival_pct:.0f} %; "
+                "Sin paradas en ruta agotarías la batería antes de llegar al destino."
+            )
+        elif arrival_gap > 5:
+            warnings.append(
+                f"Con el plan actual llegarías con ~{projected_display:.0f} %; "
                 f"recomendamos ≥{recommended_soc:.0f} % para moverte en la zona."
             )
 
@@ -175,6 +185,16 @@ def build_destination_buffer_strategy(advice: DestinationStayAdvice) -> Charging
         return None
     if advice.arrival_gap_pct is None or advice.arrival_gap_pct <= 3:
         return None
+    projected = advice.projected_soc_at_arrival_pct
+    projected_label = (
+        f"{clamp_display_soc_pct(projected):.0f} %"
+        if projected is not None and projected < advice.recommended_soc_at_arrival_pct
+        else f"{projected:.0f} %"
+        if projected is not None
+        else "—"
+    )
+    if projected is not None and projected < 0:
+        projected_label = "agotada (sin paradas en ruta)"
     return ChargingStrategyOption(
         id=STRATEGY_ARRIVE_WITH_BUFFER,
         label="Llegar con margen en destino",
@@ -183,7 +203,7 @@ def build_destination_buffer_strategy(advice: DestinationStayAdvice) -> Charging
         classification=None,
         summary=(
             f"Objetivo {advice.recommended_soc_at_arrival_pct:.0f} % al llegar "
-            f"(ahora estimas {advice.projected_soc_at_arrival_pct:.0f} %). "
+            f"(sin paradas estimas {projected_label}). "
             f"{advice.charge_time_hint}"
         ),
     )

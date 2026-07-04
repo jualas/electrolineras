@@ -1,0 +1,54 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref (rama o tag) a desplegar
+        required: false
+        default: main
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy mini PC
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+
+      - name: Deploy
+        env:
+          DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+        run: bash scripts/deploy/deploy.sh
+
+  deploy-ssh-fallback:
+    name: Deploy via SSH (opcional)
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remote deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script: |
+            cd /mnt/datos/Proyectos/Electrolineras
+            git fetch --tags origin
+            git checkout "${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}"
+            git pull --ff-only || true
+            bash scripts/deploy/deploy.sh

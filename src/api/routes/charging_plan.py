@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from api.charging_plan_service import ChargingPlanBuildResult, build_charging_plan
 from api.config import settings
@@ -15,7 +15,9 @@ from api.schemas import (
     ChargingPlanStopResult,
     ChargingPlanStrategyResult,
     DestinationStayAdviceResult,
+    PlannedRouteStopResult,
     RouteEndpoint,
+    RoutePreference,
     VehicleEnergyInput,
 )
 from db.repository import StationRepository
@@ -34,11 +36,25 @@ def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanRes
         corridor_km=built.corridor_km,
         route_distance_km=built.route_distance_km,
         route_duration_minutes=built.route_duration_minutes,
+        route_shortest_distance_km=built.route_shortest_distance_km,
+        route_fastest_distance_km=built.route_fastest_distance_km,
+        geodesic_distance_km=built.geodesic_distance_km,
+        route_conventional_distance_km=built.route_conventional_distance_km,
+        route_conventional_duration_minutes=built.route_conventional_duration_minutes,
+        shortest_excess_km=built.shortest_excess_km,
+        route_variants_approximate=built.route_variants_approximate,
         route_geometry=built.route_geometry,
+        route_shortest_geometry=built.route_shortest_geometry,
+        route_fastest_geometry=built.route_fastest_geometry,
+        route_conventional_geometry=built.route_conventional_geometry,
         preview_route_geometry=built.preview_route_geometry,
+        route_preference=built.route_preference,
+        avoid_highways=built.avoid_highways,
         computation=built.computation,
         candidates_in_bbox=built.candidates_in_bbox,
         destination_stay=built.destination_stay,
+        preferred_operators=built.preferred_operators,
+        max_price_eur_kwh=built.max_price_eur_kwh,
     )
 
 
@@ -53,11 +69,25 @@ def _to_response(
     corridor_km: float | None,
     route_distance_km: float | None,
     route_duration_minutes: float | None,
+    route_shortest_distance_km: float | None = None,
+    route_fastest_distance_km: float | None = None,
+    geodesic_distance_km: float | None = None,
+    route_conventional_distance_km: float | None = None,
+    route_conventional_duration_minutes: float | None = None,
+    shortest_excess_km: float | None = None,
+    route_variants_approximate: bool = False,
     route_geometry: dict | None,
+    route_shortest_geometry: dict | None = None,
+    route_fastest_geometry: dict | None = None,
+    route_conventional_geometry: dict | None = None,
     preview_route_geometry: dict | None = None,
+    route_preference: RoutePreference | None = None,
+    avoid_highways: bool = False,
     computation,
     candidates_in_bbox: int,
     destination_stay: DestinationStayAdviceResult | None = None,
+    preferred_operators: tuple[str, ...] = (),
+    max_price_eur_kwh: float | None = None,
 ) -> ChargingPlanResponse:
     vehicle_input = VehicleEnergyInput(
         soc_percent=vehicle.soc_percent,
@@ -65,6 +95,7 @@ def _to_response(
         consumption_wh_per_km=vehicle.consumption_wh_per_km,
         terrain_factor=vehicle.terrain_factor,
         reserve_soc_percent=vehicle.reserve_soc_percent,
+        vehicle_preset_id=vehicle.vehicle_preset_id,
     )
     destination = None
     if destination_lat is not None and destination_lon is not None:
@@ -80,10 +111,24 @@ def _to_response(
         corridor_km=corridor_km,
         route_distance_km=route_distance_km,
         route_duration_minutes=route_duration_minutes,
+        route_shortest_distance_km=route_shortest_distance_km,
+        route_fastest_distance_km=route_fastest_distance_km,
+        geodesic_distance_km=geodesic_distance_km,
+        route_conventional_distance_km=route_conventional_distance_km,
+        route_conventional_duration_minutes=route_conventional_duration_minutes,
+        shortest_excess_km=shortest_excess_km,
+        route_variants_approximate=route_variants_approximate,
         soc_at_destination_pct=computation.soc_at_destination_pct,
         reachable_without_stop=computation.reachable_without_stop,
         route_geometry=route_geometry,
+        route_shortest_geometry=route_shortest_geometry,
+        route_fastest_geometry=route_fastest_geometry,
+        route_conventional_geometry=route_conventional_geometry,
         preview_route_geometry=preview_route_geometry,
+        route_preference=route_preference,
+        avoid_highways=avoid_highways,
+        preferred_operators=list(preferred_operators),
+        max_price_eur_kwh=max_price_eur_kwh,
         stops=[
             ChargingPlanStopResult(
                 station=stop.station,
@@ -110,6 +155,24 @@ def _to_response(
             )
             for stop in computation.origin_stops
         ],
+        planned_stops=[
+            PlannedRouteStopResult(
+                order=stop.order,
+                station=stop.station,
+                deviation_km=stop.deviation_km,
+                route_distance_km=stop.route_distance_km,
+                extra_minutes=stop.extra_minutes,
+                wrong_side=stop.wrong_side,
+                distance_from_origin_km=stop.distance_from_origin_km,
+                leg_distance_km=stop.leg_distance_km,
+                soc_arrival_pct=stop.soc_arrival_pct,
+                soc_departure_pct=stop.soc_departure_pct,
+                charge_minutes=stop.charge_minutes,
+                classification=stop.classification,
+            )
+            for stop in computation.planned_stops
+        ],
+        projected_soc_at_destination_with_plan=computation.projected_soc_at_destination_with_plan,
         strategies=[
             ChargingPlanStrategyResult(
                 id=strategy.id,
@@ -187,6 +250,34 @@ def stations_charging_plan(
         float,
         Query(gt=0, le=200, description="Km de movilidad local previstos en destino"),
     ] = 40.0,
+    route_preference: Annotated[
+        RoutePreference,
+        Query(
+            description=(
+                "fastest = menos tiempo; shortest = menos km; "
+                "conventional = solo nacionales/secundarias (sin autovía, sin priorizar tiempo)"
+            ),
+        ),
+    ] = "fastest",
+    avoid_highways: Annotated[
+        bool,
+        Query(description="Evitar autopistas de peaje (OSRM exclude=toll); autovías libres permitidas"),
+    ] = False,
+    vehicle_preset_id: Annotated[
+        str | None,
+        Query(max_length=64, description="Preset vehículo para curva DC (p. ej. tesla-model3-sr-2023)"),
+    ] = None,
+    preferred_operators: Annotated[
+        str | None,
+        Query(
+            max_length=500,
+            description="Operadores preferidos (CSV, p. ej. ionity,tesla); ranking blando",
+        ),
+    ] = None,
+    max_price_eur_kwh: Annotated[
+        float | None,
+        Query(gt=0, le=2, description="Precio máximo preferido (€/kWh); ranking blando"),
+    ] = None,
 ) -> ChargingPlanResponse:
     built = build_charging_plan(
         repo,
@@ -211,5 +302,10 @@ def stations_charging_plan(
         emergency_radius_km=emergency_radius_km,
         destination_radius_km=destination_radius_km,
         local_mobility_km=local_mobility_km,
+        route_preference=route_preference,
+        avoid_highways=avoid_highways,
+        vehicle_preset_id=vehicle_preset_id,
+        preferred_operators=preferred_operators,
+        max_price_eur_kwh=max_price_eur_kwh,
     )
     return charging_plan_to_response(built)

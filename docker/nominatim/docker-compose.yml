@@ -1,0 +1,37 @@
+# Nominatim self-hosted — península ES+PT (#6046)
+#
+# Primera importación: varias horas y ~80 GB disco en NOMINATIM_DATA_DIR.
+# Reutiliza el PBF fusionado de OSRM (scripts/nominatim/prepare_pbf.sh).
+#
+#   bash scripts/nominatim/prepare_pbf.sh
+#   cd docker/nominatim && docker compose up -d
+#
+# Documentación: docs/NOMINATIM.md
+
+services:
+  nominatim:
+    image: mediagis/nominatim:4.4
+    container_name: electrolineras-nominatim
+    restart: unless-stopped
+    ports:
+      - "${NOMINATIM_PORT:-127.0.0.1:8092:8080}"
+    environment:
+      PBF_PATH: /osm/iberia-latest.osm.pbf
+      IMPORT_WIKIPEDIA: "false"
+      NOMINATIM_PASSWORD: ${NOMINATIM_DB_PASSWORD:-change-me-nominatim}
+      THREADS: ${NOMINATIM_IMPORT_THREADS:-4}
+      FREEZE: ${NOMINATIM_FREEZE:-true}
+    volumes:
+      - ${NOMINATIM_DATA_DIR:-/mnt/datos/docker/volumes/nominatim-iberia}:/var/lib/postgresql/14/main
+      - ${OSRM_DATA_DIR:-/mnt/datos/docker/volumes/osrm-iberia}:/osm:ro
+    shm_size: 1gb
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf 'http://127.0.0.1:8080/search?q=Madrid&format=json&limit=1&countrycodes=es' | grep -q lat",
+        ]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 600s

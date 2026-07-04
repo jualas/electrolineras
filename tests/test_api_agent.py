@@ -4,11 +4,12 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from osrm_mocks import MOCK_OSRM
+from test_api_charging_plan import VEHICLE_PARAMS, memory_repo, sample_station
 
 from api.config import settings
 from api.dependencies import get_repository
 from api.main import app
-from test_api_charging_plan import MOCK_ROUTE, VEHICLE_PARAMS, memory_repo, sample_station
 
 
 @pytest.fixture
@@ -30,7 +31,7 @@ def agent_client() -> TestClient:
     app.dependency_overrides.clear()
 
 
-@patch("api.charging_plan_service.fetch_osrm_route", return_value=MOCK_ROUTE)
+@patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)
 def test_agent_trip_advice(mock_fetch, agent_client: TestClient) -> None:
     original = settings.charging_agent_enabled
     settings.charging_agent_enabled = True

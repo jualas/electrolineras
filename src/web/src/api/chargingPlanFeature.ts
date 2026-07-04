@@ -1,10 +1,13 @@
-import type { ChargingPlanStopResult, StationFeature } from './types'
+import type { ChargingPlanStopResult, PlannedRouteStopResult, StationFeature } from './types'
 
-export function chargingPlanStopToFeature(stop: ChargingPlanStopResult): StationFeature {
+export function chargingPlanStopToFeature(
+  stop: ChargingPlanStopResult,
+  options?: { plannedOrder?: number; socDeparturePct?: number; chargeMinutes?: number },
+): StationFeature {
   const station = stop.station
   return {
     type: 'Feature',
-    id: station.id,
+    id: options?.plannedOrder != null ? `planned-${options.plannedOrder}-${station.id}` : station.id,
     geometry: {
       type: 'Point',
       coordinates: [station.location.lon, station.location.lat],
@@ -27,16 +30,34 @@ export function chargingPlanStopToFeature(stop: ChargingPlanStopResult): Station
       external_comments: station.external_comments?.slice(0, 3) ?? [],
       charging_classification: stop.classification,
       soc_arrival_pct: stop.soc_arrival_pct,
+      planned_stop_order: options?.plannedOrder ?? null,
+      soc_departure_pct: options?.socDeparturePct ?? null,
+      charge_minutes: options?.chargeMinutes ?? null,
     },
   }
+}
+
+export function plannedRouteStopToFeature(stop: PlannedRouteStopResult): StationFeature {
+  return chargingPlanStopToFeature(stop, {
+    plannedOrder: stop.order,
+    socDeparturePct: stop.soc_departure_pct,
+    chargeMinutes: stop.charge_minutes,
+  })
 }
 
 export function chargingPlanToFeatures(
   stops: ChargingPlanStopResult[],
   originStops: ChargingPlanStopResult[] = [],
+  plannedStops: PlannedRouteStopResult[] = [],
 ): StationFeature[] {
   const seen = new Set<string>()
   const features: StationFeature[] = []
+
+  for (const stop of plannedStops) {
+    seen.add(stop.station.id)
+    features.push(plannedRouteStopToFeature(stop))
+  }
+
   for (const stop of [...originStops, ...stops]) {
     if (seen.has(stop.station.id)) {
       continue

@@ -31,6 +31,8 @@ flowchart LR
 | `destination_stay` | Analiza cargadores cerca del destino (sin filtro min kW) y recomienda SOC de llegada |
 | `GET /api/v1/stations/charging-plan` | Plan de ruta + `destination_stay` en modo route |
 | `GET /api/v1/agent/trip-advice` | Plan + `agent_summary` y `agent_bullets` para agentes |
+| `GET /api/v1/agent/trip-guide` | Contexto JSON + guía (local o Dify) para workflows |
+| `GET /api/v1/private/trip-guide-from-car` | Igual desde telemetría TeslaMate (Asistente web) |
 | `GET /api/v1/agent/score-charging-plan` | Alias reducido para Dify (#6056) |
 | Dify (mini PC) | Workflow: llamar API → LLM redacta explicación |
 | Cursor CLI | Script local que consulta la API y pide narrativa ampliada |
@@ -65,7 +67,11 @@ Variables de entorno (`.env` o docker):
 ```env
 CHARGING_AGENT_ENABLED=true
 AGENT_API_TOKEN=          # opcional; si se define, header X-Agent-Token
+DIFY_API_BASE_URL=        # opcional; ver docs/DIFY_TRIP_GUIDE.md
+DIFY_TRIP_WORKFLOW_API_KEY=
 ```
+
+Guía de viaje con IA: [DIFY_TRIP_GUIDE.md](./DIFY_TRIP_GUIDE.md).
 
 ## Uso — API
 
@@ -94,7 +100,7 @@ Workflow MVP recomendado:
 2. Nodo LLM con prompt fijo: «Explica al conductor las estrategias y el SOC recomendado en destino; no inventes estaciones ni porcentajes»
 3. Salida: texto + JSON del plan original
 
-Auth: red LAN o `AGENT_API_TOKEN` en el nodo HTTP.
+Auth: red LAN o `AGENT_API_TOKEN` / `PRIVATE_API_TOKEN` en el nodo HTTP. Ver [`PHASE3_PRIVATE_STACK.md`](PHASE3_PRIVATE_STACK.md).
 
 ## Referencias
 

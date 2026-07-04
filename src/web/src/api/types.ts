@@ -26,6 +26,9 @@ export type StationFeatureProperties = {
   ocm_poi_id?: number | null
   charging_classification?: string | null
   soc_arrival_pct?: number | null
+  planned_stop_order?: number | null
+  soc_departure_pct?: number | null
+  charge_minutes?: number | null
 }
 
 export type StationFeature = {
@@ -112,7 +115,19 @@ export type AlongRouteResponse = {
   behind_margin_km: number
   route_distance_km: number
   route_duration_minutes: number
+  geodesic_distance_km?: number | null
+  route_shortest_distance_km?: number | null
+  route_fastest_distance_km?: number | null
+  route_conventional_distance_km?: number | null
+  route_conventional_duration_minutes?: number | null
+  shortest_excess_km?: number | null
+  route_variants_approximate?: boolean
   route_geometry: RouteLineGeometry | null
+  route_shortest_geometry?: RouteLineGeometry | null
+  route_fastest_geometry?: RouteLineGeometry | null
+  route_conventional_geometry?: RouteLineGeometry | null
+  route_preference?: RoutePreference
+  avoid_highways?: boolean
   results: AlongRouteStationResult[]
   candidates_in_bbox: number
 }
@@ -156,6 +171,13 @@ export type ChargingPlanStopResult = {
   classification: ChargingClassification
 }
 
+export type PlannedRouteStopResult = ChargingPlanStopResult & {
+  order: number
+  leg_distance_km: number
+  soc_departure_pct: number
+  charge_minutes: number
+}
+
 export type ChargingPlanStrategyResult = {
   id: string
   label: string
@@ -165,6 +187,8 @@ export type ChargingPlanStrategyResult = {
   summary: string
 }
 
+export type RoutePreference = 'fastest' | 'shortest' | 'conventional'
+
 export type ChargingPlanResponse = {
   mode: 'route' | 'emergency'
   range_km: number
@@ -172,15 +196,127 @@ export type ChargingPlanResponse = {
   origin: LatLon
   destination: LatLon | null
   corridor_km: number | null
+  geodesic_distance_km?: number | null
   route_distance_km: number | null
   route_duration_minutes: number | null
+  route_shortest_distance_km?: number | null
+  route_fastest_distance_km?: number | null
+  route_conventional_distance_km?: number | null
+  route_conventional_duration_minutes?: number | null
+  shortest_excess_km?: number | null
+  route_variants_approximate?: boolean
   soc_at_destination_pct: number | null
   reachable_without_stop: boolean
-    route_geometry: RouteLineGeometry | null
+  route_geometry: RouteLineGeometry | null
+  route_shortest_geometry?: RouteLineGeometry | null
+  route_fastest_geometry?: RouteLineGeometry | null
+  route_conventional_geometry?: RouteLineGeometry | null
   preview_route_geometry?: RouteLineGeometry | null
+  route_preference?: RoutePreference | null
+  avoid_highways?: boolean
+  preferred_operators?: string[]
+  max_price_eur_kwh?: number | null
   stops: ChargingPlanStopResult[]
   origin_stops: ChargingPlanStopResult[]
+  planned_stops?: PlannedRouteStopResult[]
+  projected_soc_at_destination_with_plan?: number | null
   strategies: ChargingPlanStrategyResult[]
   warnings: string[]
   candidates_in_bbox: number
+  destination_stay?: DestinationStayAdviceResult | null
+}
+
+export type DestinationStayAdviceResult = {
+  radius_km: number
+  local_mobility_km: number
+  local_soc_needed_pct: number
+  recommended_soc_at_arrival_pct: number
+  minimum_soc_at_arrival_pct: number
+  projected_soc_at_arrival_pct?: number | null
+  arrival_gap_pct?: number | null
+  infrastructure_level: string
+  charge_time_hint: string
+  summary: string
+  warnings: string[]
+  bands: {
+    ac_slow: number
+    ac_fast: number
+    dc_fast: number
+    hpc: number
+    total: number
+    best_max_kw: number
+    nearest_km?: number | null
+  }
+  nearest_chargers?: DestinationChargerOption[]
+}
+
+export type DestinationChargerOption = {
+  station_id: string
+  label: string
+  operator?: string | null
+  max_power_kw: number
+  distance_km: number
+  lat: number
+  lon: number
+  power_band: string
+}
+
+export type TripGuideContext = {
+  destination_label?: string | null
+  cultural_poi_enabled: boolean
+  user_note?: string | null
+  poi_hints: string[]
+  nearest_destination_chargers: DestinationChargerOption[]
+  charging_while_visiting_hint?: string | null
+  vehicle_snapshot: Record<string, unknown>
+  plan_snapshot: Record<string, unknown>
+}
+
+export type VehicleTelemetryResult = {
+  car_id: number
+  display_name: string | null
+  state: string | null
+  lat: number
+  lon: number
+  battery_level_pct: number
+  usable_battery_level_pct?: number | null
+  est_battery_range_km?: number | null
+  rated_battery_range_km?: number | null
+  ideal_battery_range_km?: number | null
+  model?: string | null
+  trim_badging?: string | null
+  car_model_label?: string | null
+  version?: string | null
+  charging_state?: string | null
+  inside_temp_c?: number | null
+  outside_temp_c?: number | null
+  odometer_km?: number | null
+  source?: string
+}
+
+export type TripAdviceResponse = {
+  plan: ChargingPlanResponse
+  agent_summary: string
+  agent_bullets: string[]
+  vehicle?: VehicleTelemetryResult | null
+  live_soc_percent?: number | null
+  departure_soc_percent?: number | null
+}
+
+export type TripGuideResponse = TripAdviceResponse & {
+  guide_text: string
+  guide_source: 'deterministic' | 'dify'
+  context: TripGuideContext
+}
+
+export type AuthConfigResponse = {
+  private_stack_enabled: boolean
+  login_enabled: boolean
+  token_fallback_enabled: boolean
+}
+
+export type AuthSessionResponse = {
+  authenticated: boolean
+  private_stack_enabled: boolean
+  login_enabled: boolean
 }

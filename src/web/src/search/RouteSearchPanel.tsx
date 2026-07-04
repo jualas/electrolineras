@@ -12,6 +12,10 @@ import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
 import { ChargingStopList } from './ChargingStopList'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
+import { formatRouteAlternativesKm, RoutePreferenceFields } from './RoutePreferenceFields'
+import { ChargingPreferenceFields } from './ChargingPreferenceFields'
+import { useChargingPreferences } from '../hooks/useChargingPreferences'
+import type { RoutePreference } from '../api/types'
 
 export type RouteEndpointInput = {
   label: string
@@ -53,6 +57,8 @@ export function RouteSearchPanel({
   const [originPoint, setOriginPoint] = useState<RouteEndpointInput | null>(null)
   const [destPoint, setDestPoint] = useState<RouteEndpointInput | null>(null)
   const [corridorKm, setCorridorKm] = useState(10)
+  const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
+  const [avoidTolls, setAvoidTolls] = useState(false)
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<AlongRouteResponse | null>(null)
@@ -60,6 +66,8 @@ export function RouteSearchPanel({
   const [gpsLoading, setGpsLoading] = useState(false)
   const lastEndpointsRef = useRef<{ origin: RouteEndpointInput; dest: RouteEndpointInput } | null>(null)
   const hasSuccessfulSearchRef = useRef(false)
+  const recalcOnPreferenceRef = useRef(false)
+  const { preferences: chargingPreferences, toggleOperator, setMaxPriceEurKwh } = useChargingPreferences()
 
   useEffect(() => {
     onSearchStateChange?.(status)
@@ -111,6 +119,8 @@ export function RouteSearchPanel({
           maxKw,
           corridorKm,
           limit: 15,
+          routePreference,
+          avoidHighways: avoidTolls,
         })
 
         let plan: ChargingPlanResponse | null = null
@@ -130,6 +140,11 @@ export function RouteSearchPanel({
             maxKw,
             corridorKm,
             limit: 15,
+            routePreference,
+            avoidHighways: avoidTolls,
+            vehiclePresetId: vehicleQuery.vehicle_preset_id,
+            preferredOperators: chargingPreferences.preferredOperators,
+            maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
           })
         } catch {
           plan = null
@@ -157,6 +172,7 @@ export function RouteSearchPanel({
       }
     },
     [
+      avoidTolls,
       corridorKm,
       destPoint,
       maxKw,
@@ -166,7 +182,9 @@ export function RouteSearchPanel({
       onSelectStation,
       originPoint,
       resolveEndpoint,
+      routePreference,
       vehicleProfile,
+      chargingPreferences,
     ],
   )
 
@@ -181,7 +199,23 @@ export function RouteSearchPanel({
     void runSearch(endpoints.origin.label, endpoints.dest.label, endpoints.origin, endpoints.dest)
     // Solo re-buscar al cambiar filtros/corredor tras una búsqueda previa en modo conducción.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minKw, maxKw, corridorKm, simulationMode])
+  }, [minKw, maxKw, corridorKm, routePreference, avoidTolls, chargingPreferences, simulationMode])
+
+  useEffect(() => {
+    if (!recalcOnPreferenceRef.current) {
+      return
+    }
+    if (status === 'loading') {
+      return
+    }
+    const endpoints = lastEndpointsRef.current
+    if (!endpoints || endpoints.origin.lat == null || endpoints.dest.lat == null) {
+      recalcOnPreferenceRef.current = false
+      return
+    }
+    recalcOnPreferenceRef.current = false
+    void runSearch(endpoints.origin.label, endpoints.dest.label, endpoints.origin, endpoints.dest)
+  }, [routePreference, avoidTolls, chargingPreferences, runSearch, status])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -322,6 +356,50 @@ export function RouteSearchPanel({
           </select>
         </label>
 
+        <RoutePreferenceFields
+          routePreference={routePreference}
+          avoidTolls={avoidTolls}
+          onRoutePreferenceChange={(value) => {
+            setRoutePreference(value)
+            if (status === 'ready' && lastResponse) {
+              recalcOnPreferenceRef.current = true
+            } else {
+              invalidateCachedSearch()
+            }
+          }}
+          onAvoidTollsChange={(value) => {
+            setAvoidTolls(value)
+            if (status === 'ready' && lastResponse) {
+              recalcOnPreferenceRef.current = true
+            } else {
+              invalidateCachedSearch()
+            }
+          }}
+          disabled={status === 'loading'}
+          comparisonPlan={status === 'ready' ? lastResponse : null}
+        />
+
+        <ChargingPreferenceFields
+          preferences={chargingPreferences}
+          onToggleOperator={(operator) => {
+            toggleOperator(operator)
+            if (status === 'ready' && lastResponse) {
+              recalcOnPreferenceRef.current = true
+            } else {
+              invalidateCachedSearch()
+            }
+          }}
+          onMaxPriceChange={(value) => {
+            setMaxPriceEurKwh(value)
+            if (status === 'ready' && lastResponse) {
+              recalcOnPreferenceRef.current = true
+            } else {
+              invalidateCachedSearch()
+            }
+          }}
+          disabled={status === 'loading'}
+        />
+
         <div className="route-form__actions">
           <button type="submit" className="btn btn--primary" disabled={status === 'loading'}>
             {status === 'loading' ? 'Calculando…' : simulationMode ? 'Simular ruta' : 'Buscar cargadores'}
@@ -347,7 +425,7 @@ export function RouteSearchPanel({
       {status === 'ready' && lastResponse && (
         <div className="route-summary">
           <p className="route-summary__meta">
-            Ruta {lastResponse.route_distance_km.toFixed(0)} km · ~
+            {formatRouteAlternativesKm(lastResponse)} · ~
             {lastResponse.route_duration_minutes.toFixed(0)} min · {lastResponse.results.length} cargadores
           </p>
         </div>

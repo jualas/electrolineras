@@ -39,7 +39,7 @@ flowchart LR
 | Almacenamiento | SQLite + SpatiaLite (MVP); PostGIS si crece | Ver [`STORAGE.md`](STORAGE.md) |
 | API | FastAPI | Filtros por bbox, potencia, país |
 | Frontend | React/Vite o Svelte + **MapLibre GL** | Mapa vectorial, open source |
-| Despliegue | Docker + nginx o static hosting | Bajo coste |
+| Despliegue | Docker + nginx (origen HTTP) + **Cloudflare Tunnel** (TLS) | Ver [`DEPLOYMENT.md`](DEPLOYMENT.md#tls-dominio-y-decisión-arquitectónica-6039--6084) |
 
 Alternativa minimalista: **solo static** — script genera GeoJSON, frontend filtra en cliente (válido hasta ~50k puntos con índices).
 
@@ -69,7 +69,7 @@ El navegador del coche es Chromium embebido. Requisitos UX:
 - Botones grandes, sin hover crítico
 - Modo oscuro / alto contraste
 - Evitar dependencias pesadas
-- HTTPS obligatorio
+- HTTPS obligatorio en producción — terminado en **Cloudflare** (`electro.jualas.es` vía Tunnel); ver [`DEPLOYMENT.md`](DEPLOYMENT.md#tls-dominio-y-decisión-arquitectónica-6039--6084)
 - Probar geolocalización (puede requerir permisos en Tesla)
 
 No hay API pública de Tesla para inyectar waypoints en el navegador del vehículo de forma fiable. Flujos alternativos:
@@ -92,7 +92,7 @@ Guardar `fetched_at` y `source_version` en cada registro para depuración.
 
 - Respetar licencias NAP (uso libre con atribución según DGT/MITECO).
 - No scrapear REVE sin autorización si los términos lo prohíben.
-- Rate limiting en API pública si se expone en internet.
+- Rate limiting en API pública si se expone en internet (middleware `src/api/security/`, tarea #6042).
 - No almacenar datos personales de usuarios en MVP.
 
 ## Estructura de código prevista

@@ -6,6 +6,7 @@ from api.routing.charging_plan import (
     build_route_charging_plan,
     classify_soc_arrival,
     estimate_charging_reach_km,
+    estimate_charging_stops_needed,
     estimate_range_km,
     soc_at_distance_km,
 )
@@ -13,7 +14,14 @@ from api.routing.corridor import CorridorMatch
 from models.station import Connector, Station, StationLocation
 
 
-def sample_station(station_id: str, lat: float, lon: float, kw: float = 150.0, price: float | None = None) -> Station:
+def sample_station(
+    station_id: str,
+    lat: float,
+    lon: float,
+    kw: float = 150.0,
+    price: float | None = None,
+    operator: str | None = None,
+) -> Station:
     return Station(
         id=station_id,
         source="es-nap-dgt",
@@ -23,6 +31,7 @@ def sample_station(station_id: str, lat: float, lon: float, kw: float = 150.0, p
         max_power_kw=kw,
         raw_ref=station_id,
         dynamic_price_eur_kwh=price,
+        operator=operator,
     )
 
 
@@ -36,6 +45,18 @@ def test_estimate_range_model3_sr() -> None:
     )
     range_km = estimate_range_km(profile)
     assert 290 < range_km < 300
+
+
+def test_estimate_charging_stops_needed() -> None:
+    assert estimate_charging_stops_needed(741, 188) == 3
+    assert estimate_charging_stops_needed(100, 188) == 0
+
+
+def test_clamp_display_soc_pct() -> None:
+    from api.routing.charging_plan import clamp_display_soc_pct
+
+    assert clamp_display_soc_pct(-175) == 0.0
+    assert clamp_display_soc_pct(55) == 55.0
 
 
 def test_soc_at_distance_sierra_factor() -> None:
@@ -146,6 +167,88 @@ def test_charging_reach_low_soc_vs_planning_range() -> None:
     assert plan_range < 25
     assert 35 < charge_reach < 48
     assert classify_soc_arrival(5.0, within_range=True) == "critical"
+
+
+def test_build_planned_route_stops_multi_hop_cartagena_style() -> None:
+    """Viaje ~741 km con autonomía ~188 km → 3 paradas planificadas."""
+    profile = VehicleEnergyProfile(
+        soc_percent=55,
+        usable_capacity_kwh=57,
+        consumption_wh_per_km=136,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        vehicle_preset_id="tesla-model3-sr-2023",
+    )
+    range_km = estimate_range_km(profile)
+    assert 180 < range_km < 200
+
+    destination_km = 741.0
+    positions_km = [170.0, 360.0, 550.0]
+    matches = [
+        CorridorMatch(
+            station=sample_station(f"stop-{idx}", 40.0, 0.1 * idx, price=0.40 + idx * 0.01),
+            deviation_m=400,
+            route_position_m=int(km * 1000),
+            extra_minutes=3.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for idx, km in enumerate(positions_km, start=1)
+    ]
+
+    from api.routing.charging_plan import build_planned_route_stops
+
+    planned, warnings, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=destination_km,
+        profile=profile,
+    )
+    assert len(planned) == 3
+    assert [stop.order for stop in planned] == [1, 2, 3]
+    assert planned[0].route_distance_km < planned[1].route_distance_km < planned[2].route_distance_km
+    assert all(stop.soc_departure_pct > stop.soc_arrival_pct for stop in planned)
+    assert all(stop.charge_minutes >= 0 for stop in planned)
+    assert any(stop.charge_minutes >= 15 for stop in planned)
+    assert projected is not None
+    assert projected >= 0
+
+
+def test_build_route_charging_plan_includes_planned_stops() -> None:
+    profile = VehicleEnergyProfile(
+        soc_percent=55,
+        usable_capacity_kwh=57,
+        consumption_wh_per_km=136,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+    )
+    matches = [
+        CorridorMatch(
+            station=sample_station("mid-stop", 40.0, 0.5, price=0.42),
+            deviation_m=500,
+            route_position_m=170_000,
+            extra_minutes=4.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+        CorridorMatch(
+            station=sample_station("far-stop", 40.0, 0.8, price=0.38),
+            deviation_m=600,
+            route_position_m=360_000,
+            extra_minutes=5.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+    ]
+    plan = build_route_charging_plan(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=741.0,
+        profile=profile,
+        limit=5,
+    )
+    assert len(plan.planned_stops) >= 2
+    assert plan.projected_soc_at_destination_with_plan is not None
 
 
 def test_build_emergency_charging_plan() -> None:

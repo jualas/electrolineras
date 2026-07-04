@@ -1,0 +1,40 @@
+services:
+  osrm-car:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    container_name: electrolineras-osrm-car
+    restart: unless-stopped
+    ports:
+      - "${OSRM_CAR_PORT:-127.0.0.1:5000:5000}"
+    volumes:
+      - ${OSRM_DATA_DIR:-/mnt/datos/docker/volumes/osrm-iberia}/car:/data:ro
+    command: osrm-routed --algorithm mld --max-table-size 10000 /data/iberia-latest.osrm
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- 'http://127.0.0.1:5000/route/v1/car/-3.7038,40.4168;-0.3763,39.4699?overview=false' | grep -q '\"code\":\"Ok\"'",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  osrm-shortest:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    container_name: electrolineras-osrm-shortest
+    restart: unless-stopped
+    ports:
+      - "${OSRM_SHORTEST_PORT:-127.0.0.1:5001:5000}"
+    volumes:
+      - ${OSRM_DATA_DIR:-/mnt/datos/docker/volumes/osrm-iberia}/shortest:/data:ro
+    command: osrm-routed --algorithm mld --max-table-size 10000 /data/iberia-latest.osrm
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- 'http://127.0.0.1:5000/route/v1/shortest/-3.7038,40.4168;-0.3763,39.4699?overview=false' | grep -q '\"code\":\"Ok\"'",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
