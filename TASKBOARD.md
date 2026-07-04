@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-07-04T16:33:56Z -->
+<!-- taskboard-exported-at: 2026-07-04T16:37:07Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-07-04 16:33 UTC  
-**Git:** `main` @ `d8bee7e3`  
+**Exportado:** 2026-07-04 16:37 UTC  
+**Git:** `main` @ `4d421381`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,8 +23,8 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 13 |
-| Completada (`completed`) | 51 |
+| Pendiente (`pending`) | 12 |
+| Completada (`completed`) | 52 |
 
 ---
 
@@ -177,21 +177,6 @@ Decidir y documentar modelo Dify: local (Ollama mini PC) vs API remota — laten
 | Actualizado | 2026-07-04 10:04 UTC |
 
 Roadmap producto sugerido (orden): Ops estabilidad → Routing UI 2 rutas → TeslaMate SOC → Curva carga + preferencias → Tráfico real → Fase 4 UE. Epic de seguimiento; tareas hijas #6065–#6078.
-
----
-
-<a id="task-6080"></a>
-### [#6080] Deuda — commit inicial del repositorio (#6021)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6080` |
-| Estado | `pending` |
-| Complejidad | simple |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-04 10:04 UTC |
-
-Repositorio sin commits en main. Incluir .gitignore, README, docs/, estructura estable. Cierra subtasks pendientes de #6021.
 
 ---
 
@@ -989,6 +974,21 @@ UI y pesos configurables: preferir Ionity/operador, evitar peajes, máximo €/k
 | Actualizado | 2026-07-04 16:33 UTC |
 
 Flujo «estoy al X % aquí, recalcula»: origen = posición actual + SOC actual; nuevo charging-plan y paradas hasta destino. UX móvil/Tesla browser.
+
+---
+
+<a id="task-6080"></a>
+### [#6080] Deuda — commit inicial del repositorio (#6021)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6080` |
+| Estado | `completed` |
+| Complejidad | simple |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-04 16:37 UTC |
+
+Repositorio sin commits en main. Incluir .gitignore, README, docs/, estructura estable. Cierra subtasks pendientes de #6021.
 
 ---
 
