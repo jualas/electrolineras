@@ -466,6 +466,7 @@ class StationRepository:
         countries: list[str] | None = None,
         limit: int = 500,
         offset: int = 0,
+        order_by: str = "power",
     ) -> list[Station]:
         clauses, params = self._search_clauses(
             west=west,
@@ -478,11 +479,12 @@ class StationRepository:
         )
 
         params.extend([limit, offset])
+        order_clause = "max_power_kw DESC, id" if order_by != "id" else "id"
         rows = self.connection.execute(
             f"""
             SELECT * FROM station
             WHERE {' AND '.join(clauses)}
-            ORDER BY max_power_kw DESC, id
+            ORDER BY {order_clause}
             LIMIT ? OFFSET ?
             """,
             params,

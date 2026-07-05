@@ -27,6 +27,7 @@ def sample_station(
     max_kw: float = 150.0,
     operator: str = "Operador Test",
     *,
+    site_name: str = "Estación prueba",
     dynamic_status: str | None = None,
     dynamic_price_eur_kwh: float | None = None,
 ) -> Station:
@@ -34,7 +35,7 @@ def sample_station(
         id=station_id,
         source="es-nap-dgt" if country == "ES" else "pt-mobie",
         country=country,
-        site_name="Estación prueba",
+        site_name=site_name,
         operator=operator,
         location=StationLocation(lat=lat, lon=lon, address="Calle Test 1"),
         connectors=[Connector(connector_type="iec62196T2COMBO", power_kw=max_kw)],
@@ -192,6 +193,39 @@ def test_meta_operators_by_country(api_client: TestClient) -> None:
     payload = response.json()
     assert payload["country"] == "PT"
     assert len(payload["operators"]) == 1
+
+
+def test_list_stations_geojson_serializes_external_comments(api_client: TestClient) -> None:
+    response = api_client.get("/api/v1/stations?format=geojson&limit=1")
+    assert response.status_code == 200
+    comments = response.json()["features"][0]["properties"]["external_comments"]
+    assert isinstance(comments, str)
+
+
+def test_list_stations_public_open_only_scans_past_commercial(api_client: TestClient) -> None:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station("es-dgt-cc", "CC", "ES", 40.41, -3.71, 350.0, site_name="Centro Comercial Test"),
+            sample_station("es-dgt-public", "PUB", "ES", 40.41, -3.71, 50.0, site_name="Plaza Mayor"),
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+    try:
+        response = client.get(
+            "/api/v1/stations?format=geojson&bbox=-4,40,0,41&public_open_only=true&limit=1"
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload["features"]) == 1
+        assert payload["features"][0]["properties"]["id"] == "es-dgt-public"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_count_matching() -> None:

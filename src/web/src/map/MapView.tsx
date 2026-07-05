@@ -4,7 +4,7 @@ import maplibregl from 'maplibre-gl'
 import { chargingPlanToFeatures } from '../api/chargingPlanFeature'
 import { alongRouteToFeatures } from '../api/route'
 import { fetchStationsGeoJSON } from '../api/stations'
-import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../api/types'
+import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station, StationFeature } from '../api/types'
 import type { ThemeMode } from '../hooks/useTheme'
 import {
   clearCityOverlay,
@@ -29,20 +29,40 @@ import {
   updateRouteLayerTheme,
 } from './routeLayers'
 import {
+  CLUSTER_COUNT_LAYER_ID,
   CLUSTER_LAYER_ID,
+  clearBrowseStationData,
+  clearOverlayStationData,
   ensureStationLayers,
+  interactiveStationLayers,
+  mapShowsStationGlyphs,
+  OVERLAY_POINT_LAYER_ID,
   POINT_LAYER_ID,
-  setStationData,
+  setBrowseStationData,
+  setOverlayStationData,
+  setStationMapMode,
   stationPopupHtml,
-  STATIONS_SOURCE_ID,
+  STATIONS_BROWSE_SOURCE_ID,
   updateStationLayerTheme,
+  type StationMapMode,
 } from './stationLayers'
+import {
+  countFeaturesInBounds,
+  extendStationFeatures,
+  expandMapBounds,
+  featuresForViewport,
+  shouldFetchStations,
+} from './mapStationMerge'
 
 const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
 const DEFAULT_ZOOM = 5.8
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty'
 const LOAD_DEBOUNCE_MS = 350
 const MAP_FOCUS_ZOOM = 14
+const FETCH_BBOX_PADDING = 0.35
+const VIEWPORT_RENDER_PADDING = 0.35
+const CLUSTER_NAV_GUARD_MS = 900
+const MAX_BROWSE_CACHE = 10_000
 
 type MapBoundsGetter = () => MapBounds | null
 
@@ -84,6 +104,76 @@ function boundsFromMap(map: maplibregl.Map): MapBounds {
   }
 }
 
+function trimBrowseCache(features: StationFeature[]): StationFeature[] {
+  if (features.length <= MAX_BROWSE_CACHE) {
+    return features
+  }
+  return features.slice(features.length - MAX_BROWSE_CACHE)
+}
+
+function showStationPopup(
+  map: maplibregl.Map,
+  popup: maplibregl.Popup | null,
+  coordinates: [number, number],
+  properties: Record<string, unknown>,
+): void {
+  popup
+    ?.setLngLat(coordinates)
+    .setHTML(
+      stationPopupHtml(properties, {
+        lat: coordinates[1],
+        lon: coordinates[0],
+      }),
+    )
+    .addTo(map)
+}
+
+function handleClusterClick(
+  map: maplibregl.Map,
+  feature: maplibregl.MapGeoJSONFeature,
+  clusterNavUntilRef: { current: number },
+): void {
+  const clusterId = feature.properties?.cluster_id
+  const pointCount = Number(feature.properties?.point_count ?? 0)
+  const source = map.getSource(STATIONS_BROWSE_SOURCE_ID) as maplibregl.GeoJSONSource
+  if (clusterId === undefined) {
+    return
+  }
+  clusterNavUntilRef.current = Date.now() + CLUSTER_NAV_GUARD_MS
+  const coordinates = (feature.geometry as { coordinates: [number, number] }).coordinates.slice() as [
+    number,
+    number,
+  ]
+  const leafLimit = pointCount > 0 ? pointCount : 50
+  void source
+    .getClusterLeaves(clusterId, leafLimit, 0)
+    .then((leaves) => {
+      if (leaves.length > 0 && leaves.length <= 24) {
+        const bounds = new maplibregl.LngLatBounds()
+        for (const leaf of leaves) {
+          if (leaf.geometry.type !== 'Point') {
+            continue
+          }
+          bounds.extend(leaf.geometry.coordinates as [number, number])
+        }
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { padding: 80, maxZoom: 17, duration: 550 })
+          return
+        }
+      }
+      return source.getClusterExpansionZoom(clusterId).then((zoom) => {
+        map.easeTo({
+          center: coordinates,
+          zoom: Math.min(Math.max(zoom + 1, 14), 18),
+          duration: 550,
+        })
+      })
+    })
+    .catch(() => {
+      map.easeTo({ center: coordinates, zoom: Math.min(map.getZoom() + 2, 17), duration: 550 })
+    })
+}
+
 export function MapView({
   className,
   theme,
@@ -105,6 +195,28 @@ export function MapView({
   const popupRef = useRef<maplibregl.Popup | null>(null)
   const debounceRef = useRef<number | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const loadSeqRef = useRef(0)
+  const loadedFeaturesRef = useRef<StationFeature[]>([])
+  const coverageBoundsRef = useRef<MapBounds | null>(null)
+  const lastLoadedZoomRef = useRef<number | null>(null)
+  const stationMapModeRef = useRef<StationMapMode>('browse')
+  const themeRef = useRef(theme)
+  const loadStationsRef = useRef(loadStations)
+  const mapFocusPlaceRef = useRef(mapFocusPlace)
+  const routeDataRef = useRef(routeData)
+  const routeChargePlanDataRef = useRef(routeChargePlanData)
+  const chargePlanDataRef = useRef(chargePlanData)
+  const clusterNavUntilRef = useRef(0)
+  const loadVisibleStationsRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
+  const scheduleLoadRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
+  const applyActiveOverlayRef = useRef<(map: maplibregl.Map) => void>(() => undefined)
+
+  themeRef.current = theme
+  loadStationsRef.current = loadStations
+  mapFocusPlaceRef.current = mapFocusPlace
+  routeDataRef.current = routeData
+  routeChargePlanDataRef.current = routeChargePlanData
+  chargePlanDataRef.current = chargePlanData
 
   const [loadState, setLoadState] = useState<LoadState>('idle')
   const [stationCount, setStationCount] = useState(0)
@@ -112,8 +224,60 @@ export function MapView({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [overlayMode, setOverlayMode] = useState<'map' | 'route' | 'charge' | 'none'>('none')
 
+  const setStationMapModeState = useCallback((map: maplibregl.Map, mode: StationMapMode) => {
+    stationMapModeRef.current = mode
+    setStationMapMode(map, mode)
+  }, [])
+
+  const applyMapPlacePin = useCallback(
+    (map: maplibregl.Map, place: GeocodeResult | null) => {
+      if (!place) {
+        return
+      }
+      ensureCityLayers(map, themeRef.current)
+      setCityReference(map, place)
+      setCityRadiusCircle(map, null, null)
+    },
+    [],
+  )
+
+  const paintBrowseStations = useCallback(
+    (map: maplibregl.Map, features: StationFeature[]) => {
+      ensureStationLayers(map, themeRef.current)
+      clearOverlayStationData(map)
+      setStationMapModeState(map, 'browse')
+      const visibleBounds = boundsFromMap(map)
+      const toRender = featuresForViewport(features, visibleBounds, VIEWPORT_RENDER_PADDING)
+      setBrowseStationData(map, {
+        type: 'FeatureCollection',
+        features: toRender,
+      })
+      setStationCount(countFeaturesInBounds(features, visibleBounds))
+      setLoadState(features.length > 0 ? 'ready' : 'idle')
+      setOverlayMode('map')
+    },
+    [setStationMapModeState],
+  )
+
+  const paintOverlayStations = useCallback(
+    (map: maplibregl.Map, features: StationFeature[], mode: 'route' | 'charge') => {
+      ensureStationLayers(map, themeRef.current)
+      clearBrowseStationData(map)
+      setStationMapModeState(map, 'overlay')
+      setOverlayStationData(map, {
+        type: 'FeatureCollection',
+        features,
+      })
+      setStationCount(features.length)
+      setHasMore(false)
+      setLoadState(features.length > 0 ? 'ready' : 'idle')
+      setOverlayMode(mode)
+    },
+    [setStationMapModeState],
+  )
+
   const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse, chargePlan?: ChargingPlanResponse | null) => {
-    ensureRouteLayers(map, theme)
+    ensureRouteLayers(map, themeRef.current)
     clearCityOverlay(map)
     const variantGeometries = routeVariantGeometriesFromResponse(data)
     const preference = data.route_preference ?? chargePlan?.route_preference ?? 'fastest'
@@ -138,18 +302,11 @@ export function MapView({
           (feature) => !routeFeatures.some((routeFeature) => routeFeature.id === feature.id),
         )
       : []
-    setStationData(map, {
-      type: 'FeatureCollection',
-      features: [...originFeatures, ...routeFeatures],
-    })
-    setStationCount(routeFeatures.length + originFeatures.length)
-    setHasMore(false)
-    setLoadState(routeFeatures.length + originFeatures.length > 0 ? 'ready' : 'idle')
-    setOverlayMode('route')
-  }, [theme])
+    paintOverlayStations(map, [...originFeatures, ...routeFeatures], 'route')
+  }, [paintOverlayStations])
 
   const applyChargePlanOverlay = useCallback((map: maplibregl.Map, data: ChargingPlanResponse) => {
-    ensureRouteLayers(map, theme)
+    ensureRouteLayers(map, themeRef.current)
     clearCityOverlay(map)
     const variantGeometries = routeVariantGeometriesFromResponse(data)
     const preference = data.route_preference ?? 'fastest'
@@ -168,39 +325,69 @@ export function MapView({
         data.origin,
         ...data.origin_stops.map((stop) => stop.station.location),
         ...data.stops.map((stop) => stop.station.location),
+        ...data.planned_stops?.map((stop) => stop.station.location) ?? [],
       ]
       fitMapToPoints(map, mapPoints)
     }
     setRouteEndpoints(map, data.origin, data.destination)
     setRangeCircle(map, data.origin, data.charging_reach_km)
     const features = chargingPlanToFeatures(data.stops, data.origin_stops, data.planned_stops ?? [])
-    setStationData(map, {
-      type: 'FeatureCollection',
-      features,
-    })
-    setStationCount(features.length)
-    setHasMore(false)
-    setLoadState(features.length > 0 ? 'ready' : 'idle')
-    setOverlayMode('charge')
-  }, [theme])
+    paintOverlayStations(map, features, 'charge')
+  }, [paintOverlayStations])
 
   const clearSearchOverlays = useCallback((map: maplibregl.Map) => {
     clearRouteOverlay(map)
     clearCityOverlay(map)
+    clearBrowseStationData(map)
+    clearOverlayStationData(map)
+    setStationMapModeState(map, 'none')
     setOverlayMode('none')
-  }, [])
+  }, [setStationMapModeState])
 
-  const applyMapPlacePin = useCallback(
-    (map: maplibregl.Map, place: GeocodeResult | null) => {
-      if (!place) {
+  const paintStationsOnMap = useCallback(
+    (map: maplibregl.Map, features: StationFeature[]) => {
+      loadedFeaturesRef.current = trimBrowseCache(features)
+      applyMapPlacePin(map, mapFocusPlaceRef.current)
+      paintBrowseStations(map, loadedFeaturesRef.current)
+    },
+    [applyMapPlacePin, paintBrowseStations],
+  )
+
+  const applyActiveOverlay = useCallback(
+    (map: maplibregl.Map) => {
+      if (loadStationsRef.current) {
+        if (loadedFeaturesRef.current.length > 0) {
+          paintStationsOnMap(map, loadedFeaturesRef.current)
+        } else {
+          scheduleLoadRef.current(map, true)
+        }
         return
       }
-      ensureCityLayers(map, theme)
-      setCityReference(map, place)
-      setCityRadiusCircle(map, null, null)
+      if (routeDataRef.current) {
+        applyRouteOverlay(map, routeDataRef.current, routeChargePlanDataRef.current)
+        return
+      }
+      if (chargePlanDataRef.current) {
+        applyChargePlanOverlay(map, chargePlanDataRef.current)
+        return
+      }
+      clearSearchOverlays(map)
+      setStationCount(0)
+      setHasMore(false)
+      setLoadState('idle')
     },
-    [theme],
+    [applyRouteOverlay, applyChargePlanOverlay, clearSearchOverlays, paintStationsOnMap],
   )
+
+  applyActiveOverlayRef.current = applyActiveOverlay
+
+  const runWhenMapReady = useCallback((map: maplibregl.Map, action: (map: maplibregl.Map) => void) => {
+    if (map.isStyleLoaded()) {
+      action(map)
+      return
+    }
+    map.once('load', () => action(map))
+  }, [])
 
   const focusMapOnPlace = useCallback(
     (map: maplibregl.Map, place: GeocodeResult) => {
@@ -225,67 +412,107 @@ export function MapView({
     [applyMapPlacePin],
   )
 
-  const loadVisibleStations = useCallback(async (map: maplibregl.Map) => {
-    if (!loadStations) {
-      return
-    }
+  const loadVisibleStations = useCallback(
+    async (map: maplibregl.Map, force = false) => {
+      if (!loadStationsRef.current) {
+        return
+      }
+      if (Date.now() < clusterNavUntilRef.current) {
+        return
+      }
 
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    setLoadState('loading')
-    setErrorMessage(null)
-
-    try {
       const zoom = map.getZoom()
-      const limit = zoom < 7 ? 3000 : zoom < 10 ? 5000 : 4000
-      const payload = await fetchStationsGeoJSON(
-        {
-          bbox: boundsFromMap(map),
-          limit,
-          minKw,
-          maxKw,
-          publicOpenOnly,
-        },
-        { signal: controller.signal },
-      )
+      const visibleBounds = boundsFromMap(map)
+      const inView = countFeaturesInBounds(loadedFeaturesRef.current, visibleBounds)
 
-      if (controller.signal.aborted) {
+      if (
+        !force &&
+        loadedFeaturesRef.current.length > 0 &&
+        !shouldFetchStations(coverageBoundsRef.current, visibleBounds, lastLoadedZoomRef.current, zoom)
+      ) {
+        setStationCount(inView)
+        setLoadState(inView > 0 || loadedFeaturesRef.current.length > 0 ? 'ready' : 'idle')
+        lastLoadedZoomRef.current = zoom
+        if (inView > 0 && !mapShowsStationGlyphs(map, 'browse')) {
+          paintBrowseStations(map, loadedFeaturesRef.current)
+        }
         return
       }
 
-      clearSearchOverlays(map)
-      applyMapPlacePin(map, mapFocusPlace)
-      setStationData(map, {
-        type: 'FeatureCollection',
-        features: payload.features,
-      })
-      setStationCount(payload.features.length)
-      setHasMore(payload.pagination.has_more)
-      setLoadState('ready')
-      setOverlayMode('map')
-    } catch (error) {
-      if (controller.signal.aborted) {
-        return
-      }
-      const message = error instanceof Error ? error.message : 'Error al cargar estaciones'
-      setErrorMessage(message)
-      setLoadState('error')
-    }
-  }, [clearSearchOverlays, loadStations, minKw, maxKw, publicOpenOnly, mapFocusPlace, applyMapPlacePin])
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      const loadSeq = ++loadSeqRef.current
 
-  const scheduleLoad = useCallback(
-    (map: maplibregl.Map) => {
-      if (debounceRef.current !== null) {
-        window.clearTimeout(debounceRef.current)
+      setLoadState('loading')
+      setErrorMessage(null)
+
+      try {
+        const limit = zoom < 7 ? 3000 : zoom < 10 ? 5000 : 4000
+        let fetchBounds = expandMapBounds(visibleBounds, FETCH_BBOX_PADDING)
+        let payload = await fetchStationsGeoJSON(
+          {
+            bbox: fetchBounds,
+            limit,
+            minKw,
+            maxKw,
+            publicOpenOnly,
+          },
+          { signal: controller.signal },
+        )
+
+        if (controller.signal.aborted || loadSeq !== loadSeqRef.current) {
+          return
+        }
+
+        if (payload.features.length === 0 && zoom >= 11) {
+          fetchBounds = expandMapBounds(visibleBounds, 1.0)
+          payload = await fetchStationsGeoJSON(
+            {
+              bbox: fetchBounds,
+              limit,
+              minKw,
+              maxKw,
+              publicOpenOnly,
+            },
+            { signal: controller.signal },
+          )
+        }
+
+        if (controller.signal.aborted || loadSeq !== loadSeqRef.current) {
+          return
+        }
+
+        coverageBoundsRef.current = fetchBounds
+        lastLoadedZoomRef.current = zoom
+        setHasMore(payload.pagination.has_more)
+        const merged = trimBrowseCache(extendStationFeatures(loadedFeaturesRef.current, payload.features))
+        loadedFeaturesRef.current = merged
+        applyMapPlacePin(map, mapFocusPlaceRef.current)
+        paintBrowseStations(map, merged)
+      } catch (error) {
+        if (controller.signal.aborted || loadSeq !== loadSeqRef.current) {
+          return
+        }
+        const message = error instanceof Error ? error.message : 'Error al cargar estaciones'
+        setErrorMessage(message)
+        setLoadState('error')
       }
-      debounceRef.current = window.setTimeout(() => {
-        loadVisibleStations(map)
-      }, LOAD_DEBOUNCE_MS)
     },
-    [loadVisibleStations],
+    [minKw, maxKw, publicOpenOnly, applyMapPlacePin, paintBrowseStations],
   )
+
+  const scheduleLoad = useCallback((map: maplibregl.Map, force = false) => {
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current)
+    }
+    debounceRef.current = window.setTimeout(() => {
+      void loadVisibleStationsRef.current(map, force)
+    }, LOAD_DEBOUNCE_MS)
+  }, [])
+
+  loadVisibleStationsRef.current = loadVisibleStations
+  scheduleLoadRef.current = scheduleLoad
 
   useEffect(() => {
     if (!onRegisterMapBounds) {
@@ -318,78 +545,70 @@ export function MapView({
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
     popupRef.current = new maplibregl.Popup({
       closeButton: true,
-      closeOnClick: true,
+      closeOnClick: false,
       maxWidth: '280px',
       className: 'station-popup-container',
     })
 
-    map.on('load', () => {
-      ensureStationLayers(map, theme)
-      ensureRouteLayers(map, theme)
-      ensureCityLayers(map, theme)
-      if (loadStations) {
-        scheduleLoad(map)
-      }
-    })
-
-    map.on('moveend', () => {
-      if (loadStations) {
-        scheduleLoad(map)
-      }
-    })
-
-    map.on('click', CLUSTER_LAYER_ID, (event) => {
+    const onClusterClick = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0]
       if (!feature) {
         return
       }
-      const clusterId = feature.properties?.cluster_id
-      const source = map.getSource(STATIONS_SOURCE_ID) as maplibregl.GeoJSONSource
-      if (clusterId === undefined) {
-        return
-      }
-      source
-        .getClusterExpansionZoom(clusterId)
-        .then((zoom) => {
-          const coordinates = (feature.geometry as { coordinates: [number, number] }).coordinates.slice() as [
-            number,
-            number,
-          ]
-          map.easeTo({ center: coordinates, zoom })
-        })
-        .catch(() => undefined)
-    })
+      handleClusterClick(map, feature, clusterNavUntilRef)
+    }
 
-    map.on('click', POINT_LAYER_ID, (event) => {
+    const onPointClick = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0]
       if (!feature || feature.geometry.type !== 'Point') {
         return
       }
       const coordinates = feature.geometry.coordinates.slice() as [number, number]
-      const properties = feature.properties ?? {}
-      popupRef.current
-        ?.setLngLat(coordinates)
-        .setHTML(
-          stationPopupHtml(properties, {
-            lat: coordinates[1],
-            lon: coordinates[0],
-          }),
-        )
-        .addTo(map)
+      showStationPopup(map, popupRef.current, coordinates, feature.properties ?? {})
+    }
+
+    const onStationPointerEnter = () => {
+      map.getCanvas().style.cursor = 'pointer'
+    }
+    const onStationPointerLeave = () => {
+      map.getCanvas().style.cursor = ''
+    }
+
+    map.on('load', () => {
+      ensureStationLayers(map, themeRef.current)
+      ensureRouteLayers(map, themeRef.current)
+      ensureCityLayers(map, themeRef.current)
+      applyActiveOverlayRef.current(map)
     })
 
-    map.on('mouseenter', CLUSTER_LAYER_ID, () => {
-      map.getCanvas().style.cursor = 'pointer'
+    map.on('moveend', () => {
+      if (Date.now() < clusterNavUntilRef.current) {
+        return
+      }
+      if (loadStationsRef.current) {
+        scheduleLoadRef.current(map)
+      }
     })
-    map.on('mouseleave', CLUSTER_LAYER_ID, () => {
-      map.getCanvas().style.cursor = ''
+
+    map.on('click', CLUSTER_LAYER_ID, onClusterClick)
+    map.on('click', CLUSTER_COUNT_LAYER_ID, onClusterClick)
+    map.on('click', POINT_LAYER_ID, onPointClick)
+    map.on('click', OVERLAY_POINT_LAYER_ID, onPointClick)
+
+    map.on('click', (event) => {
+      const mode = stationMapModeRef.current
+      const hit = map.queryRenderedFeatures(event.point, {
+        layers: interactiveStationLayers(mode),
+      })
+      if (hit.length === 0) {
+        popupRef.current?.remove()
+      }
     })
-    map.on('mouseenter', POINT_LAYER_ID, () => {
-      map.getCanvas().style.cursor = 'pointer'
-    })
-    map.on('mouseleave', POINT_LAYER_ID, () => {
-      map.getCanvas().style.cursor = ''
-    })
+
+    for (const layerId of [CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID, POINT_LAYER_ID, OVERLAY_POINT_LAYER_ID]) {
+      map.on('mouseenter', layerId, onStationPointerEnter)
+      map.on('mouseleave', layerId, onStationPointerLeave)
+    }
 
     mapRef.current = map
 
@@ -403,7 +622,7 @@ export function MapView({
       map.remove()
       mapRef.current = null
     }
-  }, [scheduleLoad, loadStations, theme])
+  }, [])
 
   useEffect(() => {
     const map = mapRef.current
@@ -417,22 +636,20 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) {
+    if (!map) {
       return
     }
-    if (loadStations) {
-      scheduleLoad(map)
-    } else if (routeData) {
-      applyRouteOverlay(map, routeData, routeChargePlanData)
-    } else if (chargePlanData) {
-      applyChargePlanOverlay(map, chargePlanData)
-    } else {
-      clearSearchOverlays(map)
-      setStationData(map, { type: 'FeatureCollection', features: [] })
-      setStationCount(0)
-      setHasMore(false)
-      setLoadState('idle')
-    }
+    runWhenMapReady(map, (readyMap) => {
+      if (loadStations) {
+        if (loadedFeaturesRef.current.length === 0) {
+          coverageBoundsRef.current = null
+          lastLoadedZoomRef.current = null
+        }
+        scheduleLoad(readyMap, loadedFeaturesRef.current.length === 0)
+        return
+      }
+      applyActiveOverlay(readyMap)
+    })
   }, [
     loadStations,
     routeData,
@@ -441,9 +658,8 @@ export function MapView({
     minKw,
     maxKw,
     scheduleLoad,
-    applyRouteOverlay,
-    applyChargePlanOverlay,
-    clearSearchOverlays,
+    applyActiveOverlay,
+    runWhenMapReady,
   ])
 
   useEffect(() => {
@@ -453,28 +669,25 @@ export function MapView({
     }
     const { lat, lon } = focusStation.location
     map.flyTo({ center: [lon, lat], zoom: 14, duration: 700 })
-    popupRef.current
-      ?.setLngLat([lon, lat])
-      .setHTML(
-        stationPopupHtml(
-          {
-            id: focusStation.id,
-            site_name: focusStation.site_name,
-            operator: focusStation.operator,
-            max_power_kw: focusStation.max_power_kw,
-            connector_count: focusStation.connectors.length,
-            country: focusStation.country,
-            address: focusStation.location.address ?? null,
-            dynamic_status: focusStation.dynamic_status ?? null,
-            dynamic_price_eur_kwh: focusStation.dynamic_price_eur_kwh ?? null,
-            external_rating_avg: focusStation.external_rating_avg ?? null,
-            external_rating_count: focusStation.external_rating_count ?? 0,
-            external_comments: focusStation.external_comments ?? [],
-          },
-          { lat: lat, lon: lon },
-        ),
-      )
-      .addTo(map)
+    showStationPopup(
+      map,
+      popupRef.current,
+      [lon, lat],
+      {
+        id: focusStation.id,
+        site_name: focusStation.site_name,
+        operator: focusStation.operator,
+        max_power_kw: focusStation.max_power_kw,
+        connector_count: focusStation.connectors.length,
+        country: focusStation.country,
+        address: focusStation.location.address ?? null,
+        dynamic_status: focusStation.dynamic_status ?? null,
+        dynamic_price_eur_kwh: focusStation.dynamic_price_eur_kwh ?? null,
+        external_rating_avg: focusStation.external_rating_avg ?? null,
+        external_rating_count: focusStation.external_rating_count ?? 0,
+        external_comments: focusStation.external_comments ?? [],
+      },
+    )
   }, [focusStation])
 
   useEffect(() => {
@@ -487,7 +700,11 @@ export function MapView({
       return
     }
     focusMapOnPlace(map, mapFocusPlace)
-  }, [mapFocusPlace, loadStations, focusMapOnPlace])
+    loadedFeaturesRef.current = []
+    coverageBoundsRef.current = null
+    lastLoadedZoomRef.current = null
+    scheduleLoad(map, true)
+  }, [mapFocusPlace, loadStations, focusMapOnPlace, scheduleLoad])
 
   const showMapBadge =
     loadStations ||
@@ -499,7 +716,7 @@ export function MapView({
   const badgeLabel =
     overlayMode === 'route'
       ? `${stationCount} en ruta`
-        : overlayMode === 'charge'
+      : overlayMode === 'charge'
         ? `${stationCount} paradas`
         : overlayMode === 'map' && publicOpenOnly
           ? `${stationCount} acceso público`

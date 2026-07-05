@@ -1,15 +1,32 @@
 import type maplibregl from 'maplibre-gl'
 
+import { navigationPopupHtml } from '../navigation/externalMaps'
+import { dynamicStatusClassName, formatDynamicStatusLabel } from '../stations/dynamicDisplay'
+
 type FeatureCollection = {
   type: 'FeatureCollection'
   features: unknown[]
 }
 
-export const STATIONS_SOURCE_ID = 'stations'
-export const CLUSTER_LAYER_ID = 'station-clusters'
-export const CLUSTER_COUNT_LAYER_ID = 'station-cluster-count'
-export const POINT_LAYER_ID = 'station-points'
-export const PLANNED_STOP_LABEL_LAYER_ID = 'planned-stop-labels'
+export type StationMapMode = 'browse' | 'overlay' | 'none'
+
+/** Fuente clusterizada para exploración (modo mapa). */
+export const STATIONS_BROWSE_SOURCE_ID = 'stations-browse'
+/** Fuente sin cluster para ruta / plan / asistente. */
+export const STATIONS_OVERLAY_SOURCE_ID = 'stations-overlay'
+
+/** Alias legacy usados por routeLayers / cityLayers. */
+export const STATIONS_SOURCE_ID = STATIONS_BROWSE_SOURCE_ID
+export const CLUSTER_LAYER_ID = 'station-browse-clusters'
+export const CLUSTER_COUNT_LAYER_ID = 'station-browse-cluster-count'
+export const POINT_LAYER_ID = 'station-browse-points'
+export const PLANNED_STOP_LABEL_LAYER_ID = 'station-overlay-planned-labels'
+
+export const OVERLAY_POINT_LAYER_ID = 'station-overlay-points'
+
+const BROWSE_CLUSTER_LAYERS = [CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID] as const
+const BROWSE_POINT_LAYERS = [POINT_LAYER_ID] as const
+const OVERLAY_LAYERS = [OVERLAY_POINT_LAYER_ID, PLANNED_STOP_LABEL_LAYER_ID] as const
 
 type ThemeMode = 'light' | 'dark'
 
@@ -71,84 +88,166 @@ function pointColorExpression(theme: ThemeMode): maplibregl.ExpressionSpecificat
   ]
 }
 
-export function ensureStationLayers(map: maplibregl.Map, theme: ThemeMode): void {
-  if (map.getSource(STATIONS_SOURCE_ID)) {
+function sanitizeGeoJsonProperties(properties: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(properties)) {
+    if (value !== null && typeof value === 'object') {
+      out[key] = JSON.stringify(value)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
+}
+
+function sanitizeCollection(data: FeatureCollection): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: data.features.map((raw) => {
+      const feature = raw as { properties?: Record<string, unknown> }
+      const props = feature.properties ?? {}
+      return {
+        ...(raw as object),
+        properties: sanitizeGeoJsonProperties(props),
+      }
+    }),
+  }
+}
+
+function setSourceData(map: maplibregl.Map, sourceId: string, data: FeatureCollection): void {
+  const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
+  if (!source) {
     return
   }
+  source.setData(sanitizeCollection(data))
+}
 
-  map.addSource(STATIONS_SOURCE_ID, {
-    type: 'geojson',
-    data: EMPTY_COLLECTION,
-    cluster: true,
-    clusterMaxZoom: 13,
-    clusterRadius: 48,
-  })
+function setLayersVisibility(map: maplibregl.Map, layerIds: readonly string[], visible: boolean): void {
+  const visibility = visible ? 'visible' : 'none'
+  for (const layerId of layerIds) {
+    if (map.getLayer(layerId)) {
+      map.setLayoutProperty(layerId, 'visibility', visibility)
+    }
+  }
+}
+
+export function setStationMapMode(map: maplibregl.Map, mode: StationMapMode): void {
+  const browseVisible = mode === 'browse'
+  const overlayVisible = mode === 'overlay'
+  setLayersVisibility(map, BROWSE_CLUSTER_LAYERS, browseVisible)
+  setLayersVisibility(map, BROWSE_POINT_LAYERS, browseVisible)
+  setLayersVisibility(map, OVERLAY_LAYERS, overlayVisible)
+}
+
+export function ensureStationLayers(map: maplibregl.Map, theme: ThemeMode): void {
+  if (!map.getSource(STATIONS_BROWSE_SOURCE_ID)) {
+    map.addSource(STATIONS_BROWSE_SOURCE_ID, {
+      type: 'geojson',
+      data: EMPTY_COLLECTION,
+      cluster: true,
+      clusterMaxZoom: 12,
+      clusterRadius: 42,
+    })
+  }
+
+  if (!map.getSource(STATIONS_OVERLAY_SOURCE_ID)) {
+    map.addSource(STATIONS_OVERLAY_SOURCE_ID, {
+      type: 'geojson',
+      data: EMPTY_COLLECTION,
+    })
+  }
 
   const colors = palette(theme)
 
-  map.addLayer({
-    id: CLUSTER_LAYER_ID,
-    type: 'circle',
-    source: STATIONS_SOURCE_ID,
-    filter: ['has', 'point_count'],
-    paint: {
-      'circle-color': colors.cluster,
-      'circle-radius': ['step', ['get', 'point_count'], 16, 20, 20, 100, 26],
-      'circle-opacity': 0.88,
-      'circle-stroke-width': 2,
-      'circle-stroke-color': colors.pointStroke,
-    },
-  })
+  if (!map.getLayer(CLUSTER_LAYER_ID)) {
+    map.addLayer({
+      id: CLUSTER_LAYER_ID,
+      type: 'circle',
+      source: STATIONS_BROWSE_SOURCE_ID,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': colors.cluster,
+        'circle-radius': ['step', ['get', 'point_count'], 18, 10, 22, 50, 28],
+        'circle-opacity': 0.9,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': colors.pointStroke,
+      },
+    })
+  }
 
-  map.addLayer({
-    id: CLUSTER_COUNT_LAYER_ID,
-    type: 'symbol',
-    source: STATIONS_SOURCE_ID,
-    filter: ['has', 'point_count'],
-    layout: {
-      'text-field': ['get', 'point_count_abbreviated'],
-      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-      'text-size': 12,
-    },
-    paint: {
-      'text-color': colors.clusterText,
-    },
-  })
+  if (!map.getLayer(CLUSTER_COUNT_LAYER_ID)) {
+    map.addLayer({
+      id: CLUSTER_COUNT_LAYER_ID,
+      type: 'symbol',
+      source: STATIONS_BROWSE_SOURCE_ID,
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-size': 13,
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': colors.clusterText,
+      },
+    })
+  }
 
-  map.addLayer({
-    id: POINT_LAYER_ID,
-    type: 'circle',
-    source: STATIONS_SOURCE_ID,
-    filter: ['!', ['has', 'point_count']],
-    paint: {
-      'circle-color': pointColorExpression(theme),
-      'circle-radius': [
-        'case',
-        ['has', 'planned_stop_order'],
-        ['interpolate', ['linear'], ['zoom'], 6, 7, 10, 11, 14, 14],
-        ['interpolate', ['linear'], ['zoom'], 6, 4, 10, 7, 14, 10],
-      ],
-      'circle-stroke-width': ['case', ['has', 'planned_stop_order'], 2.5, 1.5],
-      'circle-stroke-color': colors.pointStroke,
-      'circle-opacity': 0.92,
-    },
-  })
+  if (!map.getLayer(POINT_LAYER_ID)) {
+    map.addLayer({
+      id: POINT_LAYER_ID,
+      type: 'circle',
+      source: STATIONS_BROWSE_SOURCE_ID,
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': pointColorExpression(theme),
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 10, 8, 14, 11],
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': colors.pointStroke,
+        'circle-opacity': 0.94,
+      },
+    })
+  }
 
-  map.addLayer({
-    id: PLANNED_STOP_LABEL_LAYER_ID,
-    type: 'symbol',
-    source: STATIONS_SOURCE_ID,
-    filter: ['all', ['!', ['has', 'point_count']], ['has', 'planned_stop_order']],
-    layout: {
-      'text-field': ['to-string', ['get', 'planned_stop_order']],
-      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-      'text-size': 11,
-      'text-allow-overlap': true,
-    },
-    paint: {
-      'text-color': '#ffffff',
-    },
-  })
+  if (!map.getLayer(OVERLAY_POINT_LAYER_ID)) {
+    map.addLayer({
+      id: OVERLAY_POINT_LAYER_ID,
+      type: 'circle',
+      source: STATIONS_OVERLAY_SOURCE_ID,
+      paint: {
+        'circle-color': pointColorExpression(theme),
+        'circle-radius': [
+          'case',
+          ['has', 'planned_stop_order'],
+          ['interpolate', ['linear'], ['zoom'], 5, 9, 10, 13, 14, 16],
+          ['interpolate', ['linear'], ['zoom'], 5, 7, 10, 10, 14, 13],
+        ],
+        'circle-stroke-width': ['case', ['has', 'planned_stop_order'], 3, 2],
+        'circle-stroke-color': colors.pointStroke,
+        'circle-opacity': 0.96,
+      },
+    })
+  }
+
+  if (!map.getLayer(PLANNED_STOP_LABEL_LAYER_ID)) {
+    map.addLayer({
+      id: PLANNED_STOP_LABEL_LAYER_ID,
+      type: 'symbol',
+      source: STATIONS_OVERLAY_SOURCE_ID,
+      filter: ['has', 'planned_stop_order'],
+      layout: {
+        'text-field': ['to-string', ['get', 'planned_stop_order']],
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-size': 12,
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+      },
+    })
+  }
+
+  setStationMapMode(map, 'browse')
 }
 
 export function updateStationLayerTheme(map: maplibregl.Map, theme: ThemeMode): void {
@@ -161,20 +260,67 @@ export function updateStationLayerTheme(map: maplibregl.Map, theme: ThemeMode): 
   map.setPaintProperty(CLUSTER_COUNT_LAYER_ID, 'text-color', colors.clusterText)
   map.setPaintProperty(POINT_LAYER_ID, 'circle-color', pointColorExpression(theme))
   map.setPaintProperty(POINT_LAYER_ID, 'circle-stroke-color', colors.pointStroke)
+  map.setPaintProperty(OVERLAY_POINT_LAYER_ID, 'circle-color', pointColorExpression(theme))
+  map.setPaintProperty(OVERLAY_POINT_LAYER_ID, 'circle-stroke-color', colors.pointStroke)
   if (map.getLayer(PLANNED_STOP_LABEL_LAYER_ID)) {
     map.setPaintProperty(PLANNED_STOP_LABEL_LAYER_ID, 'text-color', '#ffffff')
   }
 }
 
-export function setStationData(map: maplibregl.Map, data: FeatureCollection): void {
-  const source = map.getSource(STATIONS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-  if (source) {
-    source.setData(data)
-  }
+/** Modo mapa: datos clusterizados en fuente browse. */
+export function setBrowseStationData(map: maplibregl.Map, data: FeatureCollection): void {
+  setSourceData(map, STATIONS_BROWSE_SOURCE_ID, data)
 }
 
-import { navigationPopupHtml } from '../navigation/externalMaps'
-import { dynamicStatusClassName, formatDynamicStatusLabel } from '../stations/dynamicDisplay'
+/** Ruta / plan / asistente: puntos siempre visibles (sin cluster). */
+export function setOverlayStationData(map: maplibregl.Map, data: FeatureCollection): void {
+  setSourceData(map, STATIONS_OVERLAY_SOURCE_ID, data)
+}
+
+export function clearBrowseStationData(map: maplibregl.Map): void {
+  setBrowseStationData(map, EMPTY_COLLECTION)
+}
+
+export function clearOverlayStationData(map: maplibregl.Map): void {
+  setOverlayStationData(map, EMPTY_COLLECTION)
+}
+
+/** @deprecated Usar setBrowseStationData o setOverlayStationData. */
+export function setStationData(map: maplibregl.Map, data: FeatureCollection): void {
+  setBrowseStationData(map, data)
+}
+
+export function interactiveStationLayers(mode: StationMapMode): string[] {
+  if (mode === 'browse') {
+    return [POINT_LAYER_ID, CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID]
+  }
+  if (mode === 'overlay') {
+    return [OVERLAY_POINT_LAYER_ID, PLANNED_STOP_LABEL_LAYER_ID]
+  }
+  return []
+}
+
+export function mapShowsStationGlyphs(map: maplibregl.Map, mode: StationMapMode): boolean {
+  const canvas = map.getCanvas()
+  if (canvas.width === 0 || canvas.height === 0) {
+    return false
+  }
+  const layers = interactiveStationLayers(mode).filter((layerId) => {
+    const layer = map.getLayer(layerId)
+    return layer && map.getLayoutProperty(layerId, 'visibility') !== 'none'
+  })
+  if (layers.length === 0) {
+    return false
+  }
+  const hits = map.queryRenderedFeatures(
+    [
+      [0, 0],
+      [canvas.width, canvas.height],
+    ],
+    { layers },
+  )
+  return hits.length > 0
+}
 
 export function stationPopupHtml(
   properties: Record<string, unknown>,

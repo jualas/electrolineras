@@ -27,6 +27,7 @@ from api.schemas import (
     PowerBandStats,
     StationListResponse,
 )
+from api.schemas import MAX_STATIONS_LIMIT
 from db.repository import StationRepository
 from ingest.config import settings as ingest_settings
 from ingest.ocm_parser import OCM_SOURCE
@@ -52,6 +53,7 @@ def _search_stations(
     countries: list[str] | None,
     limit: int,
     offset: int,
+    order_by: str = "power",
 ) -> tuple[list[Station], Pagination]:
     _validate_kw_range(min_kw, max_kw)
     total = repo.count_matching(
@@ -73,6 +75,7 @@ def _search_stations(
         countries=countries,
         limit=limit,
         offset=offset,
+        order_by=order_by,
     )
     pagination = Pagination(
         total=total,
@@ -102,6 +105,89 @@ def _apply_access_filters_to_stations(
             ad_hoc_only=ad_hoc_only,
         )
     ]
+
+
+def _search_stations_respecting_access_filters(
+    repo: StationRepository,
+    *,
+    west: float | None,
+    south: float | None,
+    east: float | None,
+    north: float | None,
+    min_kw: float | None,
+    max_kw: float | None,
+    countries: list[str] | None,
+    limit: int,
+    offset: int,
+    public_open_only: bool,
+    exclude_commercial: bool,
+    ad_hoc_only: bool,
+    order_by: str = "power",
+) -> tuple[list[Station], Pagination]:
+    use_access_filters = public_open_only or exclude_commercial or ad_hoc_only
+    if not use_access_filters:
+        return _search_stations(
+            repo,
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            min_kw=min_kw,
+            max_kw=max_kw,
+            countries=countries,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+        )
+
+    total_unfiltered = repo.count_matching(
+        west=west,
+        south=south,
+        east=east,
+        north=north,
+        min_kw=min_kw,
+        max_kw=max_kw,
+        countries=countries,
+    )
+    batch_size = min(max(limit * 4, limit), MAX_STATIONS_LIMIT)
+    collected: list[Station] = []
+    scan_offset = 0
+
+    while len(collected) < offset + limit and scan_offset < total_unfiltered:
+        batch = repo.search(
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            min_kw=min_kw,
+            max_kw=max_kw,
+            countries=countries,
+            limit=batch_size,
+            offset=scan_offset,
+            order_by=order_by,
+        )
+        if not batch:
+            break
+        collected.extend(
+            _apply_access_filters_to_stations(
+                batch,
+                public_open_only=public_open_only,
+                exclude_commercial=exclude_commercial,
+                ad_hoc_only=ad_hoc_only,
+            )
+        )
+        scan_offset += len(batch)
+
+    page = collected[offset : offset + limit]
+    exhausted = scan_offset >= total_unfiltered
+    filtered_total = len(collected) if exhausted else max(len(collected), offset + len(page))
+    pagination = Pagination(
+        total=filtered_total,
+        limit=limit,
+        offset=offset,
+        has_more=not exhausted and len(collected) >= offset + limit,
+    )
+    return page, pagination
 
 
 @router.get("/stations")
@@ -139,8 +225,9 @@ def list_stations(
     countries = parse_country_list(country)
     parsed_bbox = parse_bbox(bbox)
     west, south, east, north = parsed_bbox or (None, None, None, None)
+    order_by = "id" if parsed_bbox is not None and format == "geojson" else "power"
 
-    stations, pagination = _search_stations(
+    stations, pagination = _search_stations_respecting_access_filters(
         repo,
         west=west,
         south=south,
@@ -151,21 +238,11 @@ def list_stations(
         countries=countries,
         limit=limit,
         offset=offset,
-    )
-
-    stations = _apply_access_filters_to_stations(
-        stations,
         public_open_only=public_open_only,
         exclude_commercial=exclude_commercial,
         ad_hoc_only=ad_hoc_only,
+        order_by=order_by,
     )
-    if public_open_only or exclude_commercial or ad_hoc_only:
-        pagination = Pagination(
-            total=len(stations),
-            limit=limit,
-            offset=offset,
-            has_more=False,
-        )
 
     if format == "geojson":
         return GeoJSONStationCollection(

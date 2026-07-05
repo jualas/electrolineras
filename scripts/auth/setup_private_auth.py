@@ -7,6 +7,11 @@ import argparse
 import getpass
 import secrets
 import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 try:
     import pyotp
@@ -20,6 +25,8 @@ except ImportError:
     sys.exit(1)
 
 from api.auth.password import hash_password
+from apply_auth_env import apply_auth_to_env
+from totp_qr import render_totp_qr
 
 
 def _escape_docker_compose_env(value: str) -> str:
@@ -38,9 +45,34 @@ def main() -> None:
         "--password",
         help="Contraseña (si no se pasa, se pide por terminal)",
     )
+    parser.add_argument(
+        "--qr-output",
+        default="img/totp-setup-qr.png",
+        help="Ruta PNG del QR para Microsoft Authenticator (vacío = no generar)",
+    )
+    parser.add_argument(
+        "--apply",
+        metavar="ENV_FILE",
+        help="Escribe variables en .env (p. ej. /mnt/datos/docker/electrolineras/.env)",
+    )
     args = parser.parse_args()
 
-    password = args.password or getpass.getpass("Contraseña para zona privada: ")
+    if not args.password and not sys.stdin.isatty():
+        print(
+            "ERROR: sin TTY usa --password o --apply con contraseña explícita",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if args.password:
+        password = args.password
+    else:
+        print(
+            "NOTA: esto NO comprueba tu contraseña actual; define una NUEVA para la zona privada.\n"
+            "Usa --apply para guardar en .env sin copiar/pegar.\n",
+            file=sys.stderr,
+        )
+        password = getpass.getpass("Contraseña para zona privada: ")
     if len(password) < 8:
         print("ERROR: usa al menos 8 caracteres", file=sys.stderr)
         sys.exit(1)
@@ -50,22 +82,45 @@ def main() -> None:
     uri = totp.provisioning_uri(name=args.account, issuer_name="Electrolineras")
 
     session_secret = secrets.token_hex(32)
-
-    print("\n# Añade a /mnt/datos/docker/electrolineras/.env (NO commitear)")
-    print("# Si ya existen PRIVATE_* / SESSION_*, sustitúyelas (no duplicar líneas).")
-    print("# IMPORTANTE: el hash bcrypt lleva $; en .env de docker-compose duplícalos ($$)\n")
-    print("PRIVATE_STACK_ENABLED=true")
-    print("CHARGING_AGENT_ENABLED=true")
-    print(f"SESSION_SECRET={session_secret}")
-    print("SESSION_COOKIE_SECURE=true")
+    api_token = secrets.token_hex(32)
     pwd_hash = hash_password(password)
-    print(f"PRIVATE_AUTH_PASSWORD_HASH={_escape_docker_compose_env(pwd_hash)}")
-    print(f"PRIVATE_TOTP_SECRET={secret}")
-    print("\n# Microsoft Authenticator → Cuenta → Otro → escanear QR o introducir clave:")
-    print(f"# Clave manual: {secret}")
-    print(f"# URI otpauth: {uri}")
-    print("\n# Opcional automatización (Dify / scripts):")
-    print(f"PRIVATE_API_TOKEN={secrets.token_hex(32)}")
+
+    env_values = {
+        "PRIVATE_STACK_ENABLED": "true",
+        "CHARGING_AGENT_ENABLED": "true",
+        "SESSION_SECRET": session_secret,
+        "SESSION_COOKIE_SECURE": "true",
+        "PRIVATE_AUTH_PASSWORD_HASH": _escape_docker_compose_env(pwd_hash),
+        "PRIVATE_TOTP_SECRET": secret,
+        "PRIVATE_API_TOKEN": api_token,
+    }
+
+    qr_path: Path | None = None
+    if args.qr_output.strip():
+        try:
+            qr_path = render_totp_qr(uri, Path(args.qr_output))
+        except RuntimeError as exc:
+            print(f"AVISO: no se pudo generar QR ({exc})", file=sys.stderr)
+
+    if args.apply:
+        apply_auth_to_env(Path(args.apply), env_values)
+        print(f"Variables de auth escritas en {args.apply}")
+        print("Reinicia la API:")
+        print("  cd /mnt/datos/docker/electrolineras && docker compose up -d --force-recreate electrolineras-api")
+    else:
+        print("\n# Copia SOLO las líneas KEY=valor (sin comentarios) a tu .env")
+        print("# Mejor: vuelve a ejecutar con --apply /ruta/al/.env\n")
+        for key, val in env_values.items():
+            print(f"{key}={val}")
+
+    print("\n--- Microsoft Authenticator ---")
+    print("1. Borra la entrada antigua de «Electrolineras» en la app.")
+    print("2. Agregar cuenta → Otra cuenta → escanear QR o clave manual:")
+    print(f"   Clave: {secret}")
+    if qr_path:
+        print(f"   QR: {qr_path}")
+    print("\nContraseña de la web (la que acabas de definir): [la que escribiste]")
+    print("Código: el de 6 dígitos que muestra Authenticator (cambia cada 30 s).")
 
 
 if __name__ == "__main__":

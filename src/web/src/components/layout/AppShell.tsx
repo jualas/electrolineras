@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { useAuth } from '../../auth/AuthContext'
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
-import { useActiveTrip } from '../../hooks/useActiveTrip'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
 import { useTheme } from '../../hooks/useTheme'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
@@ -27,7 +25,6 @@ const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
 
 export function AppShell() {
   const { theme, toggleTheme } = useTheme()
-  const { privateStackEnabled } = useAuth()
   const [mode, setMode] = useState<SearchMode>(defaultNavMode)
   const [panelOpen, setPanelOpen] = useState(false)
   const [apiOk, setApiOk] = useState(false)
@@ -48,8 +45,6 @@ export function AppShell() {
     setConsumptionWhPerKm: setVehicleConsumption,
     setTerrainFactorId: setVehicleTerrain,
   } = useVehicleProfile()
-  const { activeTrip } = useActiveTrip()
-
   useEffect(() => {
     checkApiHealth().then(setApiOk)
   }, [])
@@ -198,30 +193,6 @@ export function AppShell() {
             </nav>
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </header>
-
-          {mode === 'map' && activeTrip ? (
-            <div className="active-trip-banner" role="status">
-              <span>
-                Viaje activo → <strong>{activeTrip.destination.label}</strong>
-              </span>
-              <button
-                type="button"
-                className="btn btn--secondary btn--compact"
-                onClick={() => {
-                  if (CHARGE_PLAN_NAV_ENABLED) {
-                    setMode('charge')
-                  } else if (privateStackEnabled) {
-                    setMode('assistant')
-                  } else {
-                    setMode('route')
-                  }
-                  setPanelOpen(true)
-                }}
-              >
-                {CHARGE_PLAN_NAV_ENABLED ? 'Recalcular plan' : privateStackEnabled ? 'Abrir asistente' : 'Ver en ruta'}
-              </button>
-            </div>
-          ) : null}
 
           {mode === 'map' && (
             <MapFloatingSearch

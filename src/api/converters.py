@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import Counter
 from typing import Any
 
@@ -46,16 +47,18 @@ def station_to_feature(station: Station) -> dict[str, Any]:
             "external_rating_avg": station.external_rating_avg,
             "external_rating_count": station.external_rating_count,
             "ocm_poi_id": station.ocm_poi_id,
-            "external_comments": [
-                {
-                    "rating": comment.rating,
-                    "comment": comment.comment,
-                    "username": comment.username,
-                    "created_at": comment.created_at.isoformat() if comment.created_at else None,
-                    "checkin_label": comment.checkin_label,
-                }
-                for comment in station.external_comments[:3]
-            ],
+            "external_comments": json.dumps(
+                [
+                    {
+                        "rating": comment.rating,
+                        "comment": comment.comment,
+                        "username": comment.username,
+                        "created_at": comment.created_at.isoformat() if comment.created_at else None,
+                        "checkin_label": comment.checkin_label,
+                    }
+                    for comment in station.external_comments[:3]
+                ]
+            ),
         },
     }
 

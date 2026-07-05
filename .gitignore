@@ -39,6 +39,10 @@ data/logs/*
 # Frontend
 node_modules/
 src/web/dist/
+img/totp-authenticator-qr.png
+img/totp-setup-qr.png
+totp-authenticator-qr.png
+totp-setup-qr.png
 
 # IDEs y herramientas
 .idea/

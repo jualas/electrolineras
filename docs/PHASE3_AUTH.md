@@ -33,6 +33,15 @@ PYTHONPATH=src .venv/bin/python scripts/auth/setup_private_auth.py
 3. **Sustituye** las variables existentes; no pegues un segundo bloque (docker-compose usa la última línea y el Authenticator quedaría desincronizado).
 4. El script ya escapa el hash bcrypt para **docker-compose** (`$` → `$$`). Si pegas un hash manual, duplica cada `$`.
 5. Si duplicaste por error: `PYTHONPATH=src .venv/bin/python scripts/auth/dedupe_env_auth.py`
+6. El script genera un PNG escaneable (`img/totp-setup-qr.png` por defecto). Requiere `qrencode` en el sistema (`sudo apt install qrencode`).
+
+**Regenerar solo el QR** (sin cambiar contraseña ni secreto) a partir del `.env` de producción:
+
+```bash
+./scripts/auth/show_totp_qr.sh
+# → img/totp-authenticator-qr.png
+# Microsoft Authenticator → Agregar cuenta → Otra cuenta → Escanear código QR
+```
 
 Producción:
 
