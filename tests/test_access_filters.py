@@ -9,6 +9,7 @@ def _station(
     address: str | None = None,
     access: str | None = "public",
     payment_methods: list[str] | None = None,
+    max_power_kw: float = 22.0,
 ) -> Station:
     return Station(
         id="test-1",
@@ -16,8 +17,8 @@ def _station(
         country="ES",
         site_name=site_name,
         location=StationLocation(lat=40.4, lon=-3.7, address=address),
-        connectors=[Connector(connector_type="iec62196T2", power_kw=22.0)],
-        max_power_kw=22.0,
+        connectors=[Connector(connector_type="iec62196T2", power_kw=max_power_kw)],
+        max_power_kw=max_power_kw,
         access=access,
         payment_methods=payment_methods or [],
         raw_ref="test-1",
@@ -46,3 +47,15 @@ def test_ad_hoc_only_filter() -> None:
     card = _station(payment_methods=["card"])
     assert passes_access_filters(app_only, ad_hoc_only=True) is False
     assert passes_access_filters(card, ad_hoc_only=True) is True
+
+
+def test_public_open_only_keeps_high_power_commercial() -> None:
+    mercadona_slow = _station(site_name="Mercadona Centro", max_power_kw=22.0)
+    cc_fast = _station(site_name="CC Mazarrón Park", max_power_kw=90.0)
+    assert passes_access_filters(mercadona_slow, public_open_only=True) is False
+    assert passes_access_filters(cc_fast, public_open_only=True) is True
+
+
+def test_exclude_commercial_still_drops_all_commercial() -> None:
+    cc_fast = _station(site_name="CC Mazarrón Park", max_power_kw=90.0)
+    assert passes_access_filters(cc_fast, exclude_commercial=True) is False

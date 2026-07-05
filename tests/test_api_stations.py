@@ -206,7 +206,8 @@ def test_list_stations_public_open_only_scans_past_commercial(api_client: TestCl
     repo = memory_repo()
     repo.upsert_stations(
         [
-            sample_station("es-dgt-cc", "CC", "ES", 40.41, -3.71, 350.0, site_name="Centro Comercial Test"),
+            sample_station("es-dgt-cc-slow", "CC-SLOW", "ES", 40.41, -3.71, 22.0, site_name="Mercadona Test"),
+            sample_station("es-dgt-cc-fast", "CC-FAST", "ES", 40.41, -3.71, 90.0, site_name="CC Mazarrón Park"),
             sample_station("es-dgt-public", "PUB", "ES", 40.41, -3.71, 50.0, site_name="Plaza Mayor"),
         ]
     )
@@ -218,12 +219,14 @@ def test_list_stations_public_open_only_scans_past_commercial(api_client: TestCl
     client = TestClient(app)
     try:
         response = client.get(
-            "/api/v1/stations?format=geojson&bbox=-4,40,0,41&public_open_only=true&limit=1"
+            "/api/v1/stations?format=geojson&bbox=-4,40,0,41&public_open_only=true&limit=10"
         )
         assert response.status_code == 200
         payload = response.json()
-        assert len(payload["features"]) == 1
-        assert payload["features"][0]["properties"]["id"] == "es-dgt-public"
+        ids = {feature["properties"]["id"] for feature in payload["features"]}
+        assert "es-dgt-public" in ids
+        assert "es-dgt-cc-fast" in ids
+        assert "es-dgt-cc-slow" not in ids
     finally:
         app.dependency_overrides.clear()
 
