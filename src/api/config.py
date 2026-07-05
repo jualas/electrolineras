@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     route_results_limit_default: int = 10
     nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     nominatim_fallback_base_url: str = ""
+    nominatim_public_emergency_fallback: bool = True
     nominatim_user_agent: str = "Electrolineras/0.1.0 (dev; contact: local)"
     nominatim_country_codes: str = "es,pt"
     nominatim_timeout_seconds: float = 15.0

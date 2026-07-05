@@ -39,7 +39,8 @@ Variables opcionales (`docker/nominatim/.env` o entorno):
 | Variable | Desarrollo | Producción |
 |----------|------------|------------|
 | `NOMINATIM_BASE_URL` | `https://nominatim.openstreetmap.org` | `http://host.docker.internal:8092` |
-| `NOMINATIM_FALLBACK_BASE_URL` | vacío | vacío (no depender del público) |
+| `NOMINATIM_FALLBACK_BASE_URL` | vacío | opcional (URL intermedia) |
+| `NOMINATIM_PUBLIC_EMERGENCY_FALLBACK` | `true` | `true` — usa Nominatim OSM si falla el self-hosted |
 | `NOMINATIM_USER_AGENT` | identificador dev | URL prod + email contacto |
 | `NOMINATIM_COUNTRY_CODES` | `es,pt` | `es,pt` |
 

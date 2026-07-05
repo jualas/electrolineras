@@ -1490,6 +1490,14 @@ button {
   color: var(--color-text-muted);
 }
 
+.place-autocomplete__error {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: #b42318;
+  line-height: 1.35;
+}
+
 .place-suggestions {
   list-style: none;
   margin: 0.25rem 0 0;

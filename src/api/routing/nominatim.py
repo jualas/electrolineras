@@ -6,6 +6,9 @@ from api.config import settings
 from api.routing.nominatim_cache import cache_key, geocode_cache
 
 
+PUBLIC_NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"
+
+
 class GeocodingError(Exception):
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
@@ -24,6 +27,11 @@ def _resolve_base_urls(base_url: str | None) -> list[str]:
     fallback = settings.nominatim_fallback_base_url.strip().rstrip("/")
     if fallback and fallback not in urls:
         urls.append(fallback)
+    if (
+        settings.nominatim_public_emergency_fallback
+        and PUBLIC_NOMINATIM_BASE_URL not in urls
+    ):
+        urls.append(PUBLIC_NOMINATIM_BASE_URL)
     return urls
 
 

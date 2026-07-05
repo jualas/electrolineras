@@ -27,6 +27,7 @@ export function PlaceAutocomplete({
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<number | null>(null)
   const blurTimeoutRef = useRef<number | null>(null)
 
@@ -40,19 +41,27 @@ export function PlaceAutocomplete({
       setSuggestions([])
       setOpen(false)
       setLoading(false)
+      setError(null)
       return
     }
 
     setLoading(true)
+    setError(null)
     debounceRef.current = window.setTimeout(() => {
       void fetchGeocodeSuggestions(trimmed)
         .then((results) => {
           setSuggestions(results)
           setOpen(results.length > 0)
+          setError(results.length > 0 ? null : 'No se encontraron lugares para esa búsqueda.')
         })
-        .catch(() => {
+        .catch((caught: unknown) => {
           setSuggestions([])
           setOpen(false)
+          const message =
+            caught instanceof Error && caught.message
+              ? caught.message
+              : 'No se pudo buscar la ubicación. Comprueba la conexión con la API.'
+          setError(message)
         })
         .finally(() => setLoading(false))
     }, 320)
@@ -81,6 +90,7 @@ export function PlaceAutocomplete({
     onChange(place.label)
     onSelect(place)
     setOpen(false)
+    setError(null)
   }
 
   return (
@@ -124,6 +134,11 @@ export function PlaceAutocomplete({
         />
       )}
       {loading && <span className="place-autocomplete__hint">Buscando…</span>}
+      {!loading && error && !open && (
+        <span className="place-autocomplete__error" role="alert">
+          {error}
+        </span>
+      )}
       {open && suggestions.length > 0 && (
         <ul
           id={`${id}-suggestions`}

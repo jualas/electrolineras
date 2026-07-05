@@ -84,7 +84,9 @@ def test_no_fallback_without_configuration():
     blocked.status_code = 503
 
     original_fallback = settings.nominatim_fallback_base_url
+    original_emergency = settings.nominatim_public_emergency_fallback
     settings.nominatim_fallback_base_url = ""
+    settings.nominatim_public_emergency_fallback = False
     try:
         with patch("api.routing.nominatim.httpx.Client") as client_cls:
             client_cls.return_value.__enter__.return_value.get.return_value = blocked
@@ -93,6 +95,35 @@ def test_no_fallback_without_configuration():
         assert exc.value.status_code == 503
     finally:
         settings.nominatim_fallback_base_url = original_fallback
+        settings.nominatim_public_emergency_fallback = original_emergency
+
+
+def test_public_emergency_fallback_when_primary_unreachable():
+    refused = httpx.ConnectError("connection refused")
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.headers = {"content-type": "application/json"}
+    ok.json.return_value = [
+        {"lat": "40.4168", "lon": "-3.7038", "display_name": "Madrid, España"},
+    ]
+
+    original_primary = settings.nominatim_base_url
+    original_fallback = settings.nominatim_fallback_base_url
+    original_emergency = settings.nominatim_public_emergency_fallback
+    settings.nominatim_base_url = "http://host.docker.internal:8092"
+    settings.nominatim_fallback_base_url = ""
+    settings.nominatim_public_emergency_fallback = True
+    try:
+        with patch("api.routing.nominatim.httpx.Client") as client_cls:
+            client = client_cls.return_value.__enter__.return_value
+            client.get.side_effect = [refused, ok]
+            results = _fetch_nominatim_search("Madrid", 1)
+        assert results[0]["display_name"].startswith("Madrid")
+        assert client.get.call_count == 2
+    finally:
+        settings.nominatim_base_url = original_primary
+        settings.nominatim_fallback_base_url = original_fallback
+        settings.nominatim_public_emergency_fallback = original_emergency
 
 
 def test_fallback_on_non_json_primary_response():
