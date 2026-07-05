@@ -59,6 +59,17 @@ make env-check-prod ENV_FILE=/mnt/datos/docker/electrolineras/.env
 | `API_ENVIRONMENT=production` | Activa hardening (#6042) |
 | `API_RELOAD=false` | Sin recarga en caliente en prod |
 
+### Routing OSRM (planificador / corredor)
+
+Desempate fastest, tipos de ruta y convencionales: [`ROUTE_CORRIDOR_SEARCH.md`](ROUTE_CORRIDOR_SEARCH.md#tipos-de-ruta-osrm-planificador-y-en-ruta).
+
+| Variable | Prod típico | Notas |
+|----------|-------------|-------|
+| `OSRM_USE_MULTI_PROFILE` | `true` | Perfiles separados fastest / shortest / conventional |
+| `OSRM_FASTEST_REQUEST_ALTERNATIVES` | `true` | Alternativas OSRM para desempate fastest |
+| `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.05` | ±5 % sobre min tiempo; calibración #6069 |
+| `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza desvío vs geodesic en shortest |
+
 ### Frontend (build)
 
 En producción, el build Vite debe usar **origen relativo**:

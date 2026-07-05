@@ -125,6 +125,48 @@ Modo **rápido**: una pantalla, sin login, origen = GPS.
 
 ---
 
+## Tipos de ruta OSRM (planificador y «En ruta»)
+
+La API pide a OSRM una polilínea según **`route_preference`**. Esa geometría define el **corredor** donde se buscan cargadores. Tres modos en UI y en `GET /api/v1/stations/along-route` / `charging-plan`:
+
+| Preferencia | Objetivo | Cómo se elige la ruta activa |
+|-------------|----------|------------------------------|
+| `shortest` | Menos km en carretera | Entre alternativas OSRM, minimiza distancia + penalización por desvío vs línea recta (`OSRM_SHORTEST_DIRECTNESS_PENALTY`, default 0.35). |
+| `fastest` | Menor tiempo (autovía si compensa) | Ver **desempate fastest** abajo. |
+| `conventional` | Nacionales/locales, sin autovía | Excluye `motorway` (y `toll` si «evitar peajes»). Con OSRM propio multi-perfil usa perfil `conventional` dedicado; con OSRM público puede ser **aproximada** (aviso en respuesta). |
+
+Peajes: `avoid_highways=true` añade `exclude=toll` (autovías libres permitidas). Si el servidor no soporta `exclude`, se reintenta sin filtro y se avisa al usuario.
+
+### Desempate «ruta más rápida» (`select_fastest_route_payload`)
+
+OSRM devuelve hasta **varias alternativas** cuando `OSRM_FASTEST_REQUEST_ALTERNATIVES=true` (default). No basta con `min(duration)`: en corredores con tiempos muy parecidos, la alternativa **más larga pero con mayor velocidad media** suele ser la que un conductor (o Google Maps) elegiría por autopista.
+
+Algoritmo (`src/api/routing/osrm.py`):
+
+1. `min_duration` = menor `duration` entre alternativas.
+2. **Ventana de tolerancia:** candidatas con `duration ≤ min_duration × (1 + T)`, donde `T = OSRM_FASTEST_ALTERNATIVE_TOLERANCE` (default **0.05** = 5 %).
+3. Entre candidatas, gana la de **mayor velocidad media** `distance / duration`.
+
+**Caso de referencia — Cartagena → Zaragoza:** OSRM a veces marca ~3 min menos por interior (N-330 / Teruel), pero la ruta por **A-7 + A-23 Mudéjar** (vía Valencia) queda dentro del 5 % de tiempo y tiene mejor velocidad media; el motor elige la segunda. Tests: `tests/test_osrm_route.py` (`test_select_fastest_route_prefers_similar_time_higher_avg_speed`).
+
+**Limitación:** OSRM **no tiene tráfico en tiempo real** (#6067). La heurística aproxima «ruta rápida habitual», no congestión del momento.
+
+### Variables relacionadas (`.env`)
+
+| Variable | Default | Efecto |
+|----------|---------|--------|
+| `OSRM_FASTEST_REQUEST_ALTERNATIVES` | `true` | Pide `alternatives=true` al calcular la variante fastest. |
+| `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.05` | Ventana ±5 % sobre el mínimo tiempo para desempate por velocidad media (#6069). |
+| `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza rutas «circulares» en modo shortest. |
+| `OSRM_USE_MULTI_PROFILE` | `true` en prod | Tres perfiles OSRM (`fastest` / `shortest` / `conventional`); convencionales con `exclude=motorway` en perfil propio. |
+| `OSRM_PROFILE_CONVENTIONAL` | `conventional` | Nombre del perfil Lua en OSRM self-hosted (`docker/osrm/`). |
+
+En la respuesta JSON, `route_variants_approximate=true` indica que alguna variante (típicamente convencional en OSRM público) no aplicó exclusiones estrictas. La UI muestra polilíneas de referencia **directa / rápida / convencional** (#6066).
+
+Implementación y tests: `src/api/routing/osrm.py`, `tests/test_osrm_route.py`.
+
+---
+
 ## MVP acotado (primera entrega útil)
 
 1. Formulario: origen, destino, **min 100 kW**.
