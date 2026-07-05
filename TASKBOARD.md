@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-07-05T12:39:15Z -->
+<!-- taskboard-exported-at: 2026-07-05T16:16:37Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-07-05 12:39 UTC  
-**Git:** `main` @ `fbc2713e`  
+**Exportado:** 2026-07-05 16:16 UTC  
+**Git:** `main` @ `68b83ebf`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
