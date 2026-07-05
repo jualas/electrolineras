@@ -41,7 +41,7 @@ export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
               checked={value.relief}
               onChange={() => toggle('relief')}
             />
-            <span>Relieve</span>
+            <span>Relieve (sombras)</span>
           </label>
           <label className="map-layer-control__item">
             <input
@@ -51,6 +51,7 @@ export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
             />
             <span>Curvas de nivel</span>
           </label>
+          <p className="map-layer-control__hint">Acerca el mapa (zoom ≥10) para ver más detalle topográfico.</p>
           <label
             className={`map-layer-control__item${trafficAvailable ? '' : ' map-layer-control__item--disabled'}`}
             title={
