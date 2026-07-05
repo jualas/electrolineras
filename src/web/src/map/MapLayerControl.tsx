@@ -51,7 +51,7 @@ export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
             />
             <span>Curvas de nivel</span>
           </label>
-          <p className="map-layer-control__hint">Acerca el mapa (zoom ≥10) para ver más detalle topográfico.</p>
+          <p className="map-layer-control__hint">Las curvas usan OpenTopoMap; acerca el zoom para más detalle.</p>
           <label
             className={`map-layer-control__item${trafficAvailable ? '' : ' map-layer-control__item--disabled'}`}
             title={

@@ -54,7 +54,7 @@ import {
   shouldFetchStations,
 } from './mapStationMerge'
 import { MapLayerControl, type MapLayerToggles } from './MapLayerControl'
-import { ensureTerrainLayers, setContourLinesVisible, setTerrainReliefVisible } from './mapTerrainLayers'
+import { ensureTerrainLayers, ensureContourLayers, setContourLinesVisible, setTerrainReliefVisible } from './mapTerrainLayers'
 import { ensureTrafficLayer, setTrafficLayerVisible } from './mapTrafficLayer'
 
 const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
@@ -612,6 +612,7 @@ export function MapView({
       ensureTerrainLayers(map)
       ensureTrafficLayer(map)
       ensureStationLayers(map, themeRef.current)
+      ensureContourLayers(map)
       ensureRouteLayers(map, themeRef.current)
       ensureCityLayers(map, themeRef.current)
       const layers = mapLayersRef.current
