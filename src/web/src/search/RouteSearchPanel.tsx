@@ -303,8 +303,8 @@ export function RouteSearchPanel({
       <h2 id="route-search-heading">En ruta</h2>
       <p className="panel-hint">
         {simulationMode
-          ? 'Simula una ruta con origen y destino manuales. Para comparar estrategias con batería (SOC), usa la pestaña Plan carga.'
-          : 'Cargadores en el corredor, ordenados por menor desvío. Para planificar con batería (SOC), usa la pestaña Plan carga.'}
+          ? 'Simula una ruta con origen y destino manuales. Para plan de carga con batería (SOC), usa la pestaña Asistente.'
+          : 'Cargadores en el corredor, ordenados por menor desvío. Para planificar con SOC y paradas, usa la pestaña Asistente.'}
       </p>
 
       <form className="route-form" onSubmit={handleSubmit}>

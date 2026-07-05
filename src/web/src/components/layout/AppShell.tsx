@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { useAuth } from '../../auth/AuthContext'
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
@@ -10,15 +11,14 @@ import { useTheme } from '../../hooks/useTheme'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
 import { MapView } from '../../map/MapView'
 import { MapFloatingSearch } from '../../map/MapFloatingSearch'
+import {
+  APP_NAV_MODES,
+  CHARGE_PLAN_NAV_ENABLED,
+  defaultNavMode,
+  isNavModeEnabled,
+} from '../../navigation/appModes'
 import { SearchPanel, type SearchMode } from '../../search/SearchPanel'
 import { ThemeToggle } from './ThemeToggle'
-
-const MODES: { id: SearchMode; label: string }[] = [
-  { id: 'map', label: 'Mapa' },
-  { id: 'charge', label: 'Plan carga' },
-  { id: 'route', label: 'En ruta' },
-  { id: 'assistant', label: 'Asistente' },
-]
 
 const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
   charge: 'trip',
@@ -27,7 +27,8 @@ const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
 
 export function AppShell() {
   const { theme, toggleTheme } = useTheme()
-  const [mode, setMode] = useState<SearchMode>('map')
+  const { privateStackEnabled } = useAuth()
+  const [mode, setMode] = useState<SearchMode>(defaultNavMode)
   const [panelOpen, setPanelOpen] = useState(false)
   const [apiOk, setApiOk] = useState(false)
   const [routeData, setRouteData] = useState<AlongRouteResponse | null>(null)
@@ -53,7 +54,17 @@ export function AppShell() {
     checkApiHealth().then(setApiOk)
   }, [])
 
+  useEffect(() => {
+    if (!isNavModeEnabled(mode)) {
+      setMode(defaultNavMode())
+      setPanelOpen(false)
+    }
+  }, [mode])
+
   const handleModeChange = (nextMode: SearchMode) => {
+    if (!isNavModeEnabled(nextMode)) {
+      return
+    }
     setMode(nextMode)
     const defaultPreset = MODE_DEFAULT_PRESET[nextMode]
     if (defaultPreset) {
@@ -139,8 +150,12 @@ export function AppShell() {
         routeData={mode === 'route' ? routeData : null}
         routeChargePlanData={mode === 'route' ? routeChargePlanData : null}
         routeSearching={mode === 'route' && routeSearching}
-        chargePlanData={mode === 'charge' || mode === 'assistant' ? chargePlanData : null}
-        chargePlanSearching={(mode === 'charge' || mode === 'assistant') && chargePlanSearching}
+        chargePlanData={
+          mode === 'assistant' || (CHARGE_PLAN_NAV_ENABLED && mode === 'charge') ? chargePlanData : null
+        }
+        chargePlanSearching={
+          (mode === 'assistant' || (CHARGE_PLAN_NAV_ENABLED && mode === 'charge')) && chargePlanSearching
+        }
         focusStation={mode !== 'map' ? selectedStation : null}
         mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
         onRegisterMapBounds={handleRegisterMapBounds}
@@ -169,7 +184,7 @@ export function AppShell() {
               </span>
             </div>
             <nav className="map-mode-tabs" aria-label="Modo de búsqueda">
-              {MODES.map((item) => (
+              {APP_NAV_MODES.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -193,11 +208,17 @@ export function AppShell() {
                 type="button"
                 className="btn btn--secondary btn--compact"
                 onClick={() => {
-                  setMode('charge')
+                  if (CHARGE_PLAN_NAV_ENABLED) {
+                    setMode('charge')
+                  } else if (privateStackEnabled) {
+                    setMode('assistant')
+                  } else {
+                    setMode('route')
+                  }
                   setPanelOpen(true)
                 }}
               >
-                Recalcular plan
+                {CHARGE_PLAN_NAV_ENABLED ? 'Recalcular plan' : privateStackEnabled ? 'Abrir asistente' : 'Ver en ruta'}
               </button>
             </div>
           ) : null}
@@ -224,7 +245,7 @@ export function AppShell() {
 
         <aside
           id="app-side-panel"
-          className={`map-side-panel${panelOpen ? ' map-side-panel--open' : ''}${mode === 'charge' || mode === 'assistant' ? ' map-side-panel--charge' : ''}`}
+          className={`map-side-panel${panelOpen ? ' map-side-panel--open' : ''}${mode === 'assistant' || (CHARGE_PLAN_NAV_ENABLED && mode === 'charge') ? ' map-side-panel--charge' : ''}`}
           aria-hidden={!panelOpen}
         >
           <SearchPanel
@@ -245,7 +266,9 @@ export function AppShell() {
             onChargePlanSearchStateChange={handleChargePlanSearchStateChange}
             selectedStationId={selectedStation?.id ?? null}
           />
-          {mode !== 'map' && mode !== 'charge' && mode !== 'assistant' && (
+          {mode !== 'map' &&
+            mode !== 'assistant' &&
+            !(CHARGE_PLAN_NAV_ENABLED && mode === 'charge') && (
             <VehicleProfilePanel
               profile={vehicleProfile}
               onPresetChange={setVehiclePresetId}
