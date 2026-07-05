@@ -33,6 +33,15 @@ export async function fetchStationsGeoJSON(
   if (query.adHocOnly) {
     params.set('ad_hoc_only', 'true')
   }
+  if (query.availableOnly) {
+    params.set('available_only', 'true')
+  }
+  if (query.maxPriceEurKwh != null) {
+    params.set('max_price_eur_kwh', String(query.maxPriceEurKwh))
+  }
+  if (query.connectorTypes?.length) {
+    params.set('connector_types', query.connectorTypes.join(','))
+  }
 
   return fetchApi<GeoJSONStationCollection>(`/api/v1/stations?${params.toString()}`, init)
 }

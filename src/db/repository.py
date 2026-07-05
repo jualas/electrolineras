@@ -405,6 +405,9 @@ class StationRepository:
         min_kw: float | None = None,
         max_kw: float | None = None,
         countries: list[str] | None = None,
+        available_only: bool = False,
+        max_price_eur_kwh: float | None = None,
+        connector_types: list[str] | None = None,
     ) -> tuple[list[str], list[Any]]:
         clauses = ["1 = 1"]
         params: list[Any] = []
@@ -425,6 +428,23 @@ class StationRepository:
             placeholders = ",".join("?" for _ in countries)
             clauses.append(f"country IN ({placeholders})")
             params.extend(countries)
+        if available_only:
+            clauses.append("UPPER(COALESCE(dynamic_status, '')) = 'AVAILABLE'")
+        if max_price_eur_kwh is not None:
+            clauses.append("(dynamic_price IS NULL OR dynamic_price <= ?)")
+            params.append(max_price_eur_kwh)
+        if connector_types:
+            placeholders = ",".join("?" for _ in connector_types)
+            clauses.append(
+                f"""
+                EXISTS (
+                    SELECT 1 FROM connector c
+                    WHERE c.station_id = station.id
+                      AND UPPER(c.connector_type) IN ({placeholders})
+                )
+                """.strip()
+            )
+            params.extend(connector_types)
 
         return clauses, params
 
@@ -438,6 +458,9 @@ class StationRepository:
         min_kw: float | None = None,
         max_kw: float | None = None,
         countries: list[str] | None = None,
+        available_only: bool = False,
+        max_price_eur_kwh: float | None = None,
+        connector_types: list[str] | None = None,
     ) -> int:
         clauses, params = self._search_clauses(
             west=west,
@@ -447,6 +470,9 @@ class StationRepository:
             min_kw=min_kw,
             max_kw=max_kw,
             countries=countries,
+            available_only=available_only,
+            max_price_eur_kwh=max_price_eur_kwh,
+            connector_types=connector_types,
         )
         row = self.connection.execute(
             f"SELECT COUNT(*) FROM station WHERE {' AND '.join(clauses)}",
@@ -464,6 +490,9 @@ class StationRepository:
         min_kw: float | None = None,
         max_kw: float | None = None,
         countries: list[str] | None = None,
+        available_only: bool = False,
+        max_price_eur_kwh: float | None = None,
+        connector_types: list[str] | None = None,
         limit: int = 500,
         offset: int = 0,
         order_by: str = "power",
@@ -476,6 +505,9 @@ class StationRepository:
             min_kw=min_kw,
             max_kw=max_kw,
             countries=countries,
+            available_only=available_only,
+            max_price_eur_kwh=max_price_eur_kwh,
+            connector_types=connector_types,
         )
 
         params.extend([limit, offset])

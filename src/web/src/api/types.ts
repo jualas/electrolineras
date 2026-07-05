@@ -68,6 +68,9 @@ export type StationQuery = {
   publicOpenOnly?: boolean
   excludeCommercial?: boolean
   adHocOnly?: boolean
+  availableOnly?: boolean
+  maxPriceEurKwh?: number | null
+  connectorTypes?: string[]
 }
 
 export type LatLon = {

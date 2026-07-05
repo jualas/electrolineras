@@ -20,6 +20,44 @@ def parse_country_list(country: str | None) -> list[str] | None:
     return countries
 
 
+_CONNECTOR_ALIASES: dict[str, str] = {
+    "CCS": "CCS2",
+    "TYPE2": "TYPE2",
+    "CHADEMO": "CHADEMO",
+    "TESLA": "TESLA",
+}
+
+_CONNECTOR_SQL_GROUPS: dict[str, tuple[str, ...]] = {
+    "CCS2": ("CCS2", "CCS", "IEC62196T2COMBO", "IEC_62196_T2_COMBO"),
+    "TYPE2": ("TYPE2", "IEC62196T2", "IEC_62196_T2"),
+    "CHADEMO": ("CHADEMO",),
+    "TESLA": ("TESLA", "TESLA_S", "TESLA_R"),
+}
+
+
+def parse_connector_types(connector_types: str | None) -> list[str] | None:
+    if not connector_types:
+        return None
+    normalized: list[str] = []
+    for part in connector_types.split(","):
+        token = part.strip().upper()
+        if not token:
+            continue
+        normalized.append(_CONNECTOR_ALIASES.get(token, token))
+    return normalized or None
+
+
+def expand_connector_types_for_sql(connector_types: list[str] | None) -> list[str] | None:
+    if not connector_types:
+        return None
+    expanded: set[str] = set()
+    for token in connector_types:
+        key = token.upper()
+        group = _CONNECTOR_SQL_GROUPS.get(key, (key,))
+        expanded.update(item.upper() for item in group)
+    return sorted(expanded)
+
+
 def parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
     if not bbox:
         return None

@@ -4,10 +4,13 @@ import type { SearchMode } from '../search/SearchPanel'
 export const CHARGE_PLAN_NAV_ENABLED =
   import.meta.env.VITE_CHARGE_PLAN_NAV_ENABLED === 'true'
 
+/** Búsqueda «En ruta» en menú (oculto por defecto; el asistente cubre planificación). */
+export const ROUTE_NAV_ENABLED = import.meta.env.VITE_ROUTE_NAV_ENABLED === 'true'
+
 export const APP_NAV_MODES: { id: SearchMode; label: string }[] = [
   { id: 'map', label: 'Mapa' },
   ...(CHARGE_PLAN_NAV_ENABLED ? [{ id: 'charge' as const, label: 'Plan carga' }] : []),
-  { id: 'route', label: 'En ruta' },
+  ...(ROUTE_NAV_ENABLED ? [{ id: 'route' as const, label: 'En ruta' }] : []),
   { id: 'assistant', label: 'Asistente' },
 ]
 

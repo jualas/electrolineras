@@ -10,7 +10,9 @@ from api.dependencies import get_repository
 from api.query_params import (
     operators_limit_query,
     parse_bbox,
+    parse_connector_types,
     parse_country_list,
+    expand_connector_types_for_sql,
     stations_limit_query,
     stations_offset_query,
 )
@@ -51,6 +53,9 @@ def _search_stations(
     min_kw: float | None,
     max_kw: float | None,
     countries: list[str] | None,
+    available_only: bool,
+    max_price_eur_kwh: float | None,
+    connector_types: list[str] | None,
     limit: int,
     offset: int,
     order_by: str = "power",
@@ -64,6 +69,9 @@ def _search_stations(
         min_kw=min_kw,
         max_kw=max_kw,
         countries=countries,
+        available_only=available_only,
+        max_price_eur_kwh=max_price_eur_kwh,
+        connector_types=connector_types,
     )
     stations = repo.search(
         west=west,
@@ -73,6 +81,9 @@ def _search_stations(
         min_kw=min_kw,
         max_kw=max_kw,
         countries=countries,
+        available_only=available_only,
+        max_price_eur_kwh=max_price_eur_kwh,
+        connector_types=connector_types,
         limit=limit,
         offset=offset,
         order_by=order_by,
@@ -117,6 +128,9 @@ def _search_stations_respecting_access_filters(
     min_kw: float | None,
     max_kw: float | None,
     countries: list[str] | None,
+    available_only: bool,
+    max_price_eur_kwh: float | None,
+    connector_types: list[str] | None,
     limit: int,
     offset: int,
     public_open_only: bool,
@@ -135,6 +149,9 @@ def _search_stations_respecting_access_filters(
             min_kw=min_kw,
             max_kw=max_kw,
             countries=countries,
+            available_only=available_only,
+            max_price_eur_kwh=max_price_eur_kwh,
+            connector_types=connector_types,
             limit=limit,
             offset=offset,
             order_by=order_by,
@@ -148,6 +165,9 @@ def _search_stations_respecting_access_filters(
         min_kw=min_kw,
         max_kw=max_kw,
         countries=countries,
+        available_only=available_only,
+        max_price_eur_kwh=max_price_eur_kwh,
+        connector_types=connector_types,
     )
     batch_size = min(max(limit * 4, limit), MAX_STATIONS_LIMIT)
     collected: list[Station] = []
@@ -162,6 +182,9 @@ def _search_stations_respecting_access_filters(
             min_kw=min_kw,
             max_kw=max_kw,
             countries=countries,
+            available_only=available_only,
+            max_price_eur_kwh=max_price_eur_kwh,
+            connector_types=connector_types,
             limit=batch_size,
             offset=scan_offset,
             order_by=order_by,
@@ -215,6 +238,18 @@ def list_stations(
         bool,
         Query(description="Solo pago ad-hoc (tarjeta/NFC)"),
     ] = False,
+    available_only: Annotated[
+        bool,
+        Query(description="Solo puntos con disponibilidad AVAILABLE (REVE)"),
+    ] = False,
+    max_price_eur_kwh: Annotated[
+        float | None,
+        Query(ge=0, description="Precio máximo €/kWh (incluye sin tarifa conocida)"),
+    ] = None,
+    connector_types: Annotated[
+        str | None,
+        Query(description="Tipos de conector separados por coma (CCS2,Type2,CHAdeMO,…)"),
+    ] = None,
     format: Annotated[
         Literal["json", "geojson"],
         Query(description="Formato de respuesta"),
@@ -226,6 +261,7 @@ def list_stations(
     parsed_bbox = parse_bbox(bbox)
     west, south, east, north = parsed_bbox or (None, None, None, None)
     order_by = "id" if parsed_bbox is not None and format == "geojson" else "power"
+    parsed_connector_types = expand_connector_types_for_sql(parse_connector_types(connector_types))
 
     stations, pagination = _search_stations_respecting_access_filters(
         repo,
@@ -236,6 +272,9 @@ def list_stations(
         min_kw=min_kw,
         max_kw=max_kw,
         countries=countries,
+        available_only=available_only,
+        max_price_eur_kwh=max_price_eur_kwh,
+        connector_types=parsed_connector_types,
         limit=limit,
         offset=offset,
         public_open_only=public_open_only,

@@ -53,6 +53,9 @@ import {
   featuresForViewport,
   shouldFetchStations,
 } from './mapStationMerge'
+import { MapLayerControl, type MapLayerToggles } from './MapLayerControl'
+import { ensureTerrainLayers, setContourLinesVisible, setTerrainReliefVisible } from './mapTerrainLayers'
+import { ensureTrafficLayer, setTrafficLayerVisible } from './mapTrafficLayer'
 
 const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
 const DEFAULT_ZOOM = 5.8
@@ -82,6 +85,13 @@ type MapViewProps = {
   minKw?: number
   maxKw?: number
   publicOpenOnly?: boolean
+  adHocOnly?: boolean
+  availableOnly?: boolean
+  maxPriceEurKwh?: number | null
+  connectorTypes?: string[]
+  mapLayers?: MapLayerToggles
+  onMapLayersChange?: (next: MapLayerToggles) => void
+  showLayerControl?: boolean
   routeData?: AlongRouteResponse | null
   routeSearching?: boolean
   routeChargePlanData?: ChargingPlanResponse | null
@@ -181,6 +191,13 @@ export function MapView({
   minKw,
   maxKw,
   publicOpenOnly = false,
+  adHocOnly = false,
+  availableOnly = false,
+  maxPriceEurKwh = null,
+  connectorTypes = [],
+  mapLayers,
+  onMapLayersChange,
+  showLayerControl = false,
   routeData = null,
   routeSearching = false,
   routeChargePlanData = null,
@@ -203,6 +220,16 @@ export function MapView({
   const themeRef = useRef(theme)
   const loadStationsRef = useRef(loadStations)
   const mapFocusPlaceRef = useRef(mapFocusPlace)
+  const stationFiltersRef = useRef({
+    minKw,
+    maxKw,
+    publicOpenOnly,
+    adHocOnly,
+    availableOnly,
+    maxPriceEurKwh,
+    connectorTypes,
+  })
+  const mapLayersRef = useRef(mapLayers)
   const routeDataRef = useRef(routeData)
   const routeChargePlanDataRef = useRef(routeChargePlanData)
   const chargePlanDataRef = useRef(chargePlanData)
@@ -214,6 +241,16 @@ export function MapView({
   themeRef.current = theme
   loadStationsRef.current = loadStations
   mapFocusPlaceRef.current = mapFocusPlace
+  stationFiltersRef.current = {
+    minKw,
+    maxKw,
+    publicOpenOnly,
+    adHocOnly,
+    availableOnly,
+    maxPriceEurKwh,
+    connectorTypes,
+  }
+  mapLayersRef.current = mapLayers
   routeDataRef.current = routeData
   routeChargePlanDataRef.current = routeChargePlanData
   chargePlanDataRef.current = chargePlanData
@@ -448,18 +485,21 @@ export function MapView({
       setErrorMessage(null)
 
       try {
+        const filters = stationFiltersRef.current
         const limit = zoom < 7 ? 3000 : zoom < 10 ? 5000 : 4000
         let fetchBounds = expandMapBounds(visibleBounds, FETCH_BBOX_PADDING)
-        let payload = await fetchStationsGeoJSON(
-          {
-            bbox: fetchBounds,
-            limit,
-            minKw,
-            maxKw,
-            publicOpenOnly,
-          },
-          { signal: controller.signal },
-        )
+        const stationQuery = {
+          bbox: fetchBounds,
+          limit,
+          minKw: filters.minKw,
+          maxKw: filters.maxKw,
+          publicOpenOnly: filters.publicOpenOnly,
+          adHocOnly: filters.adHocOnly,
+          availableOnly: filters.availableOnly,
+          maxPriceEurKwh: filters.maxPriceEurKwh,
+          connectorTypes: filters.connectorTypes,
+        }
+        let payload = await fetchStationsGeoJSON(stationQuery, { signal: controller.signal })
 
         if (controller.signal.aborted || loadSeq !== loadSeqRef.current) {
           return
@@ -468,13 +508,7 @@ export function MapView({
         if (payload.features.length === 0 && zoom >= 11) {
           fetchBounds = expandMapBounds(visibleBounds, 1.0)
           payload = await fetchStationsGeoJSON(
-            {
-              bbox: fetchBounds,
-              limit,
-              minKw,
-              maxKw,
-              publicOpenOnly,
-            },
+            { ...stationQuery, bbox: fetchBounds },
             { signal: controller.signal },
           )
         }
@@ -499,7 +533,7 @@ export function MapView({
         setLoadState('error')
       }
     },
-    [minKw, maxKw, publicOpenOnly, applyMapPlacePin, paintBrowseStations],
+    [applyMapPlacePin, paintBrowseStations],
   )
 
   const scheduleLoad = useCallback((map: maplibregl.Map, force = false) => {
@@ -575,9 +609,17 @@ export function MapView({
     }
 
     map.on('load', () => {
+      ensureTerrainLayers(map)
+      ensureTrafficLayer(map)
       ensureStationLayers(map, themeRef.current)
       ensureRouteLayers(map, themeRef.current)
       ensureCityLayers(map, themeRef.current)
+      const layers = mapLayersRef.current
+      if (layers) {
+        setTerrainReliefVisible(map, layers.relief)
+        setContourLinesVisible(map, layers.contours)
+        setTrafficLayerVisible(map, layers.traffic)
+      }
       applyActiveOverlayRef.current(map)
     })
 
@@ -706,6 +748,27 @@ export function MapView({
     scheduleLoad(map, true)
   }, [mapFocusPlace, loadStations, focusMapOnPlace, scheduleLoad])
 
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded() || !mapLayers) {
+      return
+    }
+    setTerrainReliefVisible(map, mapLayers.relief)
+    setContourLinesVisible(map, mapLayers.contours)
+    setTrafficLayerVisible(map, mapLayers.traffic)
+  }, [mapLayers])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !loadStations) {
+      return
+    }
+    loadedFeaturesRef.current = []
+    coverageBoundsRef.current = null
+    lastLoadedZoomRef.current = null
+    scheduleLoad(map, true)
+  }, [minKw, maxKw, publicOpenOnly, adHocOnly, availableOnly, maxPriceEurKwh, connectorTypes.join('|'), loadStations, scheduleLoad])
+
   const showMapBadge =
     loadStations ||
     routeData !== null ||
@@ -725,6 +788,9 @@ export function MapView({
   return (
     <div className="map-shell">
       <div ref={containerRef} className={className ?? 'map-view'} aria-label="Mapa peninsular" />
+      {showLayerControl && mapLayers && onMapLayersChange && (
+        <MapLayerControl value={mapLayers} onChange={onMapLayersChange} />
+      )}
       {showMapBadge && (
         <div className="map-overlay" aria-live="polite">
           {routeSearching && <span className="map-badge">Calculando ruta…</span>}

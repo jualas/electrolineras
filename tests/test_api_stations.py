@@ -231,6 +231,64 @@ def test_list_stations_public_open_only_scans_past_commercial(api_client: TestCl
         app.dependency_overrides.clear()
 
 
+def test_list_stations_available_only(api_client: TestClient) -> None:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station("es-dgt-avail", "A1", dynamic_status="AVAILABLE"),
+            sample_station("es-dgt-busy", "B1", dynamic_status="CHARGING"),
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+    try:
+        response = client.get("/api/v1/stations?available_only=true&limit=10")
+        assert response.status_code == 200
+        ids = {item["id"] for item in response.json()["stations"]}
+        assert ids == {"es-dgt-avail"}
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_list_stations_connector_types_filter(api_client: TestClient) -> None:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station("es-dgt-ccs", "C1"),
+            Station(
+                id="es-dgt-type2",
+                source="es-nap-dgt",
+                country="ES",
+                site_name="AC lento",
+                operator="Operador Test",
+                location=StationLocation(lat=40.4, lon=-3.7, address="Calle Test 1"),
+                connectors=[Connector(connector_type="Type2", power_kw=22.0)],
+                max_power_kw=22.0,
+                access="public",
+                raw_ref="T1",
+                source_version="2026-06-23T10:00:00+02:00",
+            ),
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+    try:
+        response = client.get("/api/v1/stations?connector_types=CCS2&limit=10")
+        assert response.status_code == 200
+        ids = {item["id"] for item in response.json()["stations"]}
+        assert ids == {"es-dgt-ccs"}
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_count_matching() -> None:
     repo = memory_repo()
     repo.upsert_stations(

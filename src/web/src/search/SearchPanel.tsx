@@ -2,6 +2,7 @@ import { AssistantPanel } from '../auth/AssistantPanel'
 import type { AlongRouteResponse, ChargingPlanResponse, Station } from '../api/types'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
+import type { MapStationFilterState } from '../filters/MapStationFilters'
 import { ChargingPlanPanel } from './ChargingPlanPanel'
 import { MapSearchPanel } from './MapSearchPanel'
 import { RouteSearchPanel } from './RouteSearchPanel'
@@ -17,6 +18,8 @@ type SearchPanelProps = {
   onVehicleTerrainChange: (terrainFactorId: TerrainFactorId) => void
   minKw?: number
   maxKw?: number
+  mapStationFilters?: MapStationFilterState
+  onMapStationFiltersChange?: (next: MapStationFilterState) => void
   onRouteResults: (response: AlongRouteResponse | null) => void
   onRouteChargePlanResults?: (response: ChargingPlanResponse | null) => void
   onRouteSelectStation?: (station: Station | null) => void

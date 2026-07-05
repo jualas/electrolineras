@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
-import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
+import { MapStationFilters, type MapStationFilterState } from '../../filters/MapStationFilters'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
 import { useTheme } from '../../hooks/useTheme'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
+import type { MapLayerToggles } from '../../map/MapLayerControl'
 import { MapView } from '../../map/MapView'
 import { MapFloatingSearch } from '../../map/MapFloatingSearch'
 import {
@@ -17,6 +18,20 @@ import {
 } from '../../navigation/appModes'
 import { SearchPanel, type SearchMode } from '../../search/SearchPanel'
 import { ThemeToggle } from './ThemeToggle'
+import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
+
+const DEFAULT_MAP_LAYERS: MapLayerToggles = {
+  relief: false,
+  contours: false,
+  traffic: false,
+}
+
+const DEFAULT_MAP_STATION_FILTERS: MapStationFilterState = {
+  availableOnly: false,
+  adHocOnly: false,
+  connectorTypes: [],
+  maxPriceEurKwh: null,
+}
 
 const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
   charge: 'trip',
@@ -36,6 +51,8 @@ export function AppShell() {
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
   const [mapFocusPlace, setMapFocusPlace] = useState<GeocodeResult | null>(null)
   const [mapSearchText, setMapSearchText] = useState('')
+  const [mapLayers, setMapLayers] = useState<MapLayerToggles>(DEFAULT_MAP_LAYERS)
+  const [mapStationFilters, setMapStationFilters] = useState<MapStationFilterState>(DEFAULT_MAP_STATION_FILTERS)
   const mapBoundsGetterRef = useRef<(() => MapBounds | null) | null>(null)
   const { filter, setPreset, setCustomRange, apiQuery } = usePowerFilter('all')
   const {
@@ -139,9 +156,16 @@ export function AppShell() {
         className="app-map"
         theme={theme}
         loadStations={mode === 'map'}
-        minKw={mode === 'map' ? undefined : apiQuery.minKw}
-        maxKw={mode === 'map' ? undefined : apiQuery.maxKw}
+        minKw={mode === 'map' ? apiQuery.minKw : apiQuery.minKw}
+        maxKw={mode === 'map' ? apiQuery.maxKw : apiQuery.maxKw}
         publicOpenOnly={mode === 'map'}
+        adHocOnly={mode === 'map' ? mapStationFilters.adHocOnly : false}
+        availableOnly={mode === 'map' ? mapStationFilters.availableOnly : false}
+        maxPriceEurKwh={mode === 'map' ? mapStationFilters.maxPriceEurKwh : null}
+        connectorTypes={mode === 'map' ? mapStationFilters.connectorTypes : []}
+        mapLayers={mode === 'map' ? mapLayers : undefined}
+        onMapLayersChange={mode === 'map' ? setMapLayers : undefined}
+        showLayerControl={mode === 'map'}
         routeData={mode === 'route' ? routeData : null}
         routeChargePlanData={mode === 'route' ? routeChargePlanData : null}
         routeSearching={mode === 'route' && routeSearching}
@@ -228,6 +252,8 @@ export function AppShell() {
             onVehicleTerrainChange={setVehicleTerrain}
             minKw={apiQuery.minKw}
             maxKw={apiQuery.maxKw}
+            mapStationFilters={mapStationFilters}
+            onMapStationFiltersChange={setMapStationFilters}
             onRouteResults={handleRouteResults}
             onRouteChargePlanResults={handleRouteChargePlanResults}
             onRouteSelectStation={setSelectedStation}
@@ -237,6 +263,16 @@ export function AppShell() {
             onChargePlanSearchStateChange={handleChargePlanSearchStateChange}
             selectedStationId={selectedStation?.id ?? null}
           />
+          {mode === 'map' && (
+            <>
+              <PowerFilterPanel
+                filter={filter}
+                onPresetChange={setPreset}
+                onCustomRangeChange={setCustomRange}
+              />
+              <MapStationFilters filter={mapStationFilters} onChange={setMapStationFilters} />
+            </>
+          )}
           {mode !== 'map' &&
             mode !== 'assistant' &&
             !(CHARGE_PLAN_NAV_ENABLED && mode === 'charge') && (
