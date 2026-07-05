@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-07-04T16:37:07Z -->
+<!-- taskboard-exported-at: 2026-07-05T12:36:29Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-07-04 16:37 UTC  
-**Git:** `main` @ `4d421381`  
+**Exportado:** 2026-07-05 12:36 UTC  
+**Git:** `main` @ `0bfa97ac`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,8 +23,8 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 12 |
-| Completada (`completed`) | 52 |
+| Pendiente (`pending`) | 10 |
+| Completada (`completed`) | 54 |
 
 ---
 
@@ -177,36 +177,6 @@ Decidir y documentar modelo Dify: local (Ollama mini PC) vs API remota — laten
 | Actualizado | 2026-07-04 10:04 UTC |
 
 Roadmap producto sugerido (orden): Ops estabilidad → Routing UI 2 rutas → TeslaMate SOC → Curva carga + preferencias → Tráfico real → Fase 4 UE. Epic de seguimiento; tareas hijas #6065–#6078.
-
----
-
-<a id="task-6081"></a>
-### [#6081] Deuda — arreglar tests OSRM perfil conventional
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6081` |
-| Estado | `pending` |
-| Complejidad | simple |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-04 10:04 UTC |
-
-Corregir test_build_osrm_exclude_param y test_conventional_route_falls_back_when_exclude_unsupported tras cambio multi-perfil OSRM. Relacionado #6068.
-
----
-
-<a id="task-6083"></a>
-### [#6083] Deuda — documentar desempate fastest en ROUTE_CORRIDOR_SEARCH.md
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6083` |
-| Estado | `pending` |
-| Complejidad | simple |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-04 10:04 UTC |
-
-Documentar select_fastest_route_payload: alternativas OSRM, tolerancia 5%, preferencia velocidad media (caso Cartagena→Zaragoza A-7/A-23). docs/ROUTE_CORRIDOR_SEARCH.md
 
 ---
 
@@ -992,6 +962,21 @@ Repositorio sin commits en main. Incluir .gitignore, README, docs/, estructura e
 
 ---
 
+<a id="task-6081"></a>
+### [#6081] Deuda — arreglar tests OSRM perfil conventional
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6081` |
+| Estado | `completed` |
+| Complejidad | simple |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-05 12:30 UTC |
+
+Corregir test_build_osrm_exclude_param y test_conventional_route_falls_back_when_exclude_unsupported tras cambio multi-perfil OSRM. Relacionado #6068.
+
+---
+
 <a id="task-6082"></a>
 ### [#6082] Deuda — actualizar docs/STATUS.md
 
@@ -1004,6 +989,21 @@ Repositorio sin commits en main. Incluir .gitignore, README, docs/, estructura e
 | Actualizado | 2026-07-04 12:26 UTC |
 
 Actualizar docs/STATUS.md: Fase 3 completada (#6057–#6063), Fase Prod progreso (#6037 done), nuevas tareas #6065+.
+
+---
+
+<a id="task-6083"></a>
+### [#6083] Deuda — documentar desempate fastest en ROUTE_CORRIDOR_SEARCH.md
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6083` |
+| Estado | `completed` |
+| Complejidad | simple |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-05 12:31 UTC |
+
+Documentar select_fastest_route_payload: alternativas OSRM, tolerancia 5%, preferencia velocidad media (caso Cartagena→Zaragoza A-7/A-23). docs/ROUTE_CORRIDOR_SEARCH.md
 
 ---
 
