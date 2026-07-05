@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-07-05T12:36:29Z -->
+<!-- taskboard-exported-at: 2026-07-05T12:39:15Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-07-05 12:36 UTC  
-**Git:** `main` @ `0bfa97ac`  
+**Exportado:** 2026-07-05 12:39 UTC  
+**Git:** `main` @ `fbc2713e`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -1001,7 +1001,7 @@ Actualizar docs/STATUS.md: Fase 3 completada (#6057–#6063), Fase Prod progreso
 | Estado | `completed` |
 | Complejidad | simple |
 | Posición Kanban | 999.0 |
-| Actualizado | 2026-07-05 12:31 UTC |
+| Actualizado | 2026-07-05 12:39 UTC |
 
 Documentar select_fastest_route_payload: alternativas OSRM, tolerancia 5%, preferencia velocidad media (caso Cartagena→Zaragoza A-7/A-23). docs/ROUTE_CORRIDOR_SEARCH.md
 
