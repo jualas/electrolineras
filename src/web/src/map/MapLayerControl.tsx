@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { trafficLayerAvailable } from './mapTrafficLayer'
 
 export type MapLayerToggles = {
+  /** Sombreado + curvas de nivel (mismo DEM, estilo REVE). */
   relief: boolean
-  contours: boolean
   traffic: boolean
 }
 
@@ -41,17 +41,11 @@ export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
               checked={value.relief}
               onChange={() => toggle('relief')}
             />
-            <span>Relieve (sombras)</span>
+            <span>Relieve</span>
           </label>
-          <label className="map-layer-control__item">
-            <input
-              type="checkbox"
-              checked={value.contours}
-              onChange={() => toggle('contours')}
-            />
-            <span>Curvas de nivel</span>
-          </label>
-          <p className="map-layer-control__hint">Las curvas usan OpenTopoMap; acerca el zoom para más detalle.</p>
+          <p className="map-layer-control__hint">
+            Sombreado y curvas de nivel integrados. Acerca el zoom para ver las etiquetas de altura.
+          </p>
           <label
             className={`map-layer-control__item${trafficAvailable ? '' : ' map-layer-control__item--disabled'}`}
             title={

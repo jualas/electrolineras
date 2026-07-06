@@ -22,7 +22,6 @@ import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 
 const DEFAULT_MAP_LAYERS: MapLayerToggles = {
   relief: false,
-  contours: false,
   traffic: false,
 }
 

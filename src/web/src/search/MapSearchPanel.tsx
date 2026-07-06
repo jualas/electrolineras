@@ -3,8 +3,8 @@ export function MapSearchPanel() {
     <section className="panel search-panel" aria-labelledby="map-search-heading">
       <h2 id="map-search-heading">Mapa peninsular</h2>
       <p className="panel-hint">
-        Busca un lugar en la <strong>barra sobre el mapa</strong>. Activa <strong>Capas</strong> (relieve,
-        curvas, tráfico) y ajusta los <strong>filtros</strong> como en REVE: disponibilidad, conectores y precio.
+        Busca un lugar en la <strong>barra sobre el mapa</strong>. En <strong>Capas</strong> activa Relieve
+        (sombreado + curvas de nivel, como en REVE) o tráfico si está configurado.
       </p>
     </section>
   )
