@@ -44,7 +44,7 @@ export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
             <span>Relieve</span>
           </label>
           <p className="map-layer-control__hint">
-            Sombreado y curvas de nivel integrados. Acerca el zoom para ver las etiquetas de altura.
+            Sombreado del terreno y curvas de nivel superpuestas (estilo REVE).
           </p>
           <label
             className={`map-layer-control__item${trafficAvailable ? '' : ' map-layer-control__item--disabled'}`}
