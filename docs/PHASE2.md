@@ -22,7 +22,8 @@ REVE (mapareve.es), operado por Red Eléctrica como SGV, agrega datos OCPI de lo
 |--------|-----|--------|
 | NAP DGT (DATEX II) | Verdad estática oficial ES | Feed XML (Fase 1) |
 | MOBI.E (DATEX II) | Verdad estática PT | Feed XML (Fase 1) |
-| **REVE API pública** | Cobertura complementaria + dinámico ES | `https://www.mapareve.es/api/public/v1` |
+| **REVE API pública** | Cobertura complementaria + dinámico ES (sin clave) | `https://www.mapareve.es/api/public/v1` |
+| **REVE API oficial** | Misma cobertura con clave (`REVE_API_KEY`) | `https://www.mapareve.es/api/external/v1` |
 | OCPI directo (CPO) | Futuro si REVE no basta | Portal clientes REE (solo CPOs) |
 
 Ver detalle técnico REVE en [`DATA_SOURCES.md`](DATA_SOURCES.md#españa--reve-api-pública-maparevees).
@@ -90,7 +91,8 @@ Variables opcionales (`.env`):
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `REVE_BASE_URL` | `https://www.mapareve.es/api/public/v1` | Base API REVE |
+| `REVE_API_KEY` | *(vacío)* | Clave API oficial REE; activa `/api/external/v1` |
+| `REVE_BASE_URL` | *(auto)* | Override de base URL; por defecto public o external según clave |
 | `REVE_SYNC_PER_PAGE` | `25` | Página en POST `/locations` (máx. 25 en API REVE) |
 | `REVE_MATCH_RADIUS_M` | `150` | Radio merge NAP ↔ REVE |
 
@@ -109,6 +111,6 @@ Variables opcionales (`.env`):
 
 ## Riesgos y límites
 
-- La API pública de mapareve.es **no está documentada oficialmente** para terceros; usar con moderación (debounce, cron 2–4 h, User-Agent identificable).
+- La API pública de mapareve.es no estaba documentada para terceros; con **clave oficial** (`REVE_API_KEY`) usar la API external y respetar los términos REE.
 - Términos de uso: revisar aviso legal REE/MITECO antes de producción intensiva.
 - Acceso OCPI directo al SGV requiere registro como CPO en portal REE (no aplica a consumidores de mapa).

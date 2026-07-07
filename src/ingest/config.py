@@ -24,11 +24,24 @@ class IngestSettings(BaseSettings):
     fetch_stream_chunk_size: int = 1024 * 1024
     fetch_user_agent: str = "Electrolineras/0.1 (+https://github.com/electrolineras; NAP ingest)"
 
-    reve_base_url: str = "https://www.mapareve.es/api/public/v1"
+    reve_api_key: str = ""
+    reve_public_base_url: str = "https://www.mapareve.es/api/public/v1"
+    reve_external_base_url: str = "https://www.mapareve.es/api/external/v1"
+    # Override explícito de base URL. Si vacío: external si hay REVE_API_KEY, si no public.
+    reve_base_url: str = ""
     reve_timeout_seconds: float = 60.0
     reve_user_agent: str = "Electrolineras/0.2 (+https://github.com/electrolineras; REVE sync)"
     reve_sync_per_page: int = 25
+    reve_external_page_limit: int = 100
+    reve_sync_page_delay_seconds: float = 0.75
     reve_match_radius_m: float = 150.0
+
+    def resolved_reve_base_url(self) -> str:
+        if self.reve_base_url.strip():
+            return self.reve_base_url.rstrip("/")
+        if self.reve_api_key.strip():
+            return self.reve_external_base_url.rstrip("/")
+        return self.reve_public_base_url.rstrip("/")
 
     ocm_base_url: str = "https://api.openchargemap.io/v3"
     ocm_api_key: str = ""

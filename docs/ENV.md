@@ -11,7 +11,7 @@ Guía de configuración **desarrollo vs producción**, plantillas sin secretos y
 | [`docker/env.example`](../docker/env.example) | Docker Compose en `/mnt/datos/docker/electrolineras/` |
 | [`scripts/cron/electrolineras.env.example`](../scripts/cron/electrolineras.env.example) | Cron ingest, backups, monitoring (host) |
 
-**Nunca commitear:** `.env`, `electrolineras.env`, tokens reales, hashes TOTP, claves Dify/OCM/TeslaMate.
+**Nunca commitear:** `.env`, `electrolineras.env`, tokens reales, hashes TOTP, claves Dify/OCM/REVE/TeslaMate.
 
 ## Ficheros secretos en el mini PC
 
@@ -99,6 +99,7 @@ Generar stack privado (TOTP + sesión):
 | `CLOUDFLARED_TOKEN` | Túnel Cloudflare |
 | `TESLAMATE_MQTT_PASSWORD` | Telemetría coche |
 | `OCM_API_KEY` | Sync Open Charge Map (cron) |
+| `REVE_API_KEY` | Sync REVE API oficial (cron; mapareve.es) |
 | `INGEST_WEBHOOK_URL` | Alertas ntfy (cron, no API) |
 
 Detalle auth: [`PHASE3_AUTH.md`](PHASE3_AUTH.md).

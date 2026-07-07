@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 from db.repository import StationRepository
 from ingest.config import settings
-from ingest.reve_client import ReveClient
+from ingest.reve_client import ReveClient, ReveClientError
 from ingest.reve_parser import REVE_SOURCE, location_to_station
 
 logger = logging.getLogger(__name__)
@@ -43,15 +44,32 @@ def sync_reve_locations(
 ) -> ReveSyncResult:
     reve = client or ReveClient()
     result = ReveSyncResult()
-    page_size = per_page or settings.reve_sync_per_page
+    page_size = per_page or (
+        settings.reve_external_page_limit
+        if reve.uses_authenticated_api
+        else settings.reve_sync_per_page
+    )
     radius_m = match_radius_m if match_radius_m is not None else settings.reve_match_radius_m
     fetched_at = datetime.now(UTC)
     run_id = repo.start_ingest_run(REVE_SOURCE)
+    source_version = "reve-external-api" if reve.uses_authenticated_api else "reve-public-api"
 
     try:
         page = 1
         while True:
-            data, pagination = reve.fetch_locations_page(page=page, per_page=page_size)
+            try:
+                data, pagination = reve.fetch_locations_page(page=page, per_page=page_size)
+            except ReveClientError as exc:
+                if page == 1 and reve.uses_authenticated_api and "429" in str(exc):
+                    logger.warning(
+                        "API external REVE en rate limit; este sync continúa con la API pública",
+                    )
+                    reve = ReveClient(api_key="", base_url=settings.reve_public_base_url)
+                    page_size = per_page or settings.reve_sync_per_page
+                    source_version = "reve-public-api-fallback"
+                    data, pagination = reve.fetch_locations_page(page=page, per_page=page_size)
+                else:
+                    raise
             result.pages_fetched += 1
             logger.info(
                 "REVE página %d: %d emplazamientos (total vistos %d)",
@@ -87,12 +105,14 @@ def sync_reve_locations(
             if max_pages is not None and result.pages_fetched >= max_pages:
                 break
             page = int(next_page)
+            if reve.uses_authenticated_api and settings.reve_sync_page_delay_seconds > 0:
+                time.sleep(settings.reve_sync_page_delay_seconds)
 
         repo.finish_ingest_run(
             run_id,
             status="ok",
             records_upserted=result.enriched + result.inserted,
-            source_version="reve-public-api",
+            source_version=source_version,
         )
     except Exception as exc:
         repo.finish_ingest_run(run_id, status="error", records_upserted=0, source_version=None)

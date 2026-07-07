@@ -7,6 +7,7 @@ import sys
 
 from db.repository import StationRepository
 from ingest.pipeline import export_geojson
+from ingest.reve_client import ReveClient, ReveClientError
 from ingest.reve_sync import sync_reve_locations
 
 
@@ -36,7 +37,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Imprimir solo JSON de resultado",
     )
+    parser.add_argument(
+        "--test-connection",
+        action="store_true",
+        help="Probar REVE_API_KEY / conectividad (GET /stats) y salir",
+    )
     args = parser.parse_args(argv)
+
+    if args.test_connection:
+        try:
+            payload = ReveClient().test_connection()
+        except ReveClientError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+            return 1
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
 
     logging.basicConfig(
         level=logging.INFO,

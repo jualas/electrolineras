@@ -49,23 +49,37 @@ Mapa oficial con información **en tiempo real** (disponibilidad, precio).
 | Todos los puntos remitidos al MITECO | Enfoque en públicos con datos dinámicos (≥ 43 kW obligatorio) |
 | Estándar DATEX II para terceros | Mapa/app REVE; intercambio CPO↔SGV vía **OCPI** |
 
-### Acceso para desarrolladores (actualizado Fase 2 — jun 2026)
+### Acceso para desarrolladores (actualizado jul 2026)
 
-El frontend de [mapareve.es](https://www.mapareve.es/) consume una **API REST pública de lectura** (sin documentación formal para terceros):
+| Modo | Base URL | Autenticación |
+|------|----------|---------------|
+| **Pública** (descubierta Fase 2) | `https://www.mapareve.es/api/public/v1` | Ninguna |
+| **Oficial con clave** | `https://www.mapareve.es/api/external/v1` | Header `x-api-key` (`REVE_API_KEY`) |
 
-| Endpoint | Método | Uso |
-|----------|--------|-----|
-| `/api/public/v1/stats` | GET | Contadores agregados |
-| `/api/public/v1/cpos` | GET | Operadores |
-| `/api/public/v1/markers` | POST | Clusters/marcadores por bbox + zoom |
-| `/api/public/v1/locations` | POST | Listado paginado con detalle EVSE |
-| `/api/public/v1/locations/{id}` | GET | Ficha de emplazamiento |
+Solicitud de clave: [mapareve.es/api-contacto](https://www.mapareve.es/api-contacto).  
+Documentación Swagger: [mapareve.es/docs/api/external/v1](https://www.mapareve.es/docs/api/external/v1).
 
-Base URL: `https://www.mapareve.es/api/public/v1`
+La API **external** no replica todos los endpoints públicos:
 
-Implementación en este repo: `src/ingest/reve_client.py`, sync en `src/ingest/reve_sync.py`. Ver [`PHASE2.md`](PHASE2.md).
+| Endpoint | Pública | External (con clave) |
+|----------|---------|----------------------|
+| `GET /cpos` | Sí | Sí |
+| `GET /locations/{id}` | Sí | Sí |
+| `GET /locations?page&limit` | — | Sí (paginación, máx. 100/página) |
+| `POST /locations` | Sí | No |
+| `GET /stats`, `POST /markers` | Sí | No |
 
-**Precauciones:** respetar términos REE/MITECO; sync con cron espaciado (2–4 h); User-Agent identificable; no abusar del servicio público.
+El sync del repo usa `GET /locations` cuando hay `REVE_API_KEY`.
+
+Implementación: `src/ingest/reve_client.py`, sync en `src/ingest/reve_sync.py`. Ver [`PHASE2.md`](PHASE2.md).
+
+Probar clave (lee `scripts/cron/electrolineras.env`):
+
+```bash
+make test-reve-api
+```
+
+**Precauciones:** respetar términos REE/MITECO; sync con cron espaciado (2–4 h); User-Agent identificable.
 
 El acceso **OCPI directo al SGV** sigue reservado a CPOs registrados en el [portal de clientes REE](https://www.portalclientes.ree.es/).
 

@@ -1,4 +1,4 @@
-.PHONY: install install-dev api web web-build test lint smoke fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt ingest-reve ingest-reve-full cron-install cron-test-es cron-test-reve backup-run backup-verify monitor-check monitor-test env-check-prod env-secure ci-local deploy deploy-rollback docker-build docker-up docker-down docker-sync-prod nominatim-prepare nominatim-up nominatim-logs nominatim-status nominatim-finish-prod nominatim-install-finish-cron nominatim-remove-finish-cron clean
+.PHONY: install install-dev api web web-build test lint smoke fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt ingest-reve ingest-reve-full test-reve-api cron-install cron-test-es cron-test-reve backup-run backup-verify monitor-check monitor-test env-check-prod env-secure ci-local deploy deploy-rollback docker-build docker-up docker-down docker-sync-prod nominatim-prepare nominatim-up nominatim-logs nominatim-status nominatim-finish-prod nominatim-install-finish-cron nominatim-remove-finish-cron clean
 
 DOCKER_COMPOSE_DIR ?= /mnt/datos/docker/electrolineras
 DOCKER_COMPOSE_FILE ?= docker/docker-compose.prod.yml
@@ -67,6 +67,9 @@ ingest-reve:
 
 ingest-reve-full:
 	.venv/bin/electrolineras-ingest --es-only --skip-fetch && .venv/bin/electrolineras-sync-reve --geojson
+
+test-reve-api:
+	bash -c 'set -a; [ -f scripts/cron/electrolineras.env ] && source scripts/cron/electrolineras.env; set +a; .venv/bin/electrolineras-sync-reve --test-connection'
 
 cron-install:
 	bash scripts/cron/install_cron.sh
