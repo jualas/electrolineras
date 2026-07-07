@@ -145,6 +145,8 @@ def _connect(db_path: Path):
 
 
 class _FakeReveClient:
+    uses_authenticated_api = False
+
     def __init__(self, locations: list[dict]) -> None:
         self._locations = locations
 
