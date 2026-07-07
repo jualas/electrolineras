@@ -69,7 +69,9 @@ ingest-reve-full:
 	.venv/bin/electrolineras-ingest --es-only --skip-fetch && .venv/bin/electrolineras-sync-reve --geojson
 
 test-reve-api:
-	bash -c 'set -a; [ -f scripts/cron/electrolineras.env ] && source scripts/cron/electrolineras.env; set +a; .venv/bin/electrolineras-sync-reve --test-connection'
+	@REVE_API_KEY="$$(grep -m1 '^REVE_API_KEY=' scripts/cron/electrolineras.env 2>/dev/null | cut -d= -f2-)"; \
+	export REVE_API_KEY; \
+	.venv/bin/electrolineras-sync-reve --test-connection
 
 cron-install:
 	bash scripts/cron/install_cron.sh
