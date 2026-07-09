@@ -17,7 +17,7 @@ export type VehicleProfile = {
 
 export const SOC_MIN = 5
 export const SOC_MAX = 100
-export const DEFAULT_SOC_PERCENT = 80
+export const DEFAULT_SOC_PERCENT = 100
 export const DEFAULT_RESERVE_SOC_PERCENT = 10
 export const CONSUMPTION_MIN_WH_KM = 80
 export const CONSUMPTION_MAX_WH_KM = 350

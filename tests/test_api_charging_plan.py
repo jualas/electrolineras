@@ -94,6 +94,8 @@ def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     assert payload["route_fastest_distance_km"] == 115.0
     assert payload["destination_stay"] is not None
     assert payload["destination_stay"]["bands"]["total"] >= 0
+    assert payload["route_trip_summary"] is not None
+    assert payload["route_trip_summary"]["total_energy_kwh"] > 0
 
 
 @patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)

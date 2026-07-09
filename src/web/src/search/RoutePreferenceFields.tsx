@@ -84,8 +84,8 @@ export function RoutePreferenceFields({
       {comparisonPlan && hasRouteComparison(comparisonPlan) ? (
         <p className="route-comparison-legend" role="note">
           En el mapa: línea <strong>sólida</strong> = ruta del plan (
-          {routePreferenceLabel(comparisonPlan.route_preference)}). Líneas <strong>discontinuas</strong> = alternativas
-          directa/rápida. Cambiar tipo recalcula paradas.
+          {routePreferenceLabel(comparisonPlan.route_preference)}). Líneas <strong>discontinuas</strong> = otras
+          opciones (rápida, directa o sin autovía). Cambiar tipo recalcula paradas.
         </p>
       ) : null}
     </fieldset>
@@ -93,8 +93,16 @@ export function RoutePreferenceFields({
 }
 
 function hasRouteComparison(plan: RouteAlternativesKm): boolean {
-  const shortest = plan.route_shortest_distance_km ?? plan.route_distance_km
   const fastest = plan.route_fastest_distance_km ?? plan.route_distance_km
+  const conventional = plan.route_conventional_distance_km
+  if (
+    conventional != null &&
+    fastest != null &&
+    Math.abs(conventional - fastest) >= 1
+  ) {
+    return true
+  }
+  const shortest = plan.route_shortest_distance_km ?? plan.route_distance_km
   return shortest != null && fastest != null && Math.abs(shortest - fastest) >= 1
 }
 
@@ -118,12 +126,27 @@ export function avoidTollsLabel(avoidTolls: boolean | undefined): string {
 type RouteAlternativesKm = {
   route_preference?: RoutePreference | null
   route_distance_km?: number | null
+  route_duration_minutes?: number | null
   geodesic_distance_km?: number | null
   route_shortest_distance_km?: number | null
   route_fastest_distance_km?: number | null
   route_conventional_distance_km?: number | null
+  route_conventional_duration_minutes?: number | null
   shortest_excess_km?: number | null
   route_variants_approximate?: boolean
+}
+
+function formatDurationMinutes(minutes: number | null | undefined): string {
+  if (minutes == null || minutes <= 0) {
+    return ''
+  }
+  const rounded = Math.round(minutes)
+  const hours = Math.floor(rounded / 60)
+  const mins = rounded % 60
+  if (hours > 0) {
+    return mins > 0 ? `${hours} h ${mins} min` : `${hours} h`
+  }
+  return `${mins} min`
 }
 
 export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
@@ -144,10 +167,17 @@ export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
     parts.push(`Directa: ${shortest.toFixed(0)} km${excess}`)
   }
   if (fastest != null) {
-    parts.push(`Rápida: ${fastest.toFixed(0)} km`)
+    const duration =
+      plan.route_preference === 'fastest'
+        ? formatDurationMinutes(plan.route_duration_minutes)
+        : ''
+    parts.push(`Rápida: ${fastest.toFixed(0)} km${duration ? ` · ${duration}` : ''}`)
   }
   if (conventional != null) {
-    parts.push(`Convencionales: ${conventional.toFixed(0)} km`)
+    const duration = formatDurationMinutes(plan.route_conventional_duration_minutes)
+    const approx =
+      plan.route_variants_approximate && plan.route_preference === 'conventional' ? ' ~aprox.' : ''
+    parts.push(`Convencionales: ${conventional.toFixed(0)} km${duration ? ` · ${duration}` : ''}${approx}`)
   }
 
   const selectedKm = plan.route_distance_km

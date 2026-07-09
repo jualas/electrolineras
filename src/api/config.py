@@ -57,7 +57,8 @@ class Settings(BaseSettings):
     agent_api_token: str = ""
     private_stack_enabled: bool = False
     private_api_token: str = ""
-    private_auth_password_hash: str = ""
+    private_auth_password_hash: str = ""  # obsoleto; login solo usuario + TOTP
+    private_auth_username: str = "electrolineras"
     private_totp_secret: str = ""
     session_secret: str = ""
     auth_session_max_age_seconds: int = 604800

@@ -1,5 +1,6 @@
 import type { VehicleTelemetryResult } from '../api/types'
 import { DEFAULT_RESERVE_SOC_PERCENT } from './vehicleProfile'
+import { getVehiclePreset } from './vehiclePresets'
 
 export function nominalRangeKm(telemetry: VehicleTelemetryResult): number | null {
   const rated = telemetry.rated_battery_range_km
@@ -108,13 +109,15 @@ export function telemetryToChargingPlanQuery(
       ? liveSoc
       : Math.min(100, Math.max(5, departureSocPercent))
   const terrain = Math.max(0.01, Math.min(2, terrainFactor))
-  const consumptionWhPerKm = (1000 * 100) / nominal
+  const preset = getVehiclePreset(vehiclePresetId ?? 'tesla-model3-sr-2023')
+  const usableCapacityKwh = preset.usableCapacityKwh
+  const consumptionWhPerKm = (usableCapacityKwh * 1000) / nominal * terrain
   return {
     soc_percent: soc,
-    usable_capacity_kwh: 100,
+    usable_capacity_kwh: usableCapacityKwh,
     consumption_wh_per_km: consumptionWhPerKm,
     terrain_factor: terrain,
     reserve_soc_percent: reserveSocPercent,
-    vehicle_preset_id: vehiclePresetId ?? 'tesla-model3-sr-2023',
+    vehicle_preset_id: preset.id,
   }
 }

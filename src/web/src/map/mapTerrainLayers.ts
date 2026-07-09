@@ -26,9 +26,14 @@ function anchorLayer(map: maplibregl.Map, candidates: string[]): string | undefi
   return layers.find((layer) => layer.type === 'line' || layer.type === 'symbol')?.id
 }
 
+function clearTerrainIfSet(map: maplibregl.Map): void {
+  if (map.getTerrain()) {
+    map.setTerrain(null)
+  }
+}
+
 /**
- * Relieve estilo REVE: sombras Esri + curvas OpenTopoMap en el mismo bloque.
- * Se apilan sombra (abajo) → curvas (arriba), ambas semitransparentes sobre el mapa base.
+ * Capas de relieve: sombreado Esri (mapa por defecto) + curvas OpenTopoMap (opcional «Detalle»).
  */
 export function ensureReliefLayers(map: maplibregl.Map): void {
   const beforeId = anchorLayer(map, RELIEF_BEFORE_LAYERS)
@@ -53,14 +58,13 @@ export function ensureReliefLayers(map: maplibregl.Map): void {
     })
   }
 
-  // Primero sombra; luego curvas encima (misma ancla → orden de inserción).
   if (!map.getLayer(SHADOW_LAYER_ID)) {
     map.addLayer(
       {
         id: SHADOW_LAYER_ID,
         type: 'raster',
         source: SHADOW_LAYER_ID,
-        layout: { visibility: 'none' },
+        layout: { visibility: 'visible' },
         paint: {
           'raster-opacity': 0.48,
           'raster-fade-duration': 0,
@@ -76,10 +80,9 @@ export function ensureReliefLayers(map: maplibregl.Map): void {
         id: CONTOUR_OTM_LAYER_ID,
         type: 'raster',
         source: CONTOUR_OTM_LAYER_ID,
-        minzoom: 6,
+        minzoom: 5,
         layout: { visibility: 'none' },
         paint: {
-          // Solo curvas/topo encima del hillshade; el mapa base sigue visible alrededor.
           'raster-opacity': 0.55,
           'raster-fade-duration': 0,
         },
@@ -89,17 +92,26 @@ export function ensureReliefLayers(map: maplibregl.Map): void {
   }
 }
 
-export function setReliefVisible(map: maplibregl.Map, visible: boolean): void {
+export function setShadowVisible(map: maplibregl.Map, visible: boolean): void {
   ensureReliefLayers(map)
-  const visibility = visible ? 'visible' : 'none'
-  for (const layerId of [SHADOW_LAYER_ID, CONTOUR_OTM_LAYER_ID]) {
-    if (map.getLayer(layerId)) {
-      map.setLayoutProperty(layerId, 'visibility', visibility)
-    }
+  if (map.getLayer(SHADOW_LAYER_ID)) {
+    map.setLayoutProperty(SHADOW_LAYER_ID, 'visibility', visible ? 'visible' : 'none')
   }
-  if (map.getTerrain()) {
-    map.setTerrain(null)
+  clearTerrainIfSet(map)
+}
+
+export function setContourVisible(map: maplibregl.Map, visible: boolean): void {
+  ensureReliefLayers(map)
+  if (map.getLayer(CONTOUR_OTM_LAYER_ID)) {
+    map.setLayoutProperty(CONTOUR_OTM_LAYER_ID, 'visibility', visible ? 'visible' : 'none')
   }
+  clearTerrainIfSet(map)
+}
+
+/** @deprecated Usar setShadowVisible / setContourVisible. */
+export function setReliefVisible(map: maplibregl.Map, visible: boolean): void {
+  setShadowVisible(map, visible)
+  setContourVisible(map, visible)
 }
 
 /** @deprecated */
@@ -114,10 +126,10 @@ export function ensureContourLayers(map: maplibregl.Map): void {
 
 /** @deprecated */
 export function setTerrainReliefVisible(map: maplibregl.Map, visible: boolean): void {
-  setReliefVisible(map, visible)
+  setShadowVisible(map, visible)
 }
 
 /** @deprecated */
 export function setContourLinesVisible(map: maplibregl.Map, visible: boolean): void {
-  setReliefVisible(map, visible)
+  setContourVisible(map, visible)
 }

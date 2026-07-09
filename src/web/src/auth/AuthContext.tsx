@@ -7,7 +7,8 @@ type AuthContextValue = {
   authenticated: boolean
   privateStackEnabled: boolean
   loginEnabled: boolean
-  login: (password: string, totpCode: string) => Promise<void>
+  loginUsername: string | null
+  login: (username: string, totpCode: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
 }
@@ -19,12 +20,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false)
   const [privateStackEnabled, setPrivateStackEnabled] = useState(false)
   const [loginEnabled, setLoginEnabled] = useState(false)
+  const [loginUsername, setLoginUsername] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
       const config = await fetchAuthConfig()
       setPrivateStackEnabled(config.private_stack_enabled)
       setLoginEnabled(config.login_enabled)
+      setLoginUsername(config.login_username ?? null)
       if (!config.private_stack_enabled) {
         setAuthenticated(false)
         return
@@ -45,13 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
   }, [refresh])
 
-  const login = useCallback(
-    async (password: string, totpCode: string) => {
-      await loginWithTotp(password, totpCode)
-      setAuthenticated(true)
-    },
-    [],
-  )
+  const login = useCallback(async (username: string, totpCode: string) => {
+    await loginWithTotp(username, totpCode)
+    setAuthenticated(true)
+  }, [])
 
   const logout = useCallback(async () => {
     await logoutSession()
@@ -64,11 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authenticated,
       privateStackEnabled,
       loginEnabled,
+      loginUsername,
       login,
       logout,
       refresh,
     }),
-    [loading, authenticated, privateStackEnabled, loginEnabled, login, logout, refresh],
+    [loading, authenticated, privateStackEnabled, loginEnabled, loginUsername, login, logout, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

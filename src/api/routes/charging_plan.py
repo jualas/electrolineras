@@ -8,6 +8,7 @@ from api.charging_plan_service import ChargingPlanBuildResult, build_charging_pl
 from api.config import settings
 from api.dependencies import get_repository
 from api.routing.charging_plan import VehicleEnergyProfile
+from api.routing.trip_metrics import build_route_trip_summary, planned_stop_to_result
 from api.schemas import (
     MAX_CORRIDOR_KM,
     MAX_ROUTE_RESULTS_LIMIT,
@@ -50,6 +51,7 @@ def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanRes
         preview_route_geometry=built.preview_route_geometry,
         route_preference=built.route_preference,
         avoid_highways=built.avoid_highways,
+        exclude_slow_chargers=built.exclude_slow_chargers,
         computation=built.computation,
         candidates_in_bbox=built.candidates_in_bbox,
         destination_stay=built.destination_stay,
@@ -83,6 +85,7 @@ def _to_response(
     preview_route_geometry: dict | None = None,
     route_preference: RoutePreference | None = None,
     avoid_highways: bool = False,
+    exclude_slow_chargers: bool = False,
     computation,
     candidates_in_bbox: int,
     destination_stay: DestinationStayAdviceResult | None = None,
@@ -96,6 +99,11 @@ def _to_response(
         terrain_factor=vehicle.terrain_factor,
         reserve_soc_percent=vehicle.reserve_soc_percent,
         vehicle_preset_id=vehicle.vehicle_preset_id,
+        max_charge_power_kw=vehicle.max_charge_power_kw,
+        min_destination_soc_pct=vehicle.min_destination_soc_pct,
+        min_stop_arrival_soc_pct=vehicle.min_stop_arrival_soc_pct,
+        max_charge_soc_pct=vehicle.max_charge_soc_pct,
+        consumption_kwh_per_100km=round(vehicle.consumption_wh_per_km / 10.0, 2),
     )
     destination = None
     if destination_lat is not None and destination_lon is not None:
@@ -127,6 +135,7 @@ def _to_response(
         preview_route_geometry=preview_route_geometry,
         route_preference=route_preference,
         avoid_highways=avoid_highways,
+        exclude_slow_chargers=exclude_slow_chargers,
         preferred_operators=list(preferred_operators),
         max_price_eur_kwh=max_price_eur_kwh,
         stops=[
@@ -156,23 +165,17 @@ def _to_response(
             for stop in computation.origin_stops
         ],
         planned_stops=[
-            PlannedRouteStopResult(
-                order=stop.order,
-                station=stop.station,
-                deviation_km=stop.deviation_km,
-                route_distance_km=stop.route_distance_km,
-                extra_minutes=stop.extra_minutes,
-                wrong_side=stop.wrong_side,
-                distance_from_origin_km=stop.distance_from_origin_km,
-                leg_distance_km=stop.leg_distance_km,
-                soc_arrival_pct=stop.soc_arrival_pct,
-                soc_departure_pct=stop.soc_departure_pct,
-                charge_minutes=stop.charge_minutes,
-                classification=stop.classification,
-            )
+            planned_stop_to_result(stop, profile=vehicle)
             for stop in computation.planned_stops
         ],
         projected_soc_at_destination_with_plan=computation.projected_soc_at_destination_with_plan,
+        route_trip_summary=build_route_trip_summary(
+            profile=vehicle,
+            planned_stops=computation.planned_stops,
+            route_distance_km=route_distance_km,
+            route_duration_minutes=route_duration_minutes,
+            projected_destination_soc_pct=computation.projected_soc_at_destination_with_plan,
+        ),
         strategies=[
             ChargingPlanStrategyResult(
                 id=strategy.id,
@@ -278,13 +281,47 @@ def stations_charging_plan(
         float | None,
         Query(gt=0, le=2, description="Precio máximo preferido (€/kWh); ranking blando"),
     ] = None,
+    max_charge_power_kw: Annotated[
+        float,
+        Query(gt=0, le=350, description="Potencia máx. de carga del vehículo (kW); estilo REVE"),
+    ] = 100.0,
+    min_destination_soc_pct: Annotated[
+        float,
+        Query(ge=0, le=50, description="SOC mínimo deseado al llegar al destino (%)"),
+    ] = 10.0,
+    min_stop_arrival_soc_pct: Annotated[
+        float,
+        Query(ge=0, le=50, description="SOC mínimo al llegar a cada parada de carga (%)"),
+    ] = 10.0,
+    max_charge_soc_pct: Annotated[
+        float,
+        Query(ge=20, le=100, description="SOC máximo de carga rápida DC por parada (%)"),
+    ] = 80.0,
+    exclude_slow_chargers: Annotated[
+        bool,
+        Query(description="Excluir cargadores lentos (AC / <50 kW) del plan en ruta"),
+    ] = False,
+    consumption_kwh_per_100km: Annotated[
+        float | None,
+        Query(gt=0, le=50, description="Consumo (kWh/100 km); alternativa a consumption_wh_per_km"),
+    ] = None,
+    battery_capacity_kwh: Annotated[
+        float | None,
+        Query(gt=0, le=200, description="Alias de usable_capacity_kwh (kWh útiles)"),
+    ] = None,
+    departure_soc_pct: Annotated[
+        float | None,
+        Query(ge=0, le=100, description="Alias de soc_percent — SOC al salir (%)"),
+    ] = None,
 ) -> ChargingPlanResponse:
+    resolved_capacity = battery_capacity_kwh if battery_capacity_kwh is not None else usable_capacity_kwh
+    resolved_soc = departure_soc_pct if departure_soc_pct is not None else soc_percent
     built = build_charging_plan(
         repo,
         origin_lat=origin_lat,
         origin_lon=origin_lon,
-        soc_percent=soc_percent,
-        usable_capacity_kwh=usable_capacity_kwh,
+        soc_percent=resolved_soc,
+        usable_capacity_kwh=resolved_capacity,
         consumption_wh_per_km=consumption_wh_per_km,
         terrain_factor=terrain_factor,
         reserve_soc_percent=reserve_soc_percent,
@@ -307,5 +344,11 @@ def stations_charging_plan(
         vehicle_preset_id=vehicle_preset_id,
         preferred_operators=preferred_operators,
         max_price_eur_kwh=max_price_eur_kwh,
+        max_charge_power_kw=max_charge_power_kw,
+        min_destination_soc_pct=min_destination_soc_pct,
+        min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
+        max_charge_soc_pct=max_charge_soc_pct,
+        exclude_slow_chargers=exclude_slow_chargers,
+        consumption_kwh_per_100km=consumption_kwh_per_100km,
     )
     return charging_plan_to_response(built)

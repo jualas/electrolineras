@@ -437,6 +437,23 @@ def _fetch_multi_profile_variants(
     return results, warnings
 
 
+def _route_payload_from_osrm_routes(
+    routes: list[dict[str, Any]],
+    *,
+    preference: RoutePreference,
+    exclude_applied: bool,
+    geodesic_km: float,
+    approximate: bool,
+) -> _RoutePayload:
+    selected = select_osrm_route_payload(
+        routes,
+        route_preference=preference,
+        exclude_applied=exclude_applied,
+        geodesic_km=geodesic_km,
+    )
+    return _RoutePayload(preference, selected, approximate=approximate)
+
+
 def _fetch_fallback_variants(
     origin_lat: float,
     origin_lon: float,
@@ -446,60 +463,83 @@ def _fetch_fallback_variants(
     base_url: str,
     timeout_s: float,
     profile: str,
-    route_preference: RoutePreference,
     avoid_highways: bool,
     geodesic_km: float,
 ) -> tuple[dict[RoutePreference, _RoutePayload], list[str], bool]:
-    routes, warnings, exclude_applied = _request_osrm_routes(
-        origin_lat,
-        origin_lon,
-        dest_lat,
-        dest_lon,
-        base_url=base_url,
-        timeout_s=timeout_s,
-        profile=profile,
-        route_preference=route_preference,
-        avoid_highways=avoid_highways,
-    )
-    variants = {
-        "fastest": _RoutePayload(
-            "fastest",
-            select_osrm_route_payload(
+    """Rápida/directa y convencional requieren peticiones OSRM distintas.
+
+    Una sola petición con la preferencia del usuario mezclaba exclude=motorway con
+    alternativas de autovía y hacía que rápida y convencionales mostraran los mismos km.
+    """
+    warnings: list[str] = []
+
+    def fetch_highway_variants() -> tuple[dict[RoutePreference, _RoutePayload], list[str]]:
+        routes, request_warnings, exclude_applied = _request_osrm_routes(
+            origin_lat,
+            origin_lon,
+            dest_lat,
+            dest_lon,
+            base_url=base_url,
+            timeout_s=timeout_s,
+            profile=profile,
+            route_preference="fastest",
+            avoid_highways=avoid_highways,
+        )
+        return {
+            "fastest": _route_payload_from_osrm_routes(
                 routes,
-                route_preference="fastest",
+                preference="fastest",
                 exclude_applied=exclude_applied,
                 geodesic_km=geodesic_km,
+                approximate=False,
             ),
-            approximate=True,
-        ),
-        "shortest": _RoutePayload(
-            "shortest",
-            select_osrm_route_payload(
+            "shortest": _route_payload_from_osrm_routes(
                 routes,
-                route_preference="shortest",
+                preference="shortest",
                 exclude_applied=exclude_applied,
                 geodesic_km=geodesic_km,
+                approximate=True,
             ),
-            approximate=True,
-        ),
-        "conventional": _RoutePayload(
-            "conventional",
-            select_osrm_route_payload(
-                routes,
-                route_preference="conventional",
-                exclude_applied=exclude_applied,
-                geodesic_km=geodesic_km,
-            ),
-            approximate=True,
-        ),
-    }
-    if not warnings and variants["conventional"].approximate:
+        }, request_warnings
+
+    def fetch_conventional_variant() -> tuple[_RoutePayload, list[str], bool]:
+        routes, request_warnings, exclude_applied = _request_osrm_routes(
+            origin_lat,
+            origin_lon,
+            dest_lat,
+            dest_lon,
+            base_url=base_url,
+            timeout_s=timeout_s,
+            profile=profile,
+            route_preference="conventional",
+            avoid_highways=avoid_highways,
+        )
+        payload = _route_payload_from_osrm_routes(
+            routes,
+            preference="conventional",
+            exclude_applied=exclude_applied,
+            geodesic_km=geodesic_km,
+            approximate=not exclude_applied,
+        )
+        return payload, request_warnings, exclude_applied
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        highway_future = executor.submit(fetch_highway_variants)
+        conventional_future = executor.submit(fetch_conventional_variant)
+        highway_variants, highway_warnings = highway_future.result()
+        conventional_payload, conventional_warnings, exclude_applied = conventional_future.result()
+
+    warnings.extend(highway_warnings)
+    warnings.extend(conventional_warnings)
+    if not conventional_warnings and conventional_payload.approximate:
         warning = routing_warning_exclude_unavailable(
             route_preference="conventional",
             avoid_highways=avoid_highways,
         )
         if warning:
             warnings.append(warning)
+
+    variants = {**highway_variants, "conventional": conventional_payload}
     return variants, warnings, exclude_applied
 
 
@@ -540,13 +580,12 @@ def fetch_osrm_route_with_alternatives(
                 base_url=resolved_base,
                 timeout_s=resolved_timeout,
                 profile=settings.osrm_profile_fastest,
-                route_preference=route_preference,
                 avoid_highways=avoid_highways,
                 geodesic_km=geodesic_km,
             )
             warnings.extend(fallback_warnings)
             warnings.append(
-                "OSRM multi-perfil no disponible; se usan aproximaciones sobre alternativas."
+                "OSRM multi-perfil no disponible; convencionales con petición aparte (exclude=motorway)."
             )
     else:
         variants, fallback_warnings, _exclude_applied = _fetch_fallback_variants(
@@ -557,7 +596,6 @@ def fetch_osrm_route_with_alternatives(
             base_url=resolved_base,
             timeout_s=resolved_timeout,
             profile=settings.osrm_profile_fastest,
-            route_preference=route_preference,
             avoid_highways=avoid_highways,
             geodesic_km=geodesic_km,
         )

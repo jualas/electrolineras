@@ -4,7 +4,6 @@ import pyotp
 import pytest
 from fastapi.testclient import TestClient
 
-from api.auth.password import hash_password
 from api.config import settings
 from api.main import app
 
@@ -18,23 +17,23 @@ def auth_client() -> TestClient:
 def auth_settings():
     original = {
         "enabled": settings.private_stack_enabled,
-        "hash": settings.private_auth_password_hash,
+        "username": settings.private_auth_username,
         "totp": settings.private_totp_secret,
         "secret": settings.session_secret,
         "secure": settings.session_cookie_secure,
     }
     secret = pyotp.random_base32()
     settings.private_stack_enabled = True
-    settings.private_auth_password_hash = hash_password("test-password-123")
+    settings.private_auth_username = "electrolineras"
     settings.private_totp_secret = secret
     settings.session_secret = "test-session-secret-min-32-characters-long"
     settings.session_cookie_secure = False
     totp = pyotp.TOTP(secret)
-    yield {"password": "test-password-123", "totp": totp}
+    yield {"username": "electrolineras", "totp": totp}
     for key, value in original.items():
         attr = {
             "enabled": "private_stack_enabled",
-            "hash": "private_auth_password_hash",
+            "username": "private_auth_username",
             "totp": "private_totp_secret",
             "secret": "session_secret",
             "secure": "session_cookie_secure",
@@ -45,14 +44,14 @@ def auth_settings():
 def test_auth_login_and_session(auth_client: TestClient, auth_settings) -> None:
     bad = auth_client.post(
         "/api/v1/auth/login",
-        json={"password": "wrong", "totp_code": "000000"},
+        json={"username": "wrong", "totp_code": "000000"},
     )
     assert bad.status_code == 401
 
     code = auth_settings["totp"].now()
     ok = auth_client.post(
         "/api/v1/auth/login",
-        json={"password": auth_settings["password"], "totp_code": code},
+        json={"username": auth_settings["username"], "totp_code": code},
     )
     assert ok.status_code == 200
     assert auth_client.get("/api/v1/auth/session").json()["authenticated"] is True
@@ -63,6 +62,12 @@ def test_auth_login_and_session(auth_client: TestClient, auth_settings) -> None:
     logout = auth_client.post("/api/v1/auth/logout")
     assert logout.status_code == 200
     assert auth_client.get("/api/v1/auth/session").json()["authenticated"] is False
+
+
+def test_auth_config_exposes_login_username(auth_client: TestClient, auth_settings) -> None:
+    response = auth_client.get("/api/v1/auth/config")
+    assert response.status_code == 200
+    assert response.json()["login_username"] == "electrolineras"
 
 
 def test_private_status_requires_auth_when_enabled(auth_client: TestClient, auth_settings) -> None:

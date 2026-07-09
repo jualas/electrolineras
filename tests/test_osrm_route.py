@@ -128,6 +128,23 @@ def test_conventional_route_falls_back_when_exclude_unsupported() -> None:
             },
         ],
     }
+    highway_payload = MagicMock()
+    highway_payload.status_code = 200
+    highway_payload.json.return_value = {
+        "code": "Ok",
+        "routes": [
+            {
+                "distance": 100_000,
+                "duration": 3000,
+                "geometry": {"coordinates": [[0.0, 40.0], [0.5, 40.0]]},
+            },
+            {
+                "distance": 120_000,
+                "duration": 3600,
+                "geometry": {"coordinates": [[0.0, 40.0], [1.0, 40.0]]},
+            },
+        ],
+    }
 
     client = MagicMock()
     client.get.side_effect = [blocked, ok_payload]
@@ -154,8 +171,16 @@ def test_conventional_route_falls_back_when_exclude_unsupported() -> None:
         assert warnings
         assert "aproximadas" in warnings[0]
 
-        with patch("api.routing.osrm._request_osrm_routes", return_value=(routes, warnings, False)):
-            route, summary, route_warnings, variant_routes = fetch_osrm_route_with_alternatives(
+        with patch("api.routing.osrm._request_osrm_routes") as mock_request:
+            mock_request.side_effect = [
+                (
+                    highway_payload.json.return_value["routes"],
+                    [],
+                    False,
+                ),
+                (routes, warnings, exclude_applied),
+            ]
+            _route, summary, route_warnings, variant_routes = fetch_osrm_route_with_alternatives(
                 40.0,
                 0.0,
                 40.0,
@@ -165,8 +190,56 @@ def test_conventional_route_falls_back_when_exclude_unsupported() -> None:
     finally:
         settings.osrm_use_multi_profile = original
 
-    assert route.route_preference == "conventional"
-    assert route.distance_m == 130_000
-    assert route_warnings == warnings
+    assert _route.route_preference == "conventional"
+    assert _route.distance_m == 130_000
+    assert route_warnings
     assert summary.conventional_distance_km == 130.0
+    assert summary.fastest_distance_km == 100.0
     assert "conventional" in variant_routes
+    assert "fastest" in variant_routes
+    assert variant_routes["fastest"].distance_m == 100_000
+    assert mock_request.call_count == 2
+
+
+def test_fallback_variants_use_separate_osrm_requests() -> None:
+    from api.config import settings
+    from api.routing.osrm import _fetch_fallback_variants
+
+    highway_routes = [
+        {"distance": 500_000, "duration": 18_000, "geometry": {"coordinates": [[0, 40], [1, 41]]}},
+        {"distance": 520_000, "duration": 17_500, "geometry": {"coordinates": [[0, 40], [1.2, 41]]}},
+    ]
+    conventional_routes = [
+        {"distance": 680_000, "duration": 28_000, "geometry": {"coordinates": [[0, 40], [0.8, 40.5]]}},
+    ]
+
+    original = settings.osrm_use_multi_profile
+    settings.osrm_use_multi_profile = False
+    try:
+        with patch("api.routing.osrm._request_osrm_routes") as mock_request:
+            mock_request.side_effect = [
+                (highway_routes, [], False),
+                (conventional_routes, [], True),
+            ]
+            variants, warnings, exclude_applied = _fetch_fallback_variants(
+                40.0,
+                0.0,
+                43.0,
+                1.5,
+                base_url="https://router.project-osrm.org",
+                timeout_s=5.0,
+                profile="driving",
+                avoid_highways=False,
+                geodesic_km=400.0,
+            )
+    finally:
+        settings.osrm_use_multi_profile = original
+
+    assert mock_request.call_count == 2
+    assert mock_request.call_args_list[0].kwargs["route_preference"] == "fastest"
+    assert mock_request.call_args_list[1].kwargs["route_preference"] == "conventional"
+    assert variants["fastest"].route["distance"] == 520_000
+    assert variants["conventional"].route["distance"] == 680_000
+    assert variants["conventional"].approximate is False
+    assert exclude_applied is True
+    assert not warnings

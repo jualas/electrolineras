@@ -11,12 +11,13 @@ from api.query_params import parse_country_list
 from api.routing.charging_preferences import ChargingPreferences, parse_preferred_operators
 from api.routing.charging_plan import (
     VehicleEnergyProfile,
+    allows_origin_zone_charging,
     build_emergency_charging_plan,
     build_route_charging_plan,
     estimate_charging_reach_km,
     estimate_range_km,
 )
-from api.routing.corridor import RoutePolyline, rank_stations_along_route
+from api.routing.corridor import RoutePolyline, rank_stations_along_route, rank_stations_along_route_for_planning
 from api.routing.destination_stay import analyze_destination_stay, append_destination_strategy
 from api.routing.osrm import (
     RoutePreference,
@@ -60,6 +61,7 @@ class ChargingPlanBuildResult:
     route_conventional_geometry: dict | None = None
     preferred_operators: tuple[str, ...] = ()
     max_price_eur_kwh: float | None = None
+    exclude_slow_chargers: bool = False
 
 
 def charging_preferences_from_inputs(
@@ -115,6 +117,11 @@ def vehicle_profile_from_inputs(
     terrain_factor: float,
     reserve_soc_percent: float,
     vehicle_preset_id: str | None = None,
+    *,
+    max_charge_power_kw: float = 100.0,
+    min_destination_soc_pct: float = 10.0,
+    min_stop_arrival_soc_pct: float = 10.0,
+    max_charge_soc_pct: float = 80.0,
 ) -> VehicleEnergyProfile:
     if usable_capacity_kwh <= 0:
         raise HTTPException(status_code=422, detail="usable_capacity_kwh debe ser mayor que 0")
@@ -122,6 +129,8 @@ def vehicle_profile_from_inputs(
         raise HTTPException(status_code=422, detail="consumption_wh_per_km debe ser mayor que 0")
     if terrain_factor <= 0:
         raise HTTPException(status_code=422, detail="terrain_factor debe ser mayor que 0")
+    if max_charge_power_kw <= 0:
+        raise HTTPException(status_code=422, detail="max_charge_power_kw debe ser mayor que 0")
     preset_id = vehicle_preset_id.strip() if vehicle_preset_id else None
     if preset_id == "":
         preset_id = None
@@ -132,7 +141,34 @@ def vehicle_profile_from_inputs(
         terrain_factor=terrain_factor,
         reserve_soc_percent=reserve_soc_percent,
         vehicle_preset_id=preset_id,
+        max_charge_power_kw=max_charge_power_kw,
+        min_destination_soc_pct=min_destination_soc_pct,
+        min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
+        max_charge_soc_pct=max_charge_soc_pct,
     )
+
+
+def resolve_planning_min_kw(
+    min_kw: float | None,
+    *,
+    exclude_slow_chargers: bool,
+) -> float | None:
+    """REVE: excluir AC / cargadores <50 kW del corredor de planificación."""
+    slow_floor = 50.0 if exclude_slow_chargers else 0.0
+    if min_kw is None:
+        return slow_floor if exclude_slow_chargers else None
+    return max(min_kw, slow_floor)
+
+
+def resolve_consumption_wh_per_km(
+    consumption_wh_per_km: float,
+    consumption_kwh_per_100km: float | None,
+) -> float:
+    if consumption_kwh_per_100km is not None:
+        if consumption_kwh_per_100km <= 0:
+            raise HTTPException(status_code=422, detail="consumption_kwh_per_100km debe ser mayor que 0")
+        return consumption_kwh_per_100km * 10.0
+    return consumption_wh_per_km
 
 
 def _enrich_with_destination_stay(
@@ -174,6 +210,8 @@ def _enrich_with_destination_stay(
         origin_stops=computation.origin_stops,
         strategies=append_destination_strategy(computation.strategies, advice),
         warnings=[*computation.warnings, *advice.warnings],
+        planned_stops=computation.planned_stops,
+        projected_soc_at_destination_with_plan=computation.projected_soc_at_destination_with_plan,
     )
     return enriched, destination_stay_to_schema(advice, dest_ranked)
 
@@ -207,6 +245,12 @@ def build_charging_plan(
     vehicle_preset_id: str | None = None,
     preferred_operators: str | None = None,
     max_price_eur_kwh: float | None = None,
+    max_charge_power_kw: float = 100.0,
+    min_destination_soc_pct: float = 10.0,
+    min_stop_arrival_soc_pct: float = 10.0,
+    max_charge_soc_pct: float = 80.0,
+    exclude_slow_chargers: bool = False,
+    consumption_kwh_per_100km: float | None = None,
 ) -> ChargingPlanBuildResult:
     if min_kw is not None and max_kw is not None and min_kw > max_kw:
         raise HTTPException(status_code=422, detail="min_kw no puede ser mayor que max_kw")
@@ -218,11 +262,16 @@ def build_charging_plan(
     vehicle = vehicle_profile_from_inputs(
         soc_percent,
         usable_capacity_kwh,
-        consumption_wh_per_km,
+        resolve_consumption_wh_per_km(consumption_wh_per_km, consumption_kwh_per_100km),
         terrain_factor,
         reserve_soc_percent,
         vehicle_preset_id,
+        max_charge_power_kw=max_charge_power_kw,
+        min_destination_soc_pct=min_destination_soc_pct,
+        min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
+        max_charge_soc_pct=max_charge_soc_pct,
     )
+    planning_min_kw = resolve_planning_min_kw(min_kw, exclude_slow_chargers=exclude_slow_chargers)
     countries = parse_country_list(country)
     charging_preferences = charging_preferences_from_inputs(
         preferred_operators,
@@ -237,7 +286,7 @@ def build_charging_plan(
             repo,
             lat=origin_lat,
             lon=origin_lon,
-            min_kw=min_kw,
+            min_kw=planning_min_kw,
             max_kw=max_kw,
             countries=countries,
             search_radius_m=search_radius_m,
@@ -289,6 +338,7 @@ def build_charging_plan(
             preview_route_geometry=preview_route_geometry,
             route_preference=None,
             avoid_highways=avoid_highways,
+            exclude_slow_chargers=exclude_slow_chargers,
             computation=computation,
             candidates_in_bbox=len(ranked),
             destination_stay=None,
@@ -318,7 +368,7 @@ def build_charging_plan(
         south=south,
         east=east,
         north=north,
-        min_kw=min_kw,
+        min_kw=planning_min_kw,
         max_kw=max_kw,
         countries=countries,
         limit=10_000,
@@ -326,6 +376,18 @@ def build_charging_plan(
     )
 
     wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
+    route_distance_km = osrm_route.distance_m / 1000.0
+    planning_matches = rank_stations_along_route_for_planning(
+        polyline,
+        candidates,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        corridor_m=corridor_km * 1000,
+        behind_margin_m=behind_margin_km * 1000,
+        wrong_side_penalty_m=wrong_side_penalty_m,
+        average_speed_mps=osrm_route.average_speed_mps,
+        route_distance_km=route_distance_km,
+    )
     matches = rank_stations_along_route(
         polyline,
         candidates,
@@ -349,30 +411,36 @@ def build_charging_plan(
         repo,
         lat=origin_lat,
         lon=origin_lon,
-        min_kw=min_kw,
+        min_kw=planning_min_kw,
         max_kw=max_kw,
         countries=countries,
         search_radius_m=origin_search_radius_m,
     )
-    origin_computation = build_emergency_charging_plan(
-        origin_ranked,
-        profile=vehicle,
-        safe_margin_pct=safe_margin_pct,
-        adjusted_min_pct=adjusted_min_pct,
-        limit=min(limit, 15),
-        preferences=charging_preferences,
-    )
+    origin_stops: list = []
+    if allows_origin_zone_charging(vehicle.soc_percent):
+        origin_computation = build_emergency_charging_plan(
+            origin_ranked,
+            profile=vehicle,
+            safe_margin_pct=safe_margin_pct,
+            adjusted_min_pct=adjusted_min_pct,
+            limit=min(limit, 15),
+            preferences=charging_preferences,
+        )
+        origin_stops = origin_computation.stops
 
     computation = build_route_charging_plan(
-        matches,
+        planning_matches,
         origin_position_km=origin_position_km,
         destination_distance_km=destination_distance_km,
         profile=vehicle,
-        origin_stops=origin_computation.stops,
+        origin_stops=origin_stops,
         safe_margin_pct=safe_margin_pct,
         adjusted_min_pct=adjusted_min_pct,
         limit=limit,
         preferences=charging_preferences,
+        route_distance_km=route_distance_km,
+        route_duration_minutes=osrm_route.duration_s / 60.0,
+        corridor_stops=matches,
     )
 
     computation, destination_stay = _enrich_with_destination_stay(
@@ -429,6 +497,7 @@ def build_charging_plan(
         ),
         route_preference=route_preference,
         avoid_highways=avoid_highways,
+        exclude_slow_chargers=exclude_slow_chargers,
         computation=computation,
         candidates_in_bbox=len(candidates),
         destination_stay=destination_stay,

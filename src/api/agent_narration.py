@@ -40,9 +40,14 @@ def _format_planned_stop_bullet(stop: PlannedRouteStopResult) -> str:
         if stop.charge_minutes > 0
         else f" · salida ~{stop.soc_departure_pct:.0f} %"
     )
+    drive_text = (
+        f" · ~{stop.leg_driving_minutes:.0f} min conducción"
+        if stop.leg_driving_minutes > 0
+        else ""
+    )
     return (
         f"Parada {stop.order}: {_planned_stop_label(stop)} "
-        f"(km {stop.route_distance_km:.0f}, tramo {stop.leg_distance_km:.0f} km) · "
+        f"(km {stop.route_distance_km:.0f}, tramo {stop.leg_distance_km:.0f} km{drive_text}) · "
         f"llegada ~{stop.soc_arrival_pct:.0f} %{charge_text} · "
         f"{stop.station.max_power_kw:.0f} kW · {classification}"
     )

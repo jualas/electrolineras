@@ -19,7 +19,7 @@ export function routeVariantGeometriesFromResponse(data: {
 }
 
 export function hasRouteComparison(geometries: RouteVariantGeometries): boolean {
-  const keys = (['shortest', 'fastest'] as const).filter((key) => geometries[key])
+  const keys = (['shortest', 'fastest', 'conventional'] as const).filter((key) => geometries[key])
   return keys.length >= 2
 }
 

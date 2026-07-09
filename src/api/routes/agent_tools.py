@@ -68,6 +68,12 @@ def agent_trip_advice(
         str | None,
         Query(max_length=64, description="Preset vehículo para curva DC"),
     ] = None,
+    max_charge_power_kw: Annotated[float, Query(gt=0, le=350)] = 100.0,
+    min_destination_soc_pct: Annotated[float, Query(ge=0, le=50)] = 10.0,
+    min_stop_arrival_soc_pct: Annotated[float, Query(ge=0, le=50)] = 10.0,
+    max_charge_soc_pct: Annotated[float, Query(ge=20, le=100)] = 80.0,
+    exclude_slow_chargers: Annotated[bool, Query()] = False,
+    consumption_kwh_per_100km: Annotated[float | None, Query(gt=0, le=50)] = None,
 ) -> TripAdviceResponse:
     """Plan de carga + narrativa para Dify / Cursor CLI (números del motor, texto orientativo)."""
     if not settings.charging_agent_enabled:
@@ -101,6 +107,12 @@ def agent_trip_advice(
         preferred_operators=preferred_operators,
         max_price_eur_kwh=max_price_eur_kwh,
         vehicle_preset_id=vehicle_preset_id,
+        max_charge_power_kw=max_charge_power_kw,
+        min_destination_soc_pct=min_destination_soc_pct,
+        min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
+        max_charge_soc_pct=max_charge_soc_pct,
+        exclude_slow_chargers=exclude_slow_chargers,
+        consumption_kwh_per_100km=consumption_kwh_per_100km,
     )
     plan = charging_plan_to_response(built)
     summary, bullets = build_agent_narration(plan)

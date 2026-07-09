@@ -11,11 +11,11 @@ export async function fetchAuthSession(): Promise<AuthSessionResponse> {
   return fetchApi<AuthSessionResponse>('/api/v1/auth/session')
 }
 
-export async function loginWithTotp(password: string, totpCode: string): Promise<void> {
+export async function loginWithTotp(username: string, totpCode: string): Promise<void> {
   await fetchApi('/api/v1/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password, totp_code: totpCode }),
+    body: JSON.stringify({ username, totp_code: totpCode }),
   })
 }
 
@@ -39,6 +39,14 @@ export async function fetchTripAdviceFromCar(params: {
   departureSocPercent?: number
   preferredOperators?: string[]
   maxPriceEurKwh?: number | null
+  maxChargePowerKw?: number
+  minDestinationSocPct?: number
+  minStopArrivalSocPct?: number
+  maxChargeSocPct?: number
+  excludeSlowChargers?: boolean
+  consumptionKwhPer100km?: number | null
+  vehiclePresetId?: string
+  usableCapacityKwh?: number
 }): Promise<import('../api/types').TripAdviceResponse> {
   const query = new URLSearchParams({
     dest_lat: String(params.destLat),
@@ -73,7 +81,47 @@ export async function fetchTripAdviceFromCar(params: {
   )) {
     query.set(key, value)
   }
+  appendRevePlanningParams(query, params)
   return fetchApi(`/api/v1/private/trip-advice-from-car?${query}`)
+}
+
+function appendRevePlanningParams(
+  query: URLSearchParams,
+  params: {
+    maxChargePowerKw?: number
+    minDestinationSocPct?: number
+    minStopArrivalSocPct?: number
+    maxChargeSocPct?: number
+    excludeSlowChargers?: boolean
+    consumptionKwhPer100km?: number | null
+    vehiclePresetId?: string
+    usableCapacityKwh?: number
+  },
+): void {
+  if (params.maxChargePowerKw != null) {
+    query.set('max_charge_power_kw', String(params.maxChargePowerKw))
+  }
+  if (params.minDestinationSocPct != null) {
+    query.set('min_destination_soc_pct', String(params.minDestinationSocPct))
+  }
+  if (params.minStopArrivalSocPct != null) {
+    query.set('min_stop_arrival_soc_pct', String(params.minStopArrivalSocPct))
+  }
+  if (params.maxChargeSocPct != null) {
+    query.set('max_charge_soc_pct', String(params.maxChargeSocPct))
+  }
+  if (params.excludeSlowChargers) {
+    query.set('exclude_slow_chargers', 'true')
+  }
+  if (params.consumptionKwhPer100km != null) {
+    query.set('consumption_kwh_per_100km', String(params.consumptionKwhPer100km))
+  }
+  if (params.vehiclePresetId) {
+    query.set('vehicle_preset_id', params.vehiclePresetId)
+  }
+  if (params.usableCapacityKwh != null) {
+    query.set('usable_capacity_kwh', String(params.usableCapacityKwh))
+  }
 }
 
 export async function fetchTripGuideFromCar(params: {
@@ -92,6 +140,14 @@ export async function fetchTripGuideFromCar(params: {
   departureSocPercent?: number
   preferredOperators?: string[]
   maxPriceEurKwh?: number | null
+  maxChargePowerKw?: number
+  minDestinationSocPct?: number
+  minStopArrivalSocPct?: number
+  maxChargeSocPct?: number
+  excludeSlowChargers?: boolean
+  consumptionKwhPer100km?: number | null
+  vehiclePresetId?: string
+  usableCapacityKwh?: number
 }): Promise<import('../api/types').TripGuideResponse> {
   const query = new URLSearchParams({
     dest_lat: String(params.destLat),
@@ -138,5 +194,6 @@ export async function fetchTripGuideFromCar(params: {
   )) {
     query.set(key, value)
   }
+  appendRevePlanningParams(query, params)
   return fetchApi(`/api/v1/private/trip-guide-from-car?${query}`)
 }

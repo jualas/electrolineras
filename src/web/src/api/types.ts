@@ -177,8 +177,25 @@ export type ChargingPlanStopResult = {
 export type PlannedRouteStopResult = ChargingPlanStopResult & {
   order: number
   leg_distance_km: number
+  leg_driving_minutes?: number
   soc_departure_pct: number
   charge_minutes: number
+  leg_energy_kwh?: number | null
+  recommended_charge_from_pct?: number | null
+  recommended_charge_to_pct?: number | null
+  effective_charge_power_kw?: number | null
+  estimated_charge_cost_eur?: number | null
+  operator?: string | null
+}
+
+export type RouteTripSummaryResult = {
+  total_duration_minutes: number
+  driving_duration_minutes: number
+  total_charge_minutes: number
+  total_energy_kwh: number
+  estimated_charge_cost_eur?: number | null
+  projected_destination_soc_pct?: number | null
+  stop_count: number
 }
 
 export type ChargingPlanStrategyResult = {
@@ -192,8 +209,23 @@ export type ChargingPlanStrategyResult = {
 
 export type RoutePreference = 'fastest' | 'shortest' | 'conventional'
 
+export type VehicleEnergyInput = {
+  soc_percent: number
+  usable_capacity_kwh: number
+  consumption_wh_per_km: number
+  terrain_factor?: number
+  reserve_soc_percent?: number
+  vehicle_preset_id?: string | null
+  max_charge_power_kw?: number
+  min_destination_soc_pct?: number
+  min_stop_arrival_soc_pct?: number
+  max_charge_soc_pct?: number
+  consumption_kwh_per_100km?: number | null
+}
+
 export type ChargingPlanResponse = {
   mode: 'route' | 'emergency'
+  vehicle: VehicleEnergyInput
   range_km: number
   charging_reach_km: number
   origin: LatLon
@@ -217,12 +249,14 @@ export type ChargingPlanResponse = {
   preview_route_geometry?: RouteLineGeometry | null
   route_preference?: RoutePreference | null
   avoid_highways?: boolean
+  exclude_slow_chargers?: boolean
   preferred_operators?: string[]
   max_price_eur_kwh?: number | null
   stops: ChargingPlanStopResult[]
   origin_stops: ChargingPlanStopResult[]
   planned_stops?: PlannedRouteStopResult[]
   projected_soc_at_destination_with_plan?: number | null
+  route_trip_summary?: RouteTripSummaryResult | null
   strategies: ChargingPlanStrategyResult[]
   warnings: string[]
   candidates_in_bbox: number
@@ -315,6 +349,7 @@ export type TripGuideResponse = TripAdviceResponse & {
 export type AuthConfigResponse = {
   private_stack_enabled: boolean
   login_enabled: boolean
+  login_username?: string | null
   token_fallback_enabled: boolean
 }
 

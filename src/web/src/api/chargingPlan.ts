@@ -21,6 +21,12 @@ export type ChargingPlanQuery = {
   vehiclePresetId?: string
   preferredOperators?: string[]
   maxPriceEurKwh?: number | null
+  maxChargePowerKw?: number
+  minDestinationSocPct?: number
+  minStopArrivalSocPct?: number
+  maxChargeSocPct?: number
+  excludeSlowChargers?: boolean
+  consumptionKwhPer100km?: number | null
 }
 
 export async function fetchChargingPlan(
@@ -71,6 +77,24 @@ export async function fetchChargingPlan(
   })
   for (const [key, value] of Object.entries(preferenceParams)) {
     params.set(key, value)
+  }
+  if (query.maxChargePowerKw !== undefined) {
+    params.set('max_charge_power_kw', String(query.maxChargePowerKw))
+  }
+  if (query.minDestinationSocPct !== undefined) {
+    params.set('min_destination_soc_pct', String(query.minDestinationSocPct))
+  }
+  if (query.minStopArrivalSocPct !== undefined) {
+    params.set('min_stop_arrival_soc_pct', String(query.minStopArrivalSocPct))
+  }
+  if (query.maxChargeSocPct !== undefined) {
+    params.set('max_charge_soc_pct', String(query.maxChargeSocPct))
+  }
+  if (query.excludeSlowChargers) {
+    params.set('exclude_slow_chargers', 'true')
+  }
+  if (query.consumptionKwhPer100km != null) {
+    params.set('consumption_kwh_per_100km', String(query.consumptionKwhPer100km))
   }
 
   return fetchApi<ChargingPlanResponse>(`/api/v1/stations/charging-plan?${params.toString()}`, init)

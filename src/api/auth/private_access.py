@@ -13,7 +13,7 @@ def _configured_private_token() -> str:
 
 
 def private_totp_auth_configured() -> bool:
-    return bool(settings.private_auth_password_hash.strip() and settings.private_totp_secret.strip())
+    return bool(settings.private_totp_secret.strip() and settings.private_auth_username.strip())
 
 
 def private_stack_configured() -> bool:

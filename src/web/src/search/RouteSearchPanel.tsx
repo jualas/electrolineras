@@ -3,14 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchChargingPlan } from '../api/chargingPlan'
 import { fetchAlongRoute, geocodePlace, stationLabel } from '../api/route'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
+import { RouteExportActions } from '../components/navigation/RouteExportActions'
+import { routeExportSpecFromChargingPlan } from '../charging/planRouteStops'
 import { StationNavActions } from '../components/navigation/StationNavActions'
 import { StationDynamicBadge } from '../stations/StationDynamicBadge'
 import { StationExternalReviews } from '../stations/StationExternalReviews'
 import { summarizeConnectors } from '../stations/connectorDisplay'
-import { googleMapsRouteUrl } from '../navigation/externalMaps'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
-import { ChargingStopList } from './ChargingStopList'
+import { ChargingPlanResults } from './ChargingPlanResults'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 import { formatRouteAlternativesKm, RoutePreferenceFields } from './RoutePreferenceFields'
 import { ChargingPreferenceFields } from './ChargingPreferenceFields'
@@ -437,49 +438,32 @@ export function RouteSearchPanel({
         </p>
       )}
 
-      {status === 'ready' && lastResponse && lastResponse.results.length > 0 && (
-        <div className="route-export">
-          <a
-            className="btn btn--ghost"
-            href={googleMapsRouteUrl({
-              origin: lastResponse.origin,
-              destination: lastResponse.destination,
-              waypoints: lastResponse.results.map((item) => item.station.location),
-            })}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Abrir paradas en Google Maps
-          </a>
-        </div>
+      {status === 'ready' && lastResponse && (() => {
+        const routeExport =
+          chargePlan != null
+            ? routeExportSpecFromChargingPlan(chargePlan)
+            : {
+                origin: lastResponse.origin,
+                destination: lastResponse.destination,
+                waypoints: lastResponse.results.map((item) => item.station.location),
+                title: 'Ruta Electrolineras',
+              }
+        return routeExport ? <RouteExportActions route={routeExport} /> : null
+      })()}
+
+      {chargePlan && (
+        <ChargingPlanResults
+          plan={chargePlan}
+          selectedStationId={selectedStationId}
+          onSelectStation={onSelectStation}
+        />
       )}
 
-      {chargePlan && chargePlan.origin_stops.length > 0 && (
-        <>
-          <h3 className="charge-section-title">Carga desde la salida</h3>
-          <p className="panel-hint charge-section-hint">
-            Alcance hasta cargador ~{chargePlan.charging_reach_km} km (llegada ≥5 % SOC) con {vehicleProfile.socPercent}{' '}
-            % SOC. Ordenados por distancia desde el origen.
-          </p>
-          {chargePlan.warnings.length > 0 && (
-            <ul className="charge-warnings" aria-label="Alertas energéticas">
-              {chargePlan.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          )}
-          <ChargingStopList
-            stops={chargePlan.origin_stops}
-            selectedStationId={selectedStationId}
-            onSelectStation={onSelectStation}
-            ariaLabel="Cargadores desde el origen"
-            showRouteDeviation={false}
-            distanceLabel={(item) => `${item.distance_from_origin_km.toFixed(1)} km · ${item.soc_arrival_pct.toFixed(0)} % SOC`}
-          />
-        </>
-      )}
-
-      {status === 'ready' && lastResponse && lastResponse.results.length > 0 && (
+      {status === 'ready' &&
+        lastResponse &&
+        lastResponse.results.length > 0 &&
+        !(chargePlan?.planned_stops?.length) &&
+        !chargePlan?.reachable_without_stop && (
         <>
           <h3 className="charge-section-title">En el corredor de la ruta</h3>
           <ol className="route-results" aria-label="Cargadores en ruta">

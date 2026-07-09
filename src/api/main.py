@@ -23,16 +23,11 @@ from api.static import web_dist_directory
 logger = logging.getLogger(__name__)
 
 
-def _warn_if_password_hash_invalid() -> None:
+def _warn_if_auth_misconfigured() -> None:
     if not settings.private_stack_enabled or not private_totp_auth_configured():
         return
-    h = settings.private_auth_password_hash.strip()
-    if len(h) < 50 or not h.startswith("$2"):
-        logger.warning(
-            "PRIVATE_AUTH_PASSWORD_HASH parece truncado (%d chars). "
-            "En .env de docker-compose duplica cada $ del hash bcrypt ($$).",
-            len(h),
-        )
+    if not settings.private_auth_username.strip():
+        logger.warning("PRIVATE_AUTH_USERNAME vacío; el login TOTP no estará disponible.")
 
 
 def create_app() -> FastAPI:
@@ -95,7 +90,7 @@ def create_app() -> FastAPI:
     app.include_router(nearby_router)
     app.include_router(stations_router)
 
-    _warn_if_password_hash_invalid()
+    _warn_if_auth_misconfigured()
 
     if settings.serve_web_static:
         dist_dir = web_dist_directory(settings.web_dist_path)

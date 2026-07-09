@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 
-import { chargingPlanToFeatures } from '../api/chargingPlanFeature'
+import { chargingPlanRouteMapFeatures, routeChargingStops, routeMapFitPoints } from '../charging/planRouteStops'
 import { alongRouteToFeatures } from '../api/route'
 import { fetchStationsGeoJSON } from '../api/stations'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station, StationFeature } from '../api/types'
@@ -31,6 +31,7 @@ import {
 import {
   CLUSTER_COUNT_LAYER_ID,
   CLUSTER_LAYER_ID,
+  bringOverlayStationLayersToFront,
   clearBrowseStationData,
   clearOverlayStationData,
   ensureStationLayers,
@@ -54,7 +55,8 @@ import {
   shouldFetchStations,
 } from './mapStationMerge'
 import { MapLayerControl, type MapLayerToggles } from './MapLayerControl'
-import { ensureReliefLayers, setReliefVisible } from './mapTerrainLayers'
+import { enhancePlaceLabels } from './mapPlaceLabels'
+import { ensureReliefLayers, setContourVisible, setShadowVisible } from './mapTerrainLayers'
 import { ensureTrafficLayer, setTrafficLayerVisible } from './mapTrafficLayer'
 
 const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
@@ -305,6 +307,7 @@ export function MapView({
         type: 'FeatureCollection',
         features,
       })
+      bringOverlayStationLayersToFront(map)
       setStationCount(features.length)
       setHasMore(false)
       setLoadState(features.length > 0 ? 'ready' : 'idle')
@@ -334,12 +337,20 @@ export function MapView({
       setRangeCircle(map, null, null)
     }
     const routeFeatures = alongRouteToFeatures(data.results)
-    const originFeatures = chargePlan
-      ? chargingPlanToFeatures([], chargePlan.origin_stops).filter(
-          (feature) => !routeFeatures.some((routeFeature) => routeFeature.id === feature.id),
-        )
-      : []
-    paintOverlayStations(map, [...originFeatures, ...routeFeatures], 'route')
+    const chargePlanFeatures =
+      chargePlan && routeChargingStops(chargePlan).length > 0
+        ? chargingPlanRouteMapFeatures(chargePlan)
+        : []
+    const overlayFeatures =
+      chargePlanFeatures.length > 0
+        ? chargePlanFeatures
+        : [
+            ...chargePlanFeatures.filter(
+              (feature) => !routeFeatures.some((routeFeature) => routeFeature.id === feature.id),
+            ),
+            ...routeFeatures,
+          ]
+    paintOverlayStations(map, overlayFeatures, 'route')
   }, [paintOverlayStations])
 
   const applyChargePlanOverlay = useCallback((map: maplibregl.Map, data: ChargingPlanResponse) => {
@@ -358,17 +369,11 @@ export function MapView({
       fitMapToGeometries(map, [routeGeometry, ...alternateGeometries])
     } else {
       setRouteComparisonLines(map, null, [])
-      const mapPoints = [
-        data.origin,
-        ...data.origin_stops.map((stop) => stop.station.location),
-        ...data.stops.map((stop) => stop.station.location),
-        ...data.planned_stops?.map((stop) => stop.station.location) ?? [],
-      ]
-      fitMapToPoints(map, mapPoints)
+      fitMapToPoints(map, routeMapFitPoints(data))
     }
     setRouteEndpoints(map, data.origin, data.destination)
     setRangeCircle(map, data.origin, data.charging_reach_km)
-    const features = chargingPlanToFeatures(data.stops, data.origin_stops, data.planned_stops ?? [])
+    const features = chargingPlanRouteMapFeatures(data)
     paintOverlayStations(map, features, 'charge')
   }, [paintOverlayStations])
 
@@ -609,14 +614,16 @@ export function MapView({
     }
 
     map.on('load', () => {
+      enhancePlaceLabels(map)
       ensureReliefLayers(map)
       ensureTrafficLayer(map)
       ensureStationLayers(map, themeRef.current)
       ensureRouteLayers(map, themeRef.current)
       ensureCityLayers(map, themeRef.current)
       const layers = mapLayersRef.current
+      setShadowVisible(map, true)
       if (layers) {
-        setReliefVisible(map, layers.relief)
+        setContourVisible(map, layers.detail)
         setTrafficLayerVisible(map, layers.traffic)
       }
       applyActiveOverlayRef.current(map)
@@ -752,8 +759,11 @@ export function MapView({
     if (!map || !map.isStyleLoaded() || !mapLayers) {
       return
     }
-    setReliefVisible(map, mapLayers.relief)
-    setTrafficLayerVisible(map, mapLayers.traffic)
+    setShadowVisible(map, true)
+    if (mapLayers) {
+      setContourVisible(map, mapLayers.detail)
+      setTrafficLayerVisible(map, mapLayers.traffic)
+    }
   }, [mapLayers])
 
   useEffect(() => {

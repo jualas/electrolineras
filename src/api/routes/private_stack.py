@@ -107,6 +107,8 @@ def _resolve_car_energy(
     terrain_factor: float,
     reserve_soc_percent: float,
     departure_soc_percent: float | None,
+    vehicle_preset_id: str | None = None,
+    usable_capacity_kwh: float | None = None,
 ) -> tuple[float, float, float, float, float]:
     """Returns soc, capacity, consumption, reserve, live_soc."""
     live_soc = telemetry.battery_level_pct
@@ -115,6 +117,8 @@ def _resolve_car_energy(
         terrain_factor=terrain_factor,
         reserve_soc_percent=reserve_soc_percent,
         departure_soc_percent=departure_soc_percent,
+        vehicle_preset_id=vehicle_preset_id,
+        usable_capacity_kwh=usable_capacity_kwh,
     )
     return soc_percent, usable_capacity_kwh, consumption_wh_per_km, reserve, live_soc
 
@@ -126,14 +130,18 @@ def _trip_advice_response(
     terrain_factor: float,
     reserve_soc_percent: float,
     departure_soc_percent: float | None,
+    vehicle_preset_id: str | None = None,
+    usable_capacity_kwh: float | None = None,
     **agent_kwargs,
 ) -> TripAdviceResponse:
     try:
-        soc_percent, usable_capacity_kwh, consumption_wh_per_km, reserve, live_soc = _resolve_car_energy(
+        soc_percent, resolved_capacity, consumption_wh_per_km, reserve, live_soc = _resolve_car_energy(
             telemetry,
             terrain_factor=terrain_factor,
             reserve_soc_percent=reserve_soc_percent,
             departure_soc_percent=departure_soc_percent,
+            vehicle_preset_id=vehicle_preset_id,
+            usable_capacity_kwh=usable_capacity_kwh,
         )
     except TeslaMateError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -143,10 +151,11 @@ def _trip_advice_response(
         origin_lat=telemetry.lat,
         origin_lon=telemetry.lon,
         soc_percent=soc_percent,
-        usable_capacity_kwh=usable_capacity_kwh,
+        usable_capacity_kwh=resolved_capacity,
         consumption_wh_per_km=consumption_wh_per_km,
         terrain_factor=terrain_factor,
         reserve_soc_percent=reserve,
+        vehicle_preset_id=vehicle_preset_id,
         **agent_kwargs,
     )
     bullets = list(advice.agent_bullets)
@@ -186,6 +195,14 @@ def private_trip_advice_from_car(
         float | None,
         Query(ge=5, le=100, description="Simular SOC al salir (p. ej. tras cargar en casa)"),
     ] = None,
+    max_charge_power_kw: Annotated[float, Query(gt=0, le=350)] = 100.0,
+    min_destination_soc_pct: Annotated[float, Query(ge=0, le=50)] = 10.0,
+    min_stop_arrival_soc_pct: Annotated[float, Query(ge=0, le=50)] = 10.0,
+    max_charge_soc_pct: Annotated[float, Query(ge=20, le=100)] = 80.0,
+    exclude_slow_chargers: Annotated[bool, Query()] = False,
+    consumption_kwh_per_100km: Annotated[float | None, Query(gt=0, le=50)] = None,
+    vehicle_preset_id: Annotated[str | None, Query(max_length=64)] = None,
+    usable_capacity_kwh: Annotated[float | None, Query(gt=0, le=200)] = None,
 ) -> TripAdviceResponse:
     """Plan de carga usando posición y SOC del coche vía TeslaMate (solo stack privado)."""
     if not settings.charging_agent_enabled:
@@ -198,6 +215,8 @@ def private_trip_advice_from_car(
         terrain_factor=terrain_factor,
         reserve_soc_percent=reserve_soc_percent,
         departure_soc_percent=departure_soc_percent,
+        vehicle_preset_id=vehicle_preset_id,
+        usable_capacity_kwh=usable_capacity_kwh,
         dest_lat=dest_lat,
         dest_lon=dest_lon,
         min_kw=min_kw,
@@ -209,6 +228,12 @@ def private_trip_advice_from_car(
         avoid_highways=avoid_highways,
         preferred_operators=preferred_operators,
         max_price_eur_kwh=max_price_eur_kwh,
+        max_charge_power_kw=max_charge_power_kw,
+        min_destination_soc_pct=min_destination_soc_pct,
+        min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
+        max_charge_soc_pct=max_charge_soc_pct,
+        exclude_slow_chargers=exclude_slow_chargers,
+        consumption_kwh_per_100km=consumption_kwh_per_100km,
     )
 
 
@@ -237,6 +262,14 @@ def private_trip_guide_from_car(
         float | None,
         Query(ge=5, le=100, description="Simular SOC al salir (p. ej. tras cargar en casa)"),
     ] = None,
+    max_charge_power_kw: Annotated[float, Query(gt=0, le=350)] = 100.0,
+    min_destination_soc_pct: Annotated[float, Query(ge=0, le=50)] = 10.0,
+    min_stop_arrival_soc_pct: Annotated[float, Query(ge=0, le=50)] = 10.0,
+    max_charge_soc_pct: Annotated[float, Query(ge=20, le=100)] = 80.0,
+    exclude_slow_chargers: Annotated[bool, Query()] = False,
+    consumption_kwh_per_100km: Annotated[float | None, Query(gt=0, le=50)] = None,
+    vehicle_preset_id: Annotated[str | None, Query(max_length=64)] = None,
+    usable_capacity_kwh: Annotated[float | None, Query(gt=0, le=200)] = None,
 ) -> TripGuideResponse:
     """Plan de carga + guía de viaje (motor local o Dify) desde telemetría del coche."""
     if not settings.charging_agent_enabled:
@@ -249,6 +282,8 @@ def private_trip_guide_from_car(
         terrain_factor=terrain_factor,
         reserve_soc_percent=reserve_soc_percent,
         departure_soc_percent=departure_soc_percent,
+        vehicle_preset_id=vehicle_preset_id,
+        usable_capacity_kwh=usable_capacity_kwh,
         dest_lat=dest_lat,
         dest_lon=dest_lon,
         min_kw=min_kw,
@@ -260,6 +295,12 @@ def private_trip_guide_from_car(
         avoid_highways=avoid_highways,
         preferred_operators=preferred_operators,
         max_price_eur_kwh=max_price_eur_kwh,
+        max_charge_power_kw=max_charge_power_kw,
+        min_destination_soc_pct=min_destination_soc_pct,
+        min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
+        max_charge_soc_pct=max_charge_soc_pct,
+        exclude_slow_chargers=exclude_slow_chargers,
+        consumption_kwh_per_100km=consumption_kwh_per_100km,
     )
     guide = build_trip_guide_response(
         advice.plan,

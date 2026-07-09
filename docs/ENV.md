@@ -92,8 +92,9 @@ Generar stack privado (TOTP + sesión):
 | Variable | Cuándo |
 |----------|--------|
 | `SESSION_SECRET` | `PRIVATE_STACK_ENABLED=true` |
-| `PRIVATE_AUTH_PASSWORD_HASH` | Login TOTP; en Docker **duplicar `$` → `$$`** |
+| `PRIVATE_AUTH_USERNAME` | Usuario del asistente (p. ej. `electrolineras`) |
 | `PRIVATE_TOTP_SECRET` | Microsoft Authenticator |
+| `PRIVATE_AUTH_PASSWORD_HASH` | **Obsoleto** — ya no se usa |
 | `PRIVATE_API_TOKEN` | Automatización / agente |
 | `DIFY_TRIP_WORKFLOW_API_KEY` | Guía IA (solo LAN) |
 | `CLOUDFLARED_TOKEN` | Túnel Cloudflare |
@@ -116,7 +117,7 @@ Detalle auth: [`PHASE3_AUTH.md`](PHASE3_AUTH.md).
 
 | Síntoma | Causa | Solución |
 |---------|-------|----------|
-| Login TOTP siempre falla | Hash bcrypt truncado | Duplicar `$` en `.env` Docker |
+| Login TOTP siempre falla | Usuario distinto al `.env` o reloj del móvil | `PRIVATE_AUTH_USERNAME` (default `electrolineras`); sincroniza hora |
 | CORS en prod | Origen incorrecto | Añadir `https://electro.jualas.es` |
 | OSRM timeout | URL pública saturada | OSRM local en compose OSRM |
 | `.env.production.example` no en git | `.gitignore` | Ya corregido con `!.env.production.example` |

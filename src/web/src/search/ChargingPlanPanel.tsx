@@ -19,6 +19,7 @@ import {
 } from '../vehicle/telemetryProfile'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 import { RoutePreferenceFields } from './RoutePreferenceFields'
+import { DEFAULT_REVE_PLANNING, RevePlanningFields, type RevePlanningOptions } from './RevePlanningFields'
 import { ChargingPreferenceFields } from './ChargingPreferenceFields'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
 import { useActiveTrip } from '../hooks/useActiveTrip'
@@ -65,6 +66,7 @@ export function ChargingPlanPanel({
   const [corridorKm, setCorridorKm] = useState(10)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
   const [avoidTolls, setAvoidTolls] = useState(false)
+  const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(DEFAULT_REVE_PLANNING)
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<ChargingPlanResponse | null>(null)
@@ -217,6 +219,12 @@ export function ChargingPlanPanel({
         vehiclePresetId: vehicleQuery.vehicle_preset_id,
         preferredOperators: chargingPreferences.preferredOperators,
         maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
+        maxChargePowerKw: revePlanning.maxChargePowerKw,
+        minDestinationSocPct: revePlanning.minDestinationSocPct,
+        minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
+        maxChargeSocPct: revePlanning.maxChargeSocPct,
+        excludeSlowChargers: revePlanning.excludeSlowChargers,
+        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
       })
 
       const searchKey = buildPlanSearchKey({
@@ -394,7 +402,7 @@ export function ChargingPlanPanel({
     }
     recalcOnPreferenceRef.current = false
     void runPlan()
-  }, [routePreference, avoidTolls, chargingPreferences, emergencyMode, runPlan, status])
+  }, [routePreference, avoidTolls, chargingPreferences, revePlanning, emergencyMode, runPlan, status])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -684,6 +692,20 @@ export function ChargingPlanPanel({
               }}
               disabled={status === 'loading'}
               comparisonPlan={status === 'ready' ? lastResponse : null}
+            />
+
+            <RevePlanningFields
+              options={revePlanning}
+              consumptionWhPerKm={vehicleProfile.consumptionWhPerKm}
+              disabled={status === 'loading'}
+              onChange={(value) => {
+                setRevePlanning(value)
+                if (status === 'ready' && lastResponse && !emergencyMode) {
+                  recalcOnPreferenceRef.current = true
+                } else {
+                  lastSearchKeyRef.current = null
+                }
+              }}
             />
 
             <ChargingPreferenceFields

@@ -7,7 +7,7 @@
 Un solo sitio (`electro.jualas.es`), un solo Docker:
 
 - **Mapa / plan manual** → sin login.
-- **Pestaña Asistente** → contraseña + código TOTP (Microsoft Authenticator).
+- **Pestaña Asistente** → usuario + código TOTP (Microsoft Authenticator).
 - Sesión en cookie `httpOnly` (7 días por defecto).
 - **Dify / Cursor CLI** → opcional `PRIVATE_API_TOKEN` (Bearer) sin TOTP.
 
@@ -28,7 +28,7 @@ Alternativa manual:
 PYTHONPATH=src .venv/bin/python scripts/auth/setup_private_auth.py
 ```
 
-1. Introduce contraseña (≥8 caracteres).
+1. Elige usuario (por defecto `electrolineras`) o pasa `--username tu_nombre`.
 2. Copia las líneas al `.env` de producción (`/mnt/datos/docker/electrolineras/.env`).
 3. **Sustituye** las variables existentes; no pegues un segundo bloque (docker-compose usa la última línea y el Authenticator quedaría desincronizado).
 4. El script ya escapa el hash bcrypt para **docker-compose** (`$` → `$$`). Si pegas un hash manual, duplica cada `$`.
@@ -49,16 +49,12 @@ Producción:
 PRIVATE_STACK_ENABLED=true
 SESSION_SECRET=<del script>
 SESSION_COOKIE_SECURE=true
-PRIVATE_AUTH_PASSWORD_HASH=<del script — con $$ si pegas manualmente>
+PRIVATE_AUTH_USERNAME=electrolineras
 PRIVATE_TOTP_SECRET=<del script>
 CHARGING_AGENT_ENABLED=true
 ```
 
-Ejemplo de hash en `.env` docker-compose (nota los `$$`):
-
-```env
-PRIVATE_AUTH_PASSWORD_HASH=$$2b$$12$$abcdefghijklmnopqrstuvwxYz012345678901234567890
-```
+`PRIVATE_AUTH_PASSWORD_HASH` ya no se usa (login solo usuario + TOTP). Puedes borrarlo del `.env` si quedó de una instalación antigua.
 
 Reinicia el contenedor:
 
@@ -72,7 +68,7 @@ cd /mnt/datos/docker/electrolineras && docker compose up -d --build electroliner
 |--------|------|------|
 | GET | `/api/v1/auth/config` | Pública |
 | GET | `/api/v1/auth/session` | Pública |
-| POST | `/api/v1/auth/login` | Body: `password`, `totp_code` |
+| POST | `/api/v1/auth/login` | Body: `username`, `totp_code` |
 | POST | `/api/v1/auth/logout` | Cookie |
 | GET | `/api/v1/private/*` | Cookie sesión o Bearer token |
 
@@ -86,7 +82,7 @@ Incluir en el repo:
 
 **No commitear:** `.env`, hashes, `PRIVATE_TOTP_SECRET`.
 
-Cada usuario self-hosted genera su propio TOTP y contraseña.
+Cada usuario self-hosted genera su propio TOTP y nombre de usuario.
 
 ## Referencias
 

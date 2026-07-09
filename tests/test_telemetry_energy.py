@@ -43,9 +43,13 @@ def test_planning_range_from_nominal() -> None:
 
 def test_vehicle_energy_ignores_est_uses_nominal() -> None:
     telemetry = _telemetry(est_battery_range_km=483.0, rated_battery_range_km=305.12)
-    soc, capacity, consumption, reserve = vehicle_energy_from_telemetry(telemetry, terrain_factor=1.0)
+    soc, capacity, consumption, reserve = vehicle_energy_from_telemetry(
+        telemetry,
+        terrain_factor=1.0,
+        vehicle_preset_id="tesla-model3-sr-2023",
+    )
     assert soc == 75.0
-    assert capacity == 100.0
+    assert capacity == 57.0
     assert reserve == 10.0
     range_km = capacity * (soc - reserve) / 100 / (consumption / 1000)
     assert round(range_km) == round(planning_range_km(305.12, soc, reserve))

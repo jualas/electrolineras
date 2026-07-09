@@ -139,6 +139,14 @@ export function setStationMapMode(map: maplibregl.Map, mode: StationMapMode): vo
   setLayersVisibility(map, OVERLAY_LAYERS, overlayVisible)
 }
 
+export function bringOverlayStationLayersToFront(map: maplibregl.Map): void {
+  for (const layerId of [...OVERLAY_LAYERS].reverse()) {
+    if (map.getLayer(layerId)) {
+      map.moveLayer(layerId)
+    }
+  }
+}
+
 export function ensureStationLayers(map: maplibregl.Map, theme: ThemeMode): void {
   if (!map.getSource(STATIONS_BROWSE_SOURCE_ID)) {
     map.addSource(STATIONS_BROWSE_SOURCE_ID, {

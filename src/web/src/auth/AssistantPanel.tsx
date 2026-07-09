@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { fetchTripAdviceFromCar, fetchTripGuideFromCar } from '../api/auth'
 import type { GeocodeResult, TripGuideResponse } from '../api/types'
@@ -9,9 +9,10 @@ import {
   planningRangeFromNominal,
 } from '../vehicle/telemetryProfile'
 import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
-import { getTerrainFactor, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
+import { getTerrainFactor, getVehiclePreset, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
 import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
+import { DEFAULT_REVE_PLANNING, RevePlanningFields, type RevePlanningOptions } from '../search/RevePlanningFields'
 import { ChargingPreferenceFields } from '../search/ChargingPreferenceFields'
 import { useChargingPreferences } from '../hooks/useChargingPreferences'
 import type { RoutePreference } from '../api/types'
@@ -24,8 +25,10 @@ import { useAuth } from './AuthContext'
 import { LoginPanel } from './LoginPanel'
 import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
 
+import type { VehicleProfile } from '../vehicle/vehicleProfile'
+
 type AssistantPanelProps = {
-  vehicleProfile: { socPercent: number; terrainFactorId: TerrainFactorId }
+  vehicleProfile: VehicleProfile
   onVehicleSocChange: (socPercent: number) => void
   onVehicleTerrainChange: (terrainFactorId: TerrainFactorId) => void
   onPlanResults: (response: import('../api/types').ChargingPlanResponse | null) => void
@@ -53,10 +56,12 @@ export function AssistantPanel({
   const [culturalPoi, setCulturalPoi] = useState(true)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
   const [avoidTolls, setAvoidTolls] = useState(false)
+  const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(DEFAULT_REVE_PLANNING)
   const [simulateDeparture, setSimulateDeparture] = useState(false)
   const [departureSoc, setDepartureSoc] = useState(80)
   const [aiNote, setAiNote] = useState('')
   const [guideError, setGuideError] = useState<string | null>(null)
+  const recalcOnPreferenceRef = useRef(false)
   const { preferences: chargingPreferences, toggleOperator, setMaxPriceEurKwh } = useChargingPreferences()
 
   const {
@@ -117,6 +122,7 @@ export function AssistantPanel({
   }
 
   const terrain = getTerrainFactor(vehicleProfile.terrainFactorId)
+  const vehiclePreset = getVehiclePreset(vehicleProfile.presetId)
   const nominalKm = vehicle != null ? nominalRangeKm(vehicle) : null
   const planKm =
     nominalKm != null && vehicle != null
@@ -153,6 +159,14 @@ export function AssistantPanel({
         departureSocPercent: departureSocParam,
         preferredOperators: chargingPreferences.preferredOperators,
         maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
+        maxChargePowerKw: revePlanning.maxChargePowerKw,
+        minDestinationSocPct: revePlanning.minDestinationSocPct,
+        minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
+        maxChargeSocPct: revePlanning.maxChargeSocPct,
+        excludeSlowChargers: revePlanning.excludeSlowChargers,
+        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
+        vehiclePresetId: vehicleProfile.presetId,
+        usableCapacityKwh: vehiclePreset.usableCapacityKwh,
       })
       setAdvice((prev) =>
         prev
@@ -214,6 +228,14 @@ export function AssistantPanel({
         departureSocPercent: departureSocParam,
         preferredOperators: chargingPreferences.preferredOperators,
         maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
+        maxChargePowerKw: revePlanning.maxChargePowerKw,
+        minDestinationSocPct: revePlanning.minDestinationSocPct,
+        minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
+        maxChargeSocPct: revePlanning.maxChargeSocPct,
+        excludeSlowChargers: revePlanning.excludeSlowChargers,
+        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
+        vehiclePresetId: vehicleProfile.presetId,
+        usableCapacityKwh: vehiclePreset.usableCapacityKwh,
       })
       setAdvice(result)
       onPlanResults(result.plan)
@@ -227,6 +249,14 @@ export function AssistantPanel({
   }
 
   const busy = loadingPlan || loadingGuide
+
+  useEffect(() => {
+    if (!recalcOnPreferenceRef.current || busy || !advice?.plan || !destination) {
+      return
+    }
+    recalcOnPreferenceRef.current = false
+    void runMapPlan()
+  }, [routePreference, avoidTolls, revePlanning, busy, advice?.plan, destination])
 
   return (
     <section className="assistant-panel">
@@ -341,19 +371,44 @@ export function AssistantPanel({
         routePreference={routePreference}
         avoidTolls={avoidTolls}
         variant="assistant"
+        comparisonPlan={advice?.plan ?? null}
         onRoutePreferenceChange={(value) => {
           setRoutePreference(value)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
+          if (advice?.plan) {
+            recalcOnPreferenceRef.current = true
+          } else {
+            setAdvice(null)
+            onPlanResults(null)
+            onPlanStateChange?.('idle')
+          }
         }}
         onAvoidTollsChange={(value) => {
           setAvoidTolls(value)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
+          if (advice?.plan) {
+            recalcOnPreferenceRef.current = true
+          } else {
+            setAdvice(null)
+            onPlanResults(null)
+            onPlanStateChange?.('idle')
+          }
         }}
         disabled={busy}
+      />
+
+      <RevePlanningFields
+        options={revePlanning}
+        consumptionWhPerKm={170}
+        disabled={busy}
+        onChange={(value) => {
+          setRevePlanning(value)
+          if (advice?.plan) {
+            recalcOnPreferenceRef.current = true
+          } else {
+            setAdvice(null)
+            onPlanResults(null)
+            onPlanStateChange?.('idle')
+          }
+        }}
       />
 
       <ChargingPreferenceFields

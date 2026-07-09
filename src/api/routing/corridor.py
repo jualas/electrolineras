@@ -134,7 +134,7 @@ def _project_on_segment(
     return fraction, proj_lat, proj_lon
 
 
-def rank_stations_along_route(
+def _collect_corridor_matches(
     route: RoutePolyline,
     stations: list[Station],
     *,
@@ -144,7 +144,6 @@ def rank_stations_along_route(
     behind_margin_m: float,
     wrong_side_penalty_m: float,
     average_speed_mps: float,
-    limit: int,
 ) -> list[CorridorMatch]:
     origin_projection = route.project_point(origin_lat, origin_lon)
     origin_position_m = origin_projection.route_position_m
@@ -186,11 +185,89 @@ def rank_stations_along_route(
             )
         )
 
-    matches.sort(
-        key=lambda item: (
-            item.deviation_m,
-            -item.station.max_power_kw,
-            item.route_position_m,
-        )
+    return matches
+
+
+def _match_sort_key(item: CorridorMatch) -> tuple[float, float, float]:
+    return (
+        item.deviation_m,
+        -item.station.max_power_kw,
+        item.route_position_m,
     )
+
+
+def rank_stations_along_route(
+    route: RoutePolyline,
+    stations: list[Station],
+    *,
+    origin_lat: float,
+    origin_lon: float,
+    corridor_m: float,
+    behind_margin_m: float,
+    wrong_side_penalty_m: float,
+    average_speed_mps: float,
+    limit: int,
+) -> list[CorridorMatch]:
+    matches = _collect_corridor_matches(
+        route,
+        stations,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        corridor_m=corridor_m,
+        behind_margin_m=behind_margin_m,
+        wrong_side_penalty_m=wrong_side_penalty_m,
+        average_speed_mps=average_speed_mps,
+    )
+    matches.sort(key=_match_sort_key)
     return matches[:limit]
+
+
+def rank_stations_along_route_for_planning(
+    route: RoutePolyline,
+    stations: list[Station],
+    *,
+    origin_lat: float,
+    origin_lon: float,
+    corridor_m: float,
+    behind_margin_m: float,
+    wrong_side_penalty_m: float,
+    average_speed_mps: float,
+    route_distance_km: float,
+    segment_km: float = 45.0,
+    per_segment: int = 15,
+) -> list[CorridorMatch]:
+    """Candidatos repartidos a lo largo de la ruta (evita quedarse solo cerca del origen)."""
+    matches = _collect_corridor_matches(
+        route,
+        stations,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        corridor_m=corridor_m,
+        behind_margin_m=behind_margin_m,
+        wrong_side_penalty_m=wrong_side_penalty_m,
+        average_speed_mps=average_speed_mps,
+    )
+    if not matches:
+        return []
+
+    bins: dict[int, list[CorridorMatch]] = {}
+    for match in matches:
+        bin_id = int(match.route_position_m / 1000.0 / max(segment_km, 1.0))
+        bins.setdefault(bin_id, []).append(match)
+
+    selected: list[CorridorMatch] = []
+    for bin_id in sorted(bins):
+        segment_matches = sorted(bins[bin_id], key=_match_sort_key)[:per_segment]
+        selected.extend(segment_matches)
+
+    selected.sort(key=lambda item: item.route_position_m)
+    min_expected = max(20, int(route_distance_km / max(segment_km, 1.0)))
+    if len(selected) < min_expected and len(matches) > len(selected):
+        seen_ids = {item.station.id for item in selected}
+        for match in sorted(matches, key=_match_sort_key):
+            if match.station.id in seen_ids:
+                continue
+            selected.append(match)
+            seen_ids.add(match.station.id)
+        selected.sort(key=lambda item: item.route_position_m)
+    return selected

@@ -40,6 +40,11 @@ class VehicleEnergyProfile:
     terrain_factor: float = 1.0
     reserve_soc_percent: float = 10.0
     vehicle_preset_id: str | None = None
+    # Parámetros estilo REVE (planificación multi-parada)
+    max_charge_power_kw: float = 100.0
+    min_destination_soc_pct: float = 10.0
+    min_stop_arrival_soc_pct: float = 10.0
+    max_charge_soc_pct: float = 80.0
 
 
 @dataclass(frozen=True)
@@ -74,6 +79,7 @@ class PlannedRouteStop:
     wrong_side: bool
     distance_from_origin_km: float
     leg_distance_km: float
+    leg_driving_minutes: float
     soc_arrival_pct: float
     soc_departure_pct: float
     charge_minutes: float
@@ -394,8 +400,165 @@ def _build_strategies(
 
 
 DEFAULT_CHARGE_TARGET_SOC_PCT = 80.0
-DEFAULT_DESTINATION_TARGET_SOC_PCT = 30.0
+DEFAULT_DESTINATION_TARGET_SOC_PCT = 10.0
 MAX_PLANNED_ROUTE_STOPS = 8
+
+# DGT: pausa recomendada ~2 h; máximo ~3 h por confort fisiológico.
+TARGET_DRIVING_LEG_MINUTES = 120.0
+MAX_DRIVING_LEG_MINUTES = 180.0
+DEFAULT_AVG_SPEED_KMH = 90.0
+INTERMEDIATE_ARRIVAL_SOC_TARGET = 10.0
+DEPARTURE_SOC_BUFFER_PCT = 3.0
+OPTIMAL_CHARGE_CEILING_SOC_PCT = 80.0
+MIN_MEANINGFUL_CHARGE_MINUTES = 8.0
+MIN_LEG_PROGRESS_FRACTION = 0.65
+HIGH_SOC_SKIP_ORIGIN_FRACTION = 0.75
+# Por debajo de este SOC se permite cargar junto al punto de salida antes de iniciar el viaje.
+ORIGIN_CHARGE_SOC_THRESHOLD_PCT = 10.0
+MIN_ORIGIN_SKIP_ABSOLUTE_KM = 40.0
+
+
+def allows_origin_zone_charging(trip_start_soc_pct: float) -> bool:
+    return trip_start_soc_pct < ORIGIN_CHARGE_SOC_THRESHOLD_PCT
+
+
+def origin_exclusion_radius_km(target_leg_km: float, trip_start_soc_pct: float) -> float:
+    """Distancia mínima desde la salida antes de la 1.ª parada (≈2 h DGT si SOC ≥10 %)."""
+    if allows_origin_zone_charging(trip_start_soc_pct):
+        return 0.0
+    return max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, target_leg_km)
+
+
+def resolve_avg_speed_kmh(
+    route_distance_km: float | None,
+    route_duration_minutes: float | None,
+) -> float:
+    if route_distance_km and route_duration_minutes and route_duration_minutes > 1:
+        speed = route_distance_km / (route_duration_minutes / 60.0)
+        return max(40.0, min(140.0, speed))
+    return DEFAULT_AVG_SPEED_KMH
+
+
+def leg_distance_for_driving_minutes(avg_speed_kmh: float, minutes: float) -> float:
+    return avg_speed_kmh * (minutes / 60.0)
+
+
+def driving_minutes_for_distance(leg_distance_km: float, avg_speed_kmh: float) -> float:
+    if avg_speed_kmh <= 0:
+        return 0.0
+    return (leg_distance_km / avg_speed_kmh) * 60.0
+
+
+def estimate_driving_breaks_needed(distance_km: float, avg_speed_kmh: float) -> int:
+    leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
+    if leg_km <= 0 or distance_km <= leg_km + 1e-6:
+        return 0
+    return max(1, math.ceil(distance_km / leg_km) - 1)
+
+
+def _segment_min_route_km(
+    *,
+    trip_start_route_km: float,
+    current_route_km: float,
+    current_soc: float,
+    trip_start_soc: float,
+    target_leg_km: float,
+    max_leg_km: float,
+    profile: VehicleEnergyProfile,
+) -> float:
+    exclusion_km = origin_exclusion_radius_km(target_leg_km, trip_start_soc)
+    from_trip_start = current_route_km - trip_start_route_km
+
+    if exclusion_km > 0 and from_trip_start < 1.0:
+        return trip_start_route_km + exclusion_km
+
+    min_leg_km = target_leg_km * MIN_LEG_PROGRESS_FRACTION
+    if current_soc >= 70.0:
+        min_leg_km = max(min_leg_km, target_leg_km * 0.8)
+    min_leg_km = min(min_leg_km, max_leg_km)
+    segment_profile = _profile_at_soc(profile, current_soc)
+    charging_reach_km = estimate_charging_reach_km(segment_profile)
+    min_leg_km = min(min_leg_km, charging_reach_km * 0.95)
+    candidate = current_route_km + max(min_leg_km, 15.0)
+    if exclusion_km > 0:
+        candidate = max(candidate, trip_start_route_km + exclusion_km)
+    return candidate
+
+
+def _is_meaningful_charging_stop(
+    *,
+    arrival_soc_pct: float,
+    departure_soc_pct: float,
+    charge_minutes: float,
+    leg_distance_km: float,
+    min_leg_km: float,
+    stop_route_km: float,
+    trip_start_route_km: float,
+    origin_exclusion_km: float,
+) -> bool:
+    if origin_exclusion_km > 0 and (stop_route_km - trip_start_route_km) < origin_exclusion_km - 1e-6:
+        return False
+    if leg_distance_km + 1e-6 < min_leg_km * 0.5:
+        return False
+    if leg_distance_km >= min_leg_km * 0.85:
+        return True
+    if charge_minutes >= MIN_MEANINGFUL_CHARGE_MINUTES:
+        return True
+    return departure_soc_pct > arrival_soc_pct + 10.0
+
+
+def _filter_segment_matches(
+    matches: list[CorridorMatch],
+    *,
+    segment_min_km: float,
+    segment_end_km: float,
+    used_station_ids: set[str],
+    current_route_km: float,
+    trip_start_route_km: float,
+    origin_exclusion_km: float,
+) -> list[CorridorMatch]:
+    return [
+        match
+        for match in matches
+        if match.station.id not in used_station_ids
+        and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
+        and (match.route_position_m / 1000.0) >= segment_min_km - 1e-6
+        and (
+            origin_exclusion_km <= 0
+            or (match.route_position_m / 1000.0) - trip_start_route_km >= origin_exclusion_km - 1e-6
+        )
+    ]
+
+
+def _profile_at_soc(profile: VehicleEnergyProfile, soc_percent: float) -> VehicleEnergyProfile:
+    return VehicleEnergyProfile(
+        soc_percent=soc_percent,
+        usable_capacity_kwh=profile.usable_capacity_kwh,
+        consumption_wh_per_km=profile.consumption_wh_per_km,
+        terrain_factor=profile.terrain_factor,
+        reserve_soc_percent=profile.reserve_soc_percent,
+        vehicle_preset_id=profile.vehicle_preset_id,
+        max_charge_power_kw=profile.max_charge_power_kw,
+        min_destination_soc_pct=profile.min_destination_soc_pct,
+        min_stop_arrival_soc_pct=profile.min_stop_arrival_soc_pct,
+        max_charge_soc_pct=profile.max_charge_soc_pct,
+    )
+
+
+def soc_required_to_drive_km(
+    profile: VehicleEnergyProfile,
+    distance_km: float,
+    arrival_soc_pct: float,
+) -> float:
+    if distance_km <= 0:
+        return arrival_soc_pct
+    consumption_kwh = distance_km * effective_consumption_wh_per_km(profile) / 1000.0
+    soc_drop = (consumption_kwh / profile.usable_capacity_kwh) * 100.0
+    return min(100.0, arrival_soc_pct + soc_drop)
+
+
+def effective_station_charge_kw(station_max_kw: float, profile: VehicleEnergyProfile) -> float:
+    return min(float(station_max_kw), profile.max_charge_power_kw)
 
 
 def estimate_charge_minutes(
@@ -405,39 +568,138 @@ def estimate_charge_minutes(
     usable_capacity_kwh: float,
     max_power_kw: float,
     vehicle_preset_id: str | None = None,
+    vehicle_max_charge_kw: float | None = None,
 ) -> float:
+    station_kw = max_power_kw
+    if vehicle_max_charge_kw is not None:
+        station_kw = min(station_kw, vehicle_max_charge_kw)
     return estimate_dc_charge_minutes(
         arrival_soc_pct,
         departure_soc_pct,
         usable_capacity_kwh=usable_capacity_kwh,
-        station_max_kw=max_power_kw,
+        station_max_kw=station_kw,
         vehicle_preset_id=vehicle_preset_id,
     )
 
 
-def _departure_soc_for_stop(
+def _is_final_driving_hop(
+    remaining_km: float,
+    profile: VehicleEnergyProfile,
+    avg_speed_kmh: float,
+) -> bool:
+    full_range = estimate_range_km(_profile_at_soc(profile, 100.0))
+    max_leg_km = min(
+        full_range,
+        leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES),
+    )
+    return remaining_km <= max_leg_km + 1e-6
+
+
+def _optimal_departure_soc_for_stop(
     *,
     arrival_soc_pct: float,
     remaining_km: float,
     profile: VehicleEnergyProfile,
     destination_target_soc_pct: float,
-    charge_target_soc_pct: float,
-    hops_remaining: int,
+    is_final_hop: bool,
+    avg_speed_kmh: float,
 ) -> float:
-    if hops_remaining <= 1:
-        soc_at_dest = soc_at_distance_km(
-            VehicleEnergyProfile(
-                soc_percent=arrival_soc_pct,
-                usable_capacity_kwh=profile.usable_capacity_kwh,
-                consumption_wh_per_km=profile.consumption_wh_per_km,
-                terrain_factor=profile.terrain_factor,
-                reserve_soc_percent=profile.reserve_soc_percent,
-            ),
-            remaining_km,
-        )
+    if remaining_km <= 1e-6:
+        return min(100.0, max(arrival_soc_pct + 5.0, arrival_soc_pct))
+
+    if is_final_hop:
+        segment_profile = _profile_at_soc(profile, arrival_soc_pct)
+        soc_at_dest = soc_at_distance_km(segment_profile, remaining_km)
         min_departure = arrival_soc_pct + max(0.0, destination_target_soc_pct - soc_at_dest)
-        return min(100.0, max(min_departure, charge_target_soc_pct))
-    return min(100.0, max(arrival_soc_pct + 5.0, charge_target_soc_pct))
+        buffered = min(100.0, min_departure + DEPARTURE_SOC_BUFFER_PCT)
+        return min(100.0, max(buffered, arrival_soc_pct + 5.0))
+
+    max_next_leg_km = min(
+        remaining_km,
+        leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES),
+    )
+
+    min_departure = soc_required_to_drive_km(
+        profile,
+        max_next_leg_km,
+        profile.min_stop_arrival_soc_pct,
+    )
+    buffered = min(100.0, min_departure + DEPARTURE_SOC_BUFFER_PCT)
+    if buffered <= profile.max_charge_soc_pct:
+        return max(buffered, arrival_soc_pct + 5.0)
+    return min(100.0, max(buffered, arrival_soc_pct + 5.0))
+
+
+def _planned_stop_selection_key(
+    stop: ScoredChargingStop,
+    *,
+    charge_minutes: float,
+    target_stop_km: float,
+    preferences: ChargingPreferences | None,
+) -> tuple[float, ...]:
+    distance_to_target = abs(stop.route_distance_km - target_stop_km)
+    distance_bucket = round(distance_to_target / 25.0)
+    base = _rank_key(stop, preferences)
+    return (
+        distance_bucket,
+        float(CLASSIFICATION_ORDER[stop.classification]),
+        charge_minutes,
+        -stop.station.max_power_kw,
+        stop.extra_minutes,
+        *base,
+    )
+
+
+def _pick_best_planned_stop(
+    viable: list[ScoredChargingStop],
+    *,
+    profile: VehicleEnergyProfile,
+    destination_distance_km: float,
+    avg_speed_kmh: float,
+    destination_target_soc_pct: float,
+    target_stop_km: float,
+    preferences: ChargingPreferences | None,
+) -> tuple[ScoredChargingStop, float, float]:
+    best: ScoredChargingStop | None = None
+    best_departure = 0.0
+    best_charge = 0.0
+    best_key: tuple[float, ...] | None = None
+
+    for stop in viable:
+        remaining = max(0.0, destination_distance_km - stop.route_distance_km)
+        is_final = _is_final_driving_hop(remaining, profile, avg_speed_kmh)
+        departure = _optimal_departure_soc_for_stop(
+            arrival_soc_pct=stop.soc_arrival_pct,
+            remaining_km=remaining,
+            profile=profile,
+            destination_target_soc_pct=destination_target_soc_pct,
+            is_final_hop=is_final,
+            avg_speed_kmh=avg_speed_kmh,
+        )
+        charge_min = estimate_charge_minutes(
+            stop.soc_arrival_pct,
+            departure,
+            usable_capacity_kwh=profile.usable_capacity_kwh,
+            max_power_kw=stop.station.max_power_kw,
+            vehicle_preset_id=profile.vehicle_preset_id,
+            vehicle_max_charge_kw=profile.max_charge_power_kw,
+        )
+        key = _planned_stop_selection_key(
+            stop,
+            charge_minutes=charge_min,
+            target_stop_km=target_stop_km,
+            preferences=preferences,
+        )
+        if best is None or key < best_key:
+            best = stop
+            best_departure = departure
+            best_charge = charge_min
+            best_key = key
+
+    if best is None:
+        msg = "viable list must not be empty"
+        raise ValueError(msg)
+    return best, best_departure, best_charge
 
 
 def build_planned_route_stops(
@@ -448,11 +710,20 @@ def build_planned_route_stops(
     profile: VehicleEnergyProfile,
     safe_margin_pct: float = 15.0,
     adjusted_min_pct: float = 10.0,
-    destination_target_soc_pct: float = DEFAULT_DESTINATION_TARGET_SOC_PCT,
+    destination_target_soc_pct: float | None = None,
     charge_target_soc_pct: float = DEFAULT_CHARGE_TARGET_SOC_PCT,
     max_stops: int = MAX_PLANNED_ROUTE_STOPS,
     preferences: ChargingPreferences | None = None,
+    route_distance_km: float | None = None,
+    route_duration_minutes: float | None = None,
 ) -> tuple[list[PlannedRouteStop], list[str], float | None]:
+    _ = charge_target_soc_pct  # legacy param; optimal SOC replaces fixed 80 % target
+    resolved_destination_soc = (
+        destination_target_soc_pct
+        if destination_target_soc_pct is not None
+        else profile.min_destination_soc_pct
+    )
+    avg_speed_kmh = resolve_avg_speed_kmh(route_distance_km, route_duration_minutes)
     distance_to_dest_km = max(0.0, destination_distance_km - origin_position_km)
     if distance_to_dest_km <= estimate_range_km(profile) + 1e-6:
         return [], [], round(clamp_display_soc_pct(soc_at_distance_km(profile, distance_to_dest_km)), 1)
@@ -460,36 +731,76 @@ def build_planned_route_stops(
     warnings: list[str] = []
     planned: list[PlannedRouteStop] = []
     used_station_ids: set[str] = set()
+    trip_start_route_km = origin_position_km
+    trip_start_soc = profile.soc_percent
     current_route_km = origin_position_km
     current_soc = profile.soc_percent
     previous_route_km = origin_position_km
 
+    max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
+    target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
+    origin_exclusion_km = origin_exclusion_radius_km(target_leg_km, trip_start_soc)
+    allow_origin_zone = allows_origin_zone_charging(trip_start_soc)
+
     for _attempt in range(max_stops):
         remaining_km = max(0.0, destination_distance_km - current_route_km)
-        segment_profile = VehicleEnergyProfile(
-            soc_percent=current_soc,
-            usable_capacity_kwh=profile.usable_capacity_kwh,
-            consumption_wh_per_km=profile.consumption_wh_per_km,
-            terrain_factor=profile.terrain_factor,
-            reserve_soc_percent=profile.reserve_soc_percent,
-        )
+        segment_profile = _profile_at_soc(profile, current_soc)
         segment_range_km = estimate_range_km(segment_profile)
         if remaining_km <= segment_range_km + 1e-6:
             projected = soc_at_distance_km(segment_profile, remaining_km)
             return planned, warnings, round(clamp_display_soc_pct(projected), 1)
 
         charging_reach_km = estimate_charging_reach_km(segment_profile)
-        segment_end_km = current_route_km + charging_reach_km
-        segment_matches = [
-            match
-            for match in matches
-            if match.station.id not in used_station_ids
-            and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
-        ]
+        segment_end_km = current_route_km + min(charging_reach_km, max_leg_km, remaining_km)
+        target_stop_km = current_route_km + min(charging_reach_km, target_leg_km, remaining_km)
+        segment_min_km = _segment_min_route_km(
+            trip_start_route_km=trip_start_route_km,
+            current_route_km=current_route_km,
+            current_soc=current_soc,
+            trip_start_soc=trip_start_soc,
+            target_leg_km=target_leg_km,
+            max_leg_km=max_leg_km,
+            profile=profile,
+        )
+        min_leg_km = max(0.0, segment_min_km - current_route_km)
+
+        segment_matches = _filter_segment_matches(
+            matches,
+            segment_min_km=segment_min_km,
+            segment_end_km=segment_end_km,
+            used_station_ids=used_station_ids,
+            current_route_km=current_route_km,
+            trip_start_route_km=trip_start_route_km,
+            origin_exclusion_km=origin_exclusion_km,
+        )
+        if not segment_matches and allow_origin_zone:
+            segment_matches = [
+                match
+                for match in matches
+                if match.station.id not in used_station_ids
+                and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
+            ]
+        if not segment_matches and remaining_km > max_leg_km + 1e-6:
+            expanded_end_km = current_route_km + min(charging_reach_km, remaining_km)
+            segment_matches = _filter_segment_matches(
+                matches,
+                segment_min_km=segment_min_km,
+                segment_end_km=expanded_end_km,
+                used_station_ids=used_station_ids,
+                current_route_km=current_route_km,
+                trip_start_route_km=trip_start_route_km,
+                origin_exclusion_km=origin_exclusion_km,
+            )
+            if segment_matches:
+                segment_end_km = expanded_end_km
+                warnings.append(
+                    "Parada más lejana: no hay cargadores en el tramo ideal ~2–3 h; "
+                    "revisa corredor o filtros kW."
+                )
         if not segment_matches:
             warnings.append(
                 f"No hay cargador alcanzable en el tramo ~{current_route_km:.0f}–{segment_end_km:.0f} km "
-                f"(SOC {current_soc:.0f} %)."
+                f"(SOC {current_soc:.0f} %, máx. {MAX_DRIVING_LEG_MINUTES / 60:.0f} h conducción)."
             )
             break
 
@@ -511,25 +822,44 @@ def build_planned_route_stops(
             )
             break
 
-        chosen = min(viable, key=lambda stop: _rank_key(stop, preferences))
+        forward_viable = [stop for stop in viable if stop.route_distance_km >= segment_min_km - 1e-6]
+        if forward_viable:
+            viable = forward_viable
+
+        chosen, departure_soc, charge_minutes = _pick_best_planned_stop(
+            viable,
+            profile=profile,
+            destination_distance_km=destination_distance_km,
+            avg_speed_kmh=avg_speed_kmh,
+            destination_target_soc_pct=resolved_destination_soc,
+            target_stop_km=target_stop_km,
+            preferences=preferences,
+        )
         stop_route_km = chosen.route_distance_km
         leg_distance_km = max(0.0, stop_route_km - previous_route_km)
-        hops_remaining = estimate_charging_stops_needed(remaining_km, segment_range_km)
-        departure_soc = _departure_soc_for_stop(
+        if not _is_meaningful_charging_stop(
             arrival_soc_pct=chosen.soc_arrival_pct,
-            remaining_km=max(0.0, destination_distance_km - stop_route_km),
-            profile=profile,
-            destination_target_soc_pct=destination_target_soc_pct,
-            charge_target_soc_pct=charge_target_soc_pct,
-            hops_remaining=hops_remaining,
-        )
-        charge_minutes = estimate_charge_minutes(
-            chosen.soc_arrival_pct,
-            departure_soc,
-            usable_capacity_kwh=profile.usable_capacity_kwh,
-            max_power_kw=chosen.station.max_power_kw,
-            vehicle_preset_id=profile.vehicle_preset_id,
-        )
+            departure_soc_pct=departure_soc,
+            charge_minutes=charge_minutes,
+            leg_distance_km=leg_distance_km,
+            min_leg_km=min_leg_km,
+            stop_route_km=stop_route_km,
+            trip_start_route_km=trip_start_route_km,
+            origin_exclusion_km=origin_exclusion_km,
+        ):
+            used_station_ids.add(chosen.station.id)
+            warnings.append(
+                f"Omitido cargador a {chosen.distance_from_origin_km:.0f} km (parada innecesaria tan cerca de la salida)."
+            )
+            if len(used_station_ids) > max_stops * 3:
+                break
+            continue
+        leg_driving_minutes = driving_minutes_for_distance(leg_distance_km, avg_speed_kmh)
+        if leg_driving_minutes > MAX_DRIVING_LEG_MINUTES + 5:
+            warnings.append(
+                f"Tramo {len(planned) + 1}: ~{leg_driving_minutes:.0f} min conducción "
+                f"(recomendado ≤{TARGET_DRIVING_LEG_MINUTES:.0f} min, máx. {MAX_DRIVING_LEG_MINUTES:.0f})."
+            )
         planned.append(
             PlannedRouteStop(
                 order=len(planned) + 1,
@@ -540,6 +870,7 @@ def build_planned_route_stops(
                 wrong_side=chosen.wrong_side,
                 distance_from_origin_km=chosen.distance_from_origin_km,
                 leg_distance_km=round(leg_distance_km, 2),
+                leg_driving_minutes=round(leg_driving_minutes, 1),
                 soc_arrival_pct=chosen.soc_arrival_pct,
                 soc_departure_pct=round(departure_soc, 1),
                 charge_minutes=charge_minutes,
@@ -552,19 +883,13 @@ def build_planned_route_stops(
         current_soc = departure_soc
 
     if planned:
-        final_profile = VehicleEnergyProfile(
-            soc_percent=current_soc,
-            usable_capacity_kwh=profile.usable_capacity_kwh,
-            consumption_wh_per_km=profile.consumption_wh_per_km,
-            terrain_factor=profile.terrain_factor,
-            reserve_soc_percent=profile.reserve_soc_percent,
-        )
+        final_profile = _profile_at_soc(profile, current_soc)
         projected = soc_at_distance_km(final_profile, max(0.0, destination_distance_km - current_route_km))
         projected_clamped = round(clamp_display_soc_pct(projected), 1)
-        if projected < destination_target_soc_pct:
+        if projected < resolved_destination_soc:
             warnings.append(
                 f"Con {len(planned)} parada(s) planificada(s) llegarías con ~{projected_clamped:.0f} % "
-                f"(objetivo {destination_target_soc_pct:.0f} %)."
+                f"(objetivo {resolved_destination_soc:.0f} %)."
             )
         return planned, warnings, projected_clamped
 
@@ -582,9 +907,13 @@ def build_route_charging_plan(
     adjusted_min_pct: float = 10.0,
     limit: int = 20,
     preferences: ChargingPreferences | None = None,
+    route_distance_km: float | None = None,
+    route_duration_minutes: float | None = None,
+    corridor_stops: list[CorridorMatch] | None = None,
 ) -> ChargingPlanComputation:
     range_km = estimate_range_km(profile)
     charging_reach_km = estimate_charging_reach_km(profile)
+    corridor_matches = corridor_stops if corridor_stops is not None else matches
     stops = [
         _stop_from_corridor_match(
             match,
@@ -594,7 +923,7 @@ def build_route_charging_plan(
             safe_margin_pct=safe_margin_pct,
             adjusted_min_pct=adjusted_min_pct,
         )
-        for match in matches
+        for match in corridor_matches
     ]
     stops.sort(key=lambda stop: _rank_key(stop, preferences))
     stops = stops[:limit]
@@ -611,11 +940,15 @@ def build_route_charging_plan(
     )
 
     warnings: list[str] = []
+    avg_speed_kmh = resolve_avg_speed_kmh(route_distance_km, route_duration_minutes)
     if distance_to_dest_km > range_km + 1e-6:
-        stops_needed = estimate_charging_stops_needed(distance_to_dest_km, range_km)
+        battery_stops = estimate_charging_stops_needed(distance_to_dest_km, range_km)
+        driving_stops = estimate_driving_breaks_needed(distance_to_dest_km, avg_speed_kmh)
+        stops_needed = max(battery_stops, driving_stops)
         warnings.append(
             f"Ruta larga ({distance_to_dest_km:.0f} km): autonomía sin parar ~{range_km:.0f} km. "
-            f"Planifica al menos {stops_needed} parada(s) de carga en ruta."
+            f"Planifica al menos {stops_needed} parada(s) "
+            f"(batería {battery_stops}, pausas ~{TARGET_DRIVING_LEG_MINUTES / 60:.0f} h {driving_stops})."
         )
     if soc_raw_at_dest < profile.reserve_soc_percent and distance_to_dest_km > range_km + 1e-6:
         warnings.append(
@@ -640,6 +973,8 @@ def build_route_charging_plan(
         safe_margin_pct=safe_margin_pct,
         adjusted_min_pct=adjusted_min_pct,
         preferences=preferences,
+        route_distance_km=route_distance_km,
+        route_duration_minutes=route_duration_minutes,
     )
     warnings.extend(planned_warnings)
 

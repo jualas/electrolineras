@@ -122,6 +122,11 @@ class VehicleEnergyInput(BaseModel):
     terrain_factor: float = 1.0
     reserve_soc_percent: float = 10.0
     vehicle_preset_id: str | None = None
+    max_charge_power_kw: float = 100.0
+    min_destination_soc_pct: float = 10.0
+    min_stop_arrival_soc_pct: float = 10.0
+    max_charge_soc_pct: float = 80.0
+    consumption_kwh_per_100km: float | None = None
 
 
 class ChargingPlanStopResult(BaseModel):
@@ -144,10 +149,27 @@ class PlannedRouteStopResult(BaseModel):
     wrong_side: bool
     distance_from_origin_km: float
     leg_distance_km: float
+    leg_driving_minutes: float = 0.0
     soc_arrival_pct: float
     soc_departure_pct: float
     charge_minutes: float
     classification: ChargingClassification
+    leg_energy_kwh: float | None = None
+    recommended_charge_from_pct: float | None = None
+    recommended_charge_to_pct: float | None = None
+    effective_charge_power_kw: float | None = None
+    estimated_charge_cost_eur: float | None = None
+    operator: str | None = None
+
+
+class RouteTripSummaryResult(BaseModel):
+    total_duration_minutes: float
+    driving_duration_minutes: float
+    total_charge_minutes: float
+    total_energy_kwh: float
+    estimated_charge_cost_eur: float | None = None
+    projected_destination_soc_pct: float | None = None
+    stop_count: int
 
 
 class ChargingPlanStrategyResult(BaseModel):
@@ -213,6 +235,7 @@ class ChargingPlanResponse(BaseModel):
     route_conventional_duration_minutes: float | None = None
     shortest_excess_km: float | None = None
     route_variants_approximate: bool = False
+    exclude_slow_chargers: bool = False
     soc_at_destination_pct: float | None = None
     reachable_without_stop: bool
     route_geometry: dict[str, Any] | None = None
@@ -228,6 +251,7 @@ class ChargingPlanResponse(BaseModel):
     origin_stops: list[ChargingPlanStopResult] = Field(default_factory=list)
     planned_stops: list[PlannedRouteStopResult] = Field(default_factory=list)
     projected_soc_at_destination_with_plan: float | None = None
+    route_trip_summary: RouteTripSummaryResult | None = None
     strategies: list[ChargingPlanStrategyResult]
     warnings: list[str]
     candidates_in_bbox: int
@@ -303,6 +327,7 @@ class PrivateStackStatusResult(BaseModel):
 class AuthConfigResponse(BaseModel):
     private_stack_enabled: bool
     login_enabled: bool
+    login_username: str | None = None
     token_fallback_enabled: bool
 
 

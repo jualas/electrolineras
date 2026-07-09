@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Genera hash de contraseña y secreto TOTP para .env (Microsoft Authenticator)."""
+"""Genera usuario y secreto TOTP para .env (Microsoft Authenticator)."""
 
 from __future__ import annotations
 
 import argparse
-import getpass
 import secrets
 import sys
 from pathlib import Path
@@ -24,26 +23,21 @@ except ImportError:
     )
     sys.exit(1)
 
-from api.auth.password import hash_password
 from apply_auth_env import apply_auth_to_env
 from totp_qr import render_totp_qr
 
 
-def _escape_docker_compose_env(value: str) -> str:
-    """docker-compose .env interpreta $VAR; bcrypt usa $ → duplicar como $$."""
-    return value.replace("$", "$$")
-
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Configurar auth privada TOTP + contraseña")
+    parser = argparse.ArgumentParser(description="Configurar auth privada: usuario + TOTP")
+    parser.add_argument(
+        "--username",
+        default="electrolineras",
+        help="Usuario para entrar en la web (zona privada)",
+    )
     parser.add_argument(
         "--account",
         default="electrolineras",
         help="Nombre mostrado en Authenticator",
-    )
-    parser.add_argument(
-        "--password",
-        help="Contraseña (si no se pasa, se pide por terminal)",
     )
     parser.add_argument(
         "--qr-output",
@@ -57,24 +51,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not args.password and not sys.stdin.isatty():
-        print(
-            "ERROR: sin TTY usa --password o --apply con contraseña explícita",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    if args.password:
-        password = args.password
-    else:
-        print(
-            "NOTA: esto NO comprueba tu contraseña actual; define una NUEVA para la zona privada.\n"
-            "Usa --apply para guardar en .env sin copiar/pegar.\n",
-            file=sys.stderr,
-        )
-        password = getpass.getpass("Contraseña para zona privada: ")
-    if len(password) < 8:
-        print("ERROR: usa al menos 8 caracteres", file=sys.stderr)
+    username = args.username.strip()
+    if len(username) < 2:
+        print("ERROR: el usuario debe tener al menos 2 caracteres", file=sys.stderr)
         sys.exit(1)
 
     secret = pyotp.random_base32()
@@ -83,14 +62,13 @@ def main() -> None:
 
     session_secret = secrets.token_hex(32)
     api_token = secrets.token_hex(32)
-    pwd_hash = hash_password(password)
 
     env_values = {
         "PRIVATE_STACK_ENABLED": "true",
         "CHARGING_AGENT_ENABLED": "true",
         "SESSION_SECRET": session_secret,
         "SESSION_COOKIE_SECURE": "true",
-        "PRIVATE_AUTH_PASSWORD_HASH": _escape_docker_compose_env(pwd_hash),
+        "PRIVATE_AUTH_USERNAME": username,
         "PRIVATE_TOTP_SECRET": secret,
         "PRIVATE_API_TOKEN": api_token,
     }
@@ -119,8 +97,9 @@ def main() -> None:
     print(f"   Clave: {secret}")
     if qr_path:
         print(f"   QR: {qr_path}")
-    print("\nContraseña de la web (la que acabas de definir): [la que escribiste]")
+    print(f"\nUsuario web: {username}")
     print("Código: el de 6 dígitos que muestra Authenticator (cambia cada 30 s).")
+    print("Ya no hace falta contraseña aparte: solo usuario + código.")
 
 
 if __name__ == "__main__":

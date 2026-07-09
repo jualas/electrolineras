@@ -1,20 +1,26 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 import { useAuth } from './AuthContext'
 
 export function LoginPanel() {
-  const { login } = useAuth()
-  const [password, setPassword] = useState('')
+  const { login, loginUsername } = useAuth()
+  const [username, setUsername] = useState(loginUsername ?? 'electrolineras')
   const [totpCode, setTotpCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (loginUsername) {
+      setUsername(loginUsername)
+    }
+  }, [loginUsername])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setError(null)
     setSubmitting(true)
     try {
-      await login(password, totpCode.replace(/\s/g, ''))
+      await login(username.trim(), totpCode.replace(/\s/g, ''))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión')
     } finally {
@@ -26,16 +32,18 @@ export function LoginPanel() {
     <section className="auth-panel">
       <h2 className="auth-panel__title">Zona privada</h2>
       <p className="auth-panel__hint">
-        Contraseña y código de 6 dígitos de Microsoft Authenticator (u otro TOTP).
+        Usuario y código de 6 dígitos de Microsoft Authenticator (u otro TOTP). Sin contraseña aparte.
       </p>
       <form className="auth-form" onSubmit={handleSubmit}>
         <label className="auth-form__field">
-          <span>Contraseña</span>
+          <span>Usuario</span>
           <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            type="text"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             required
           />
         </label>

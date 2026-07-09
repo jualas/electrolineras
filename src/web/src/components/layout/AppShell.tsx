@@ -21,7 +21,7 @@ import { ThemeToggle } from './ThemeToggle'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 
 const DEFAULT_MAP_LAYERS: MapLayerToggles = {
-  relief: false,
+  detail: false,
   traffic: false,
 }
 

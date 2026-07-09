@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from api.integrations.teslamate import TeslaMateError, VehicleTelemetry
+from api.routing.dc_charge_curve import GENERIC_DC_PROFILE, resolve_dc_profile
 
 
 def nominal_range_km(telemetry: VehicleTelemetry) -> float | None:
@@ -20,11 +21,25 @@ def current_range_from_nominal(telemetry: VehicleTelemetry) -> float | None:
     return rated * soc / 100.0
 
 
+def resolve_telemetry_capacity_kwh(
+    *,
+    vehicle_preset_id: str | None = None,
+    usable_capacity_kwh: float | None = None,
+) -> float:
+    if usable_capacity_kwh is not None and usable_capacity_kwh > 0:
+        return usable_capacity_kwh
+    if vehicle_preset_id:
+        return resolve_dc_profile(vehicle_preset_id, GENERIC_DC_PROFILE.usable_capacity_kwh).usable_capacity_kwh
+    return GENERIC_DC_PROFILE.usable_capacity_kwh
+
+
 def vehicle_energy_from_telemetry(
     telemetry: VehicleTelemetry,
     terrain_factor: float = 1.0,
     reserve_soc_percent: float = 10.0,
     departure_soc_percent: float | None = None,
+    vehicle_preset_id: str | None = None,
+    usable_capacity_kwh: float | None = None,
 ) -> tuple[float, float, float, float]:
     """
     Perfil de energía desde autonomía nominal TeslaMate (rated_battery_range_km).
@@ -41,9 +56,13 @@ def vehicle_energy_from_telemetry(
         raise TeslaMateError("SOC inválido en telemetría")
 
     terrain = max(0.01, min(2.0, terrain_factor))
-    # Consumo constante derivado del nominal al 100 %
-    consumption_wh_per_km = 1000.0 * 100.0 / rated_km * terrain
-    return soc, 100.0, consumption_wh_per_km, reserve_soc_percent
+    capacity = resolve_telemetry_capacity_kwh(
+        vehicle_preset_id=vehicle_preset_id,
+        usable_capacity_kwh=usable_capacity_kwh,
+    )
+    # Consumo coherente con capacidad útil y autonomía nominal TeslaMate al 100 %
+    consumption_wh_per_km = (capacity * 1000.0 / rated_km) * terrain
+    return soc, capacity, consumption_wh_per_km, reserve_soc_percent
 
 
 def planning_range_km(

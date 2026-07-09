@@ -3,6 +3,15 @@ export type MapCoords = {
   lon: number
 }
 
+export type RouteExportSpec = {
+  origin: MapCoords
+  destination: MapCoords
+  waypoints?: MapCoords[]
+  title?: string
+}
+
+export { routeExportSpecFromChargingPlan as routeExportSpecFromPlan } from '../charging/planRouteStops'
+
 export function formatCoordinates(lat: number, lon: number): string {
   return `${lat.toFixed(6)}, ${lon.toFixed(6)}`
 }
@@ -37,6 +46,32 @@ export function googleMapsRouteUrl(options: {
   }
 
   return `https://www.google.com/maps/dir/?${params.toString()}`
+}
+
+export function routeShareText(spec: RouteExportSpec, mode: 'full' | 'next_stop' = 'full'): string {
+  if (mode === 'next_stop' && spec.waypoints?.[0]) {
+    const stop = spec.waypoints[0]
+    const url = googleMapsDestinationUrl(stop.lat, stop.lon)
+    return `Parada de carga 1 · Electrolineras\n${url}`
+  }
+
+  const url = googleMapsRouteUrl({
+    origin: spec.origin,
+    destination: spec.destination,
+    waypoints: spec.waypoints,
+  })
+  const stopCount = spec.waypoints?.length ?? 0
+  if (stopCount > 0) {
+    return `Ruta con ${stopCount} parada${stopCount === 1 ? '' : 's'} de carga · Electrolineras\n${url}`
+  }
+  return `Ruta Electrolineras\n${url}`
+}
+
+export function isMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
 }
 
 export async function copyCoordinates(lat: number, lon: number): Promise<boolean> {
@@ -83,6 +118,35 @@ export async function shareMapLocation(
       title: label ?? 'Electrolineras',
       text: label ?? formatCoordinates(lat, lon),
       url: googleMapsDestinationUrl(lat, lon),
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Compartir ruta (Web Share → app Tesla en móvil, u otra app de navegación). */
+export async function shareRoute(
+  spec: RouteExportSpec,
+  mode: 'full' | 'next_stop' = 'full',
+): Promise<boolean> {
+  if (!canShareLocation()) {
+    return false
+  }
+  const text = routeShareText(spec, mode)
+  const url =
+    mode === 'next_stop' && spec.waypoints?.[0]
+      ? googleMapsDestinationUrl(spec.waypoints[0].lat, spec.waypoints[0].lon)
+      : googleMapsRouteUrl({
+          origin: spec.origin,
+          destination: spec.destination,
+          waypoints: spec.waypoints,
+        })
+  try {
+    await navigator.share({
+      title: spec.title ?? 'Electrolineras',
+      text,
+      url,
     })
     return true
   } catch {
