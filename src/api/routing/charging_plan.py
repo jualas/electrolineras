@@ -722,7 +722,7 @@ def _pick_best_planned_stop(
     return best, best_departure, best_charge
 
 
-def build_planned_route_stops(
+def build_planned_route_stops_greedy(
     matches: list[CorridorMatch],
     *,
     origin_position_km: float,
@@ -940,6 +940,57 @@ def build_planned_route_stops(
         return planned, warnings, projected_clamped
 
     return planned, warnings, None
+
+
+def build_planned_route_stops(
+    matches: list[CorridorMatch],
+    *,
+    origin_position_km: float,
+    destination_distance_km: float,
+    profile: VehicleEnergyProfile,
+    safe_margin_pct: float = 15.0,
+    adjusted_min_pct: float = 10.0,
+    destination_target_soc_pct: float | None = None,
+    charge_target_soc_pct: float = DEFAULT_CHARGE_TARGET_SOC_PCT,
+    max_stops: int = MAX_PLANNED_ROUTE_STOPS,
+    preferences: ChargingPreferences | None = None,
+    route_distance_km: float | None = None,
+    route_duration_minutes: float | None = None,
+) -> tuple[list[PlannedRouteStop], list[str], float | None]:
+    """Plan multi-parada: optimizador global (#6087) con fallback greedy."""
+    from api.routing.route_stop_optimizer import optimize_planned_route_stops
+
+    optimized = optimize_planned_route_stops(
+        matches,
+        origin_position_km=origin_position_km,
+        destination_distance_km=destination_distance_km,
+        profile=profile,
+        safe_margin_pct=safe_margin_pct,
+        adjusted_min_pct=adjusted_min_pct,
+        destination_target_soc_pct=destination_target_soc_pct,
+        max_stops=max_stops,
+        preferences=preferences,
+        route_distance_km=route_distance_km,
+        route_duration_minutes=route_duration_minutes,
+        trip_start_route_km=origin_position_km,
+    )
+    if optimized is not None:
+        return optimized
+
+    return build_planned_route_stops_greedy(
+        matches,
+        origin_position_km=origin_position_km,
+        destination_distance_km=destination_distance_km,
+        profile=profile,
+        safe_margin_pct=safe_margin_pct,
+        adjusted_min_pct=adjusted_min_pct,
+        destination_target_soc_pct=destination_target_soc_pct,
+        charge_target_soc_pct=charge_target_soc_pct,
+        max_stops=max_stops,
+        preferences=preferences,
+        route_distance_km=route_distance_km,
+        route_duration_minutes=route_duration_minutes,
+    )
 
 
 def build_route_charging_plan(

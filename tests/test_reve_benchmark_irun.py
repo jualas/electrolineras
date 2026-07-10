@@ -95,7 +95,7 @@ def test_charging_plan_preserves_planned_stops_with_destination_stay(
 
 @patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=IRUN_OSRM)
 def test_reve_irun_benchmark_tolerance(mock_fetch, irun_api_client: TestClient) -> None:
-    """Regresión Cartagena→Irun con parámetros REVE (tolerancias amplias hasta #6087)."""
+    """Regresión Cartagena→Irun con parámetros REVE (optimizador global #6087)."""
     response = irun_api_client.get(
         "/api/v1/stations/charging-plan",
         params={
@@ -122,7 +122,7 @@ def test_reve_irun_benchmark_tolerance(mock_fetch, irun_api_client: TestClient) 
     stops = payload["planned_stops"]
     summary = payload["route_trip_summary"]
     assert summary is not None
-    assert len(stops) >= 1
+    assert 2 <= len(stops) <= 5
     kms = [s["distance_from_origin_km"] for s in stops]
     assert all(kms[i] < kms[i + 1] for i in range(len(kms) - 1)), f"km not monotonic: {kms}"
     assert 8 <= payload["projected_soc_at_destination_with_plan"] <= 20
@@ -131,7 +131,7 @@ def test_reve_irun_benchmark_tolerance(mock_fetch, irun_api_client: TestClient) 
         assert stops[0]["distance_from_origin_km"] >= 120
     for stop in stops[:-1]:
         assert stop["soc_departure_pct"] <= 72.0, stop
-    assert summary["total_charge_minutes"] <= 120
+    assert summary["total_charge_minutes"] <= 100
 
 
 def test_route_trip_summary_totals() -> None:
