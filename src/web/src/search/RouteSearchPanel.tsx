@@ -14,8 +14,6 @@ import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
 import { ChargingPlanResults } from './ChargingPlanResults'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 import { formatRouteAlternativesKm, RoutePreferenceFields } from './RoutePreferenceFields'
-import { ChargingPreferenceFields } from './ChargingPreferenceFields'
-import { useChargingPreferences } from '../hooks/useChargingPreferences'
 import type { RoutePreference } from '../api/types'
 
 export type RouteEndpointInput = {
@@ -68,7 +66,6 @@ export function RouteSearchPanel({
   const lastEndpointsRef = useRef<{ origin: RouteEndpointInput; dest: RouteEndpointInput } | null>(null)
   const hasSuccessfulSearchRef = useRef(false)
   const recalcOnPreferenceRef = useRef(false)
-  const { preferences: chargingPreferences, toggleOperator, setMaxPriceEurKwh } = useChargingPreferences()
 
   useEffect(() => {
     onSearchStateChange?.(status)
@@ -144,8 +141,6 @@ export function RouteSearchPanel({
             routePreference,
             avoidHighways: avoidTolls,
             vehiclePresetId: vehicleQuery.vehicle_preset_id,
-            preferredOperators: chargingPreferences.preferredOperators,
-            maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
           })
         } catch {
           plan = null
@@ -185,7 +180,6 @@ export function RouteSearchPanel({
       resolveEndpoint,
       routePreference,
       vehicleProfile,
-      chargingPreferences,
     ],
   )
 
@@ -200,7 +194,7 @@ export function RouteSearchPanel({
     void runSearch(endpoints.origin.label, endpoints.dest.label, endpoints.origin, endpoints.dest)
     // Solo re-buscar al cambiar filtros/corredor tras una búsqueda previa en modo conducción.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minKw, maxKw, corridorKm, routePreference, avoidTolls, chargingPreferences, simulationMode])
+  }, [minKw, maxKw, corridorKm, routePreference, avoidTolls, simulationMode])
 
   useEffect(() => {
     if (!recalcOnPreferenceRef.current) {
@@ -216,7 +210,7 @@ export function RouteSearchPanel({
     }
     recalcOnPreferenceRef.current = false
     void runSearch(endpoints.origin.label, endpoints.dest.label, endpoints.origin, endpoints.dest)
-  }, [routePreference, avoidTolls, chargingPreferences, runSearch, status])
+  }, [routePreference, avoidTolls, runSearch, status])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -378,27 +372,6 @@ export function RouteSearchPanel({
           }}
           disabled={status === 'loading'}
           comparisonPlan={status === 'ready' ? lastResponse : null}
-        />
-
-        <ChargingPreferenceFields
-          preferences={chargingPreferences}
-          onToggleOperator={(operator) => {
-            toggleOperator(operator)
-            if (status === 'ready' && lastResponse) {
-              recalcOnPreferenceRef.current = true
-            } else {
-              invalidateCachedSearch()
-            }
-          }}
-          onMaxPriceChange={(value) => {
-            setMaxPriceEurKwh(value)
-            if (status === 'ready' && lastResponse) {
-              recalcOnPreferenceRef.current = true
-            } else {
-              invalidateCachedSearch()
-            }
-          }}
-          disabled={status === 'loading'}
         />
 
         <div className="route-form__actions">

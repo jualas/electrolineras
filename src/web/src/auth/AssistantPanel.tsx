@@ -12,12 +12,11 @@ import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
 import { getTerrainFactor, getVehiclePreset, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
 import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
-import { DEFAULT_REVE_PLANNING, RevePlanningFields, type RevePlanningOptions } from '../search/RevePlanningFields'
-import { ChargingPreferenceFields } from '../search/ChargingPreferenceFields'
-import { useChargingPreferences } from '../hooks/useChargingPreferences'
+import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
 import type { RoutePreference } from '../api/types'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
 import {
+  defaultDepartureSoc,
   DepartureChargeSimulator,
   departureSocQueryParam,
 } from './DepartureChargeSimulator'
@@ -56,13 +55,14 @@ export function AssistantPanel({
   const [culturalPoi, setCulturalPoi] = useState(true)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
   const [avoidTolls, setAvoidTolls] = useState(false)
-  const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(DEFAULT_REVE_PLANNING)
+  const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
+    revePlanningForPreset(vehicleProfile.presetId),
+  )
   const [simulateDeparture, setSimulateDeparture] = useState(false)
   const [departureSoc, setDepartureSoc] = useState(80)
   const [aiNote, setAiNote] = useState('')
   const [guideError, setGuideError] = useState<string | null>(null)
   const recalcOnPreferenceRef = useRef(false)
-  const { preferences: chargingPreferences, toggleOperator, setMaxPriceEurKwh } = useChargingPreferences()
 
   const {
     vehicle,
@@ -75,6 +75,13 @@ export function AssistantPanel({
     onSocChange: onVehicleSocChange,
     pollIntervalMs: TELEMETRY_POLL_INTERVAL_MS,
   })
+
+  useEffect(() => {
+    setRevePlanning((prev) => ({
+      ...prev,
+      maxChargePowerKw: revePlanningForPreset(vehicleProfile.presetId).maxChargePowerKw,
+    }))
+  }, [vehicleProfile.presetId])
 
   useEffect(() => {
     if (!vehicle) {
@@ -124,18 +131,24 @@ export function AssistantPanel({
   const terrain = getTerrainFactor(vehicleProfile.terrainFactorId)
   const vehiclePreset = getVehiclePreset(vehicleProfile.presetId)
   const nominalKm = vehicle != null ? nominalRangeKm(vehicle) : null
+  const planningSocPercent =
+    vehicle != null && simulateDeparture ? departureSoc : vehicle?.battery_level_pct ?? 0
   const planKm =
-    nominalKm != null && vehicle != null
+    nominalKm != null && planningSocPercent > 0
       ? planningRangeFromNominal(
           nominalKm,
-          vehicle.battery_level_pct,
+          planningSocPercent,
           DEFAULT_RESERVE_SOC_PERCENT,
         )
       : null
   const reachKm =
-    nominalKm != null && vehicle != null
-      ? chargingReachFromNominal(nominalKm, vehicle.battery_level_pct)
+    nominalKm != null && planningSocPercent > 0
+      ? chargingReachFromNominal(nominalKm, planningSocPercent)
       : null
+  const consumptionWhPerKm =
+    nominalKm != null && nominalKm > 0
+      ? (vehiclePreset.usableCapacityKwh * 1000) / nominalKm
+      : vehiclePreset.referenceWhPerKm
 
   const runMapPlan = async () => {
     if (!destination) {
@@ -157,8 +170,6 @@ export function AssistantPanel({
         routePreference,
         avoidHighways: avoidTolls,
         departureSocPercent: departureSocParam,
-        preferredOperators: chargingPreferences.preferredOperators,
-        maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
@@ -226,8 +237,6 @@ export function AssistantPanel({
         routePreference,
         avoidHighways: avoidTolls,
         departureSocPercent: departureSocParam,
-        preferredOperators: chargingPreferences.preferredOperators,
-        maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
@@ -305,7 +314,9 @@ export function AssistantPanel({
           disabled={busy}
           onSimulateChange={(enabled) => {
             setSimulateDeparture(enabled)
-            if (!enabled && vehicle) {
+            if (enabled && vehicle) {
+              setDepartureSoc(defaultDepartureSoc(vehicle.battery_level_pct))
+            } else if (!enabled && vehicle) {
               setDepartureSoc(Math.round(vehicle.battery_level_pct))
             }
             setAdvice(null)
@@ -397,7 +408,7 @@ export function AssistantPanel({
 
       <RevePlanningFields
         options={revePlanning}
-        consumptionWhPerKm={170}
+        consumptionWhPerKm={consumptionWhPerKm}
         disabled={busy}
         onChange={(value) => {
           setRevePlanning(value)
@@ -409,23 +420,6 @@ export function AssistantPanel({
             onPlanStateChange?.('idle')
           }
         }}
-      />
-
-      <ChargingPreferenceFields
-        preferences={chargingPreferences}
-        onToggleOperator={(operator) => {
-          toggleOperator(operator)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
-        }}
-        onMaxPriceChange={(value) => {
-          setMaxPriceEurKwh(value)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
-        }}
-        disabled={busy}
       />
 
       <label className="assistant-panel__option">

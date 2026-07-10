@@ -33,7 +33,7 @@ export function DepartureChargeSimulator({
       : null
   const reachKm =
     nominalKm != null ? chargingReachFromNominal(nominalKm, departureSocPercent) : null
-  const simulated = simulateDeparture && Math.abs(departureSocPercent - liveSoc) >= 1
+  const simulated = simulateDeparture
 
   return (
     <fieldset className="departure-charge" disabled={disabled}>
@@ -106,8 +106,12 @@ export function departureSocQueryParam(
   if (!simulateDeparture) {
     return undefined
   }
-  if (Math.abs(departureSocPercent - liveSocPercent) < 1) {
-    return undefined
-  }
-  return Math.round(departureSocPercent)
+  const minSoc = Math.max(5, Math.round(liveSocPercent))
+  return Math.round(Math.max(departureSocPercent, minSoc))
+}
+
+/** SOC objetivo al activar la simulación (carga previa típica antes de un viaje). */
+export function defaultDepartureSoc(liveSocPercent: number): number {
+  const live = Math.round(liveSocPercent)
+  return Math.min(100, Math.max(live, 80))
 }

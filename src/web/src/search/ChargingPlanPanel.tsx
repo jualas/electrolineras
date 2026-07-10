@@ -19,13 +19,12 @@ import {
 } from '../vehicle/telemetryProfile'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 import { RoutePreferenceFields } from './RoutePreferenceFields'
-import { DEFAULT_REVE_PLANNING, RevePlanningFields, type RevePlanningOptions } from './RevePlanningFields'
-import { ChargingPreferenceFields } from './ChargingPreferenceFields'
+import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
+import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { ChargingPlanResults } from './ChargingPlanResults'
 import { ReplanOnRouteBar } from './ReplanOnRouteBar'
-import { useChargingPreferences } from '../hooks/useChargingPreferences'
 import type { RoutePreference } from '../api/types'
 
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -66,7 +65,9 @@ export function ChargingPlanPanel({
   const [corridorKm, setCorridorKm] = useState(10)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
   const [avoidTolls, setAvoidTolls] = useState(false)
-  const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(DEFAULT_REVE_PLANNING)
+  const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
+    revePlanningForPreset(vehicleProfile.presetId),
+  )
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<ChargingPlanResponse | null>(null)
@@ -77,7 +78,6 @@ export function ChargingPlanPanel({
   const lastSearchKeyRef = useRef<string | null>(null)
   const recalcOnPreferenceRef = useRef(false)
   const tripRestoredRef = useRef(false)
-  const { preferences: chargingPreferences, toggleOperator, setMaxPriceEurKwh } = useChargingPreferences()
   const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow } = useActiveTrip()
 
   const {
@@ -99,6 +99,13 @@ export function ChargingPlanPanel({
 
   const simulationMode = originMode === 'simulation'
   const useCarOrigin = originMode === 'car' && carTelemetryAvailable
+
+  useEffect(() => {
+    setRevePlanning((prev) => ({
+      ...prev,
+      maxChargePowerKw: revePlanningForPreset(vehicleProfile.presetId).maxChargePowerKw,
+    }))
+  }, [vehicleProfile.presetId])
 
   useEffect(() => {
     if (!carTelemetryAvailable || originModeTouchedRef.current) {
@@ -217,8 +224,6 @@ export function ChargingPlanPanel({
         routePreference: emergencyMode ? undefined : routePreference,
         avoidHighways: emergencyMode ? undefined : avoidTolls,
         vehiclePresetId: vehicleQuery.vehicle_preset_id,
-        preferredOperators: chargingPreferences.preferredOperators,
-        maxPriceEurKwh: chargingPreferences.maxPriceEurKwh,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
@@ -238,7 +243,7 @@ export function ChargingPlanPanel({
         emergencyMode,
         routePreference,
         avoidTolls,
-        chargingPreferences,
+        chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
       })
       lastSearchKeyRef.current = searchKey
       setLastResponse(response)
@@ -254,7 +259,7 @@ export function ChargingPlanPanel({
           corridorKm,
           routePreference,
           avoidTolls,
-          chargingPreferences,
+          chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
           originMode,
           updatedAt: Date.now(),
         })
@@ -276,7 +281,6 @@ export function ChargingPlanPanel({
     emergencyMode,
     routePreference,
     avoidTolls,
-    chargingPreferences,
     gpsLocation,
     maxKw,
     minKw,
@@ -289,6 +293,7 @@ export function ChargingPlanPanel({
     clearActiveTrip,
     saveActiveTrip,
     useCarOrigin,
+    revePlanning,
   ])
 
   useEffect(() => {
@@ -319,7 +324,7 @@ export function ChargingPlanPanel({
       emergencyMode,
       routePreference,
       avoidTolls,
-      chargingPreferences,
+      chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
     })
     if (searchKey === lastSearchKeyRef.current) {
       return
@@ -327,7 +332,6 @@ export function ChargingPlanPanel({
     void runPlan()
   }, [
     avoidTolls,
-    chargingPreferences,
     corridorKm,
     destPoint,
     emergencyMode,
@@ -369,7 +373,7 @@ export function ChargingPlanPanel({
       emergencyMode,
       routePreference,
       avoidTolls,
-      chargingPreferences,
+      chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
     })
     if (searchKey === lastSearchKeyRef.current) {
       return
@@ -378,7 +382,6 @@ export function ChargingPlanPanel({
   }, [
     avoidTolls,
     carTelemetry,
-    chargingPreferences,
     corridorKm,
     destPoint,
     emergencyMode,
@@ -402,7 +405,7 @@ export function ChargingPlanPanel({
     }
     recalcOnPreferenceRef.current = false
     void runPlan()
-  }, [routePreference, avoidTolls, chargingPreferences, revePlanning, emergencyMode, runPlan, status])
+  }, [routePreference, avoidTolls, revePlanning, emergencyMode, runPlan, status])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -708,26 +711,6 @@ export function ChargingPlanPanel({
               }}
             />
 
-            <ChargingPreferenceFields
-              preferences={chargingPreferences}
-              onToggleOperator={(operator) => {
-                toggleOperator(operator)
-                if (status === 'ready' && lastResponse && !emergencyMode) {
-                  recalcOnPreferenceRef.current = true
-                } else {
-                  lastSearchKeyRef.current = null
-                }
-              }}
-              onMaxPriceChange={(value) => {
-                setMaxPriceEurKwh(value)
-                if (status === 'ready' && lastResponse && !emergencyMode) {
-                  recalcOnPreferenceRef.current = true
-                } else {
-                  lastSearchKeyRef.current = null
-                }
-              }}
-              disabled={status === 'loading'}
-            />
           </>
         )}
 

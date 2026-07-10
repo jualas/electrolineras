@@ -1,3 +1,5 @@
+import { peakDcKwForPreset, type VehiclePresetId } from '../vehicle/vehiclePresets'
+
 export type RevePlanningOptions = {
   maxChargePowerKw: number
   minDestinationSocPct: number
@@ -8,12 +10,19 @@ export type RevePlanningOptions = {
 }
 
 export const DEFAULT_REVE_PLANNING: RevePlanningOptions = {
-  maxChargePowerKw: 100,
+  maxChargePowerKw: peakDcKwForPreset(undefined),
   minDestinationSocPct: 10,
   minStopArrivalSocPct: 10,
   maxChargeSocPct: 80,
   excludeSlowChargers: true,
   consumptionKwhPer100km: null,
+}
+
+export function revePlanningForPreset(presetId?: VehiclePresetId): RevePlanningOptions {
+  return {
+    ...DEFAULT_REVE_PLANNING,
+    maxChargePowerKw: peakDcKwForPreset(presetId),
+  }
 }
 
 type RevePlanningFieldsProps = {
@@ -123,8 +132,8 @@ export function RevePlanningFields({
         </label>
       </div>
       <p className="panel-hint reve-planning__hint">
-        Valores por defecto alineados con mapareve.es: destino 10 %, paradas desde 10 %, carga hasta 80 %,
-        100 kW máx.
+        Valores por defecto alineados con mapareve.es: destino 10 %, paradas desde 10 %, carga hasta 80 %.
+        La potencia máx. se toma del preset del vehículo (pico DC).
       </p>
     </details>
   )
