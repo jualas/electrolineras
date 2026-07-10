@@ -417,6 +417,9 @@ INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT = 65.0
 FIRST_LEG_FULL_SOC_THRESHOLD_PCT = 95.0
 FIRST_LEG_DRIVING_MINUTES = 180.0
 MIN_MEANINGFUL_CHARGE_MINUTES = 8.0
+MIN_WORTHWHILE_CHARGE_MINUTES = 12.0
+MIN_WORTHWHILE_SOC_GAIN_PCT = 10.0
+HIGH_ARRIVAL_MICRO_STOP_SOC_PCT = 45.0
 MIN_FORWARD_PROGRESS_KM = 5.0
 DEVIATION_PENALTY_KM_BUCKET = 5.0
 MIN_LEG_PROGRESS_FRACTION = 0.65
@@ -513,6 +516,45 @@ def _is_meaningful_charging_stop(
     if charge_minutes >= MIN_MEANINGFUL_CHARGE_MINUTES:
         return True
     return departure_soc_pct > arrival_soc_pct + 10.0
+
+
+def _is_worth_charging_stop(
+    *,
+    arrival_soc_pct: float,
+    departure_soc_pct: float,
+    charge_minutes: float,
+    leg_distance_km: float,
+    min_leg_km: float,
+    stop_route_km: float,
+    trip_start_route_km: float,
+    origin_exclusion_km: float,
+    trip_start_soc_pct: float,
+    avg_speed_kmh: float,
+) -> bool:
+    """Descarta micro-paradas (#6098): alta llegada y poca ganancia de carga."""
+    soc_gain = departure_soc_pct - arrival_soc_pct
+    if arrival_soc_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT:
+        return False
+    if charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT:
+        return False
+    if trip_start_soc_pct >= FIRST_LEG_FULL_SOC_THRESHOLD_PCT:
+        first_leg_min_km = max(
+            origin_exclusion_km,
+            leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES) * 0.9,
+        )
+        from_start = stop_route_km - trip_start_route_km
+        if from_start < first_leg_min_km and arrival_soc_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT:
+            return False
+    return _is_meaningful_charging_stop(
+        arrival_soc_pct=arrival_soc_pct,
+        departure_soc_pct=departure_soc_pct,
+        charge_minutes=charge_minutes,
+        leg_distance_km=leg_distance_km,
+        min_leg_km=min_leg_km,
+        stop_route_km=stop_route_km,
+        trip_start_route_km=trip_start_route_km,
+        origin_exclusion_km=origin_exclusion_km,
+    )
 
 
 def _filter_segment_matches(
@@ -883,7 +925,7 @@ def build_planned_route_stops_greedy(
             )
             continue
         leg_distance_km = max(0.0, stop_route_km - previous_route_km)
-        if not _is_meaningful_charging_stop(
+        if not _is_worth_charging_stop(
             arrival_soc_pct=chosen.soc_arrival_pct,
             departure_soc_pct=departure_soc,
             charge_minutes=charge_minutes,
@@ -892,6 +934,8 @@ def build_planned_route_stops_greedy(
             stop_route_km=stop_route_km,
             trip_start_route_km=trip_start_route_km,
             origin_exclusion_km=origin_exclusion_km,
+            trip_start_soc_pct=trip_start_soc,
+            avg_speed_kmh=avg_speed_kmh,
         ):
             used_station_ids.add(chosen.station.id)
             warnings.append(

@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-07-08T18:33:32Z -->
+<!-- taskboard-exported-at: 2026-07-10T18:38:39Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `planning`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-07-08 18:33 UTC  
-**Git:** `main` @ `b55f2a40`  
+**Exportado:** 2026-07-10 18:38 UTC  
+**Git:** `main` @ `8a19ff6e`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -22,9 +22,45 @@ donde se publica la informacion de los puntos de carga )
 
 | Estado | Tareas |
 |--------|--------|
-| En progreso (`in_progress`) | 0 |
-| Pendiente (`pending`) | 19 |
-| Completada (`completed`) | 54 |
+| En progreso (`in_progress`) | 1 |
+| Pendiente (`pending`) | 15 |
+| Completada (`completed`) | 62 |
+
+---
+
+## En progreso (`in_progress`)
+
+<a id="task-6088"></a>
+### [#6088] Planificador REVE — métricas viaje y detalle parada en API
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6088` |
+| Estado | `in_progress` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-09 16:09 UTC |
+
+Extender `ChargingPlanResponse` / `planned_stops[]` con salida comparable a REVE.
+
+**Resumen viaje (`route_trip_summary`):**
+- `total_duration_minutes` (conducción + recarga)
+- `driving_duration_minutes`
+- `total_charge_minutes`
+- `total_energy_kwh` (consumo estimado ruta)
+- `estimated_charge_cost_eur` (suma paradas con precio REVE)
+- `projected_destination_soc_pct`
+- `stop_count`
+
+**Por parada (`PlannedRouteStopResult`):**
+- `leg_energy_kwh` (consumo del tramo)
+- `recommended_charge_from_pct` / `recommended_charge_to_pct` (ej. 10→66%)
+- `effective_charge_power_kw`
+- `estimated_charge_cost_eur`
+- `operator` (ya en station)
+
+Actualizar `agent_trip_guide` snapshot y narrativa Dify con nuevos campos.
+Depende de motor optimización REVE.
 
 ---
 
@@ -180,144 +216,6 @@ Roadmap producto sugerido (orden): Ops estabilidad → Routing UI 2 rutas → Te
 
 ---
 
-<a id="task-6085"></a>
-### [#6085] Plan maestro — paridad planificador REVE + IA consumo Grafana
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6085` |
-| Estado | `pending` |
-| Complejidad | compleja |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:32 UTC |
-
-Documento de referencia y hoja de ruta para alinear Electrolineras con el planificador de mapareve.es e integrar telemetría Tesla/Grafana.
-
-## Referencia REVE (Cartagena → Irun, ~812 km)
-Entradas: capacidad 60 kWh, carga máx 100 kW, consumo 17 kWh/100km, SOC salida 100%, SOC mín destino 10%, SOC mín parada 10%, SOC máx carga 80%, evitar peajes, excluir carga lenta.
-Salidas: 10h38 total, 3 paradas, 50 min recarga, 10% al destino, 138 kWh consumo, paradas cada ~200 km / ~2h20 con SOC llegada ~10% y recarga recomendada hasta ~66%, ~20 min carga a 100 kW.
-
-## Estado actual Electrolineras (gap)
-| Área | Tenemos | Falta vs REVE |
-|------|---------|---------------|
-| Parámetros | SOC manual, capacidad, Wh/km, min kW, evitar peajes | SOC mín destino/parada/max carga configurables; consumo en kWh/100km; excluir AC |
-| Motor | Greedy multi-hop, curva DC, tramos ~2h DGT, exclusión origen | Optimización global tiempo total (conducción+recarga); SOC objetivo por parada (10→66%); kWh por tramo |
-| Salida viaje | range_km, warnings, planned_stops parcial | Resumen: tiempo total, min recarga, kWh total, coste €, % destino |
-| Salida parada | leg_km, leg_min, SOC llegada/salida, charge_min | kWh tramo, potencia efectiva, % recarga recomendada, coste parada |
-| Telemetría | TeslaMate MQTT/API, simulación salida 100% | Consumo histórico Grafana por tipo ruta; instantáneos en motor |
-| IA | Dify narrativa sobre JSON motor | Consumo histórico en contexto; sugerencias adaptadas sin recalcular SOC |
-
-## Fases propuestas
-1. Parámetros y contrato API REVE (#tareas hijas)
-2. Motor optimizador + métricas (#tareas hijas)
-3. UI presentación REVE (#tareas hijas)
-4. Telemetría Grafana → perfil consumo (#tareas hijas)
-5. Dify enriquecido (#tareas hijas)
-6. Benchmark Irun automatizado
-
-Crear/actualizar docs/REVE_ROUTE_PLANNER_PLAN.md con esta especificación. Bloquea épicas #6073+.
-
----
-
-<a id="task-6086"></a>
-### [#6086] Planificador REVE — parámetros API/UI (SOC y consumo)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6086` |
-| Estado | `pending` |
-| Complejidad | media |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:32 UTC |
-
-Alinear entradas del planificador con REVE.
-
-Añadir en API `charging-plan` y UI (Asistente + Plan de carga):
-- `battery_capacity_kwh` (ya existe usable_capacity_kwh — alias/documentar)
-- `max_charge_power_kw` (potencia máx aceptada por vehículo, default 100)
-- `consumption_kwh_per_100km` (además de Wh/km; mostrar como REVE)
-- `departure_soc_pct` (SOC salida, default 100)
-- `min_destination_soc_pct` (default 10, hoy hardcoded 30)
-- `min_stop_arrival_soc_pct` (default 10 — SOC mínimo al llegar a cargador)
-- `max_charge_soc_pct` (default 80 — techo carga DC rápida)
-- `exclude_slow_chargers` (excluir AC / <50 kW del corredor planificación)
-
-Mantener simulación salida 100% con coche al 65% (TeslaMate) como opción avanzada, no como default del motor.
-
-Tests: validación rangos, defaults REVE, regresión Granada→Irun.
-Depende de plan maestro #6073.
-
----
-
-<a id="task-6087"></a>
-### [#6087] Planificador REVE — motor optimización global multi-parada
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6087` |
-| Estado | `pending` |
-| Complejidad | compleja |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:32 UTC |
-
-Sustituir/evolucionar el greedy actual (`build_planned_route_stops`) por un optimizador estilo REVE.
-
-Objetivo: minimizar tiempo total viaje (conducción OSRM + recarga DC) respetando:
-- Tramos conducción ~2h (DGT), máx 3h
-- SOC llegada parada ≥ min_stop_arrival_soc (10%)
-- SOC destino ≥ min_destination_soc (10%)
-- Carga hasta max_charge_soc (80%) solo si hace falta para el siguiente tramo
-- Sin paradas en zona origen si SOC salida ≥10% (ya iniciado — consolidar)
-- Excluir cargadores lentos si `exclude_slow_chargers`
-- Ranking: potencia efectiva, precio REVE, desvío, tiempo recarga
-
-Algoritmo propuesto (fases):
-1. Segmentar ruta en ventanas ~2h por velocidad OSRM
-2. Por ventana, candidatos del corredor espaciado (#planning_corridor)
-3. Evaluar combinaciones (beam search / DP acotado) con curva DC (#6070)
-4. Elegir secuencia que minimice tiempo total y cumpla SOC
-
-Referencia benchmark: Cartagena→Irun debe dar ~3 paradas, ~50 min carga, ~10% destino, tramos ~200 km (como REVE jul-2026).
-
-Archivos: `charging_plan.py`, tests `test_reve_benchmark_irun.py`.
-Depende de parámetros REVE.
-
----
-
-<a id="task-6088"></a>
-### [#6088] Planificador REVE — métricas viaje y detalle parada en API
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6088` |
-| Estado | `pending` |
-| Complejidad | media |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:32 UTC |
-
-Extender `ChargingPlanResponse` / `planned_stops[]` con salida comparable a REVE.
-
-**Resumen viaje (`route_trip_summary`):**
-- `total_duration_minutes` (conducción + recarga)
-- `driving_duration_minutes`
-- `total_charge_minutes`
-- `total_energy_kwh` (consumo estimado ruta)
-- `estimated_charge_cost_eur` (suma paradas con precio REVE)
-- `projected_destination_soc_pct`
-- `stop_count`
-
-**Por parada (`PlannedRouteStopResult`):**
-- `leg_energy_kwh` (consumo del tramo)
-- `recommended_charge_from_pct` / `recommended_charge_to_pct` (ej. 10→66%)
-- `effective_charge_power_kw`
-- `estimated_charge_cost_eur`
-- `operator` (ya en station)
-
-Actualizar `agent_trip_guide` snapshot y narrativa Dify con nuevos campos.
-Depende de motor optimización REVE.
-
----
-
 <a id="task-6089"></a>
 ### [#6089] Planificador REVE — UI resultado viaje (estilo mapareve)
 
@@ -433,32 +331,31 @@ Depende de métricas REVE API + perfil consumo Grafana.
 
 ---
 
-<a id="task-6093"></a>
-### [#6093] Benchmark CI — Cartagena→Irun vs planificador REVE
+<a id="task-6098"></a>
+### [#6098] Penalizar micro-paradas y benchmark Cartagena→Mundaka vs Tesla
 
 | Campo | Valor |
 |-------|-------|
-| ID | `6093` |
+| ID | `6098` |
 | Estado | `pending` |
 | Complejidad | media |
 | Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:33 UTC |
+| Actualizado | 2026-07-10 18:37 UTC |
 
-Test de regresión automatizado comparando nuestro plan con REVE.
+Tras comparar Cartagena→Mundaka (882 km) con la app Tesla (3 paradas, 74 min recarga, 9h40 total) vs Electrolineras (4 paradas, 44 min, 10h22): el optimizador genera una micro-parada prematura en Albacete km 198 (llegada 53%, solo 5 min carga) que Tesla evita (1ª parada Atalaya ~280 km, 22%).
 
-**Caso fijo:** origen Cartagena (37.62, -0.99) → Irun (43.34, -1.79), parámetros REVE estándar (60 kWh, 17 kWh/100km, 100 kW, SOC 100/10/10/80).
+Objetivo motor (#6087):
+- Penalizar o descartar paradas si SOC llegada > umbral (p.ej. 40%) o carga añade <10 min autonomía.
+- Forzar progreso mínimo antes de 1ª parada en autopista (~180–200 km, alineado REVE/Tesla).
+- Evitar cadenas con parada casi inútil (53%→58%).
 
-**Aserciones tolerancia:**
-- 3±1 paradas
-- 45–60 min recarga total
-- SOC destino 8–15%
-- 1ª parada ≥150 km desde origen
-- Tramos conducción 1h45–2h45 cada uno
-- kWh total 120–150
+Benchmark CI / regresión:
+- Fixture Cartagena (37.625, -0.996) → Mundaka (43.407, -2.698).
+- Params: Model 3 SR (57 kWh, 136 Wh/km, 170 kW), SOC 100/10/10/80, exclude_slow.
+- Tolerancias: 3–4 paradas, total_charge_minutes ≤ Tesla+20%, sin parada con soc_arrival > 45% salvo emergencia, km monótonos.
+- Referencia Tesla jul-2026: Atalaya, Rivas, Aranda; destino ~15%.
 
-Fixture JSON golden (actualizar manualmente si REVE cambia). CI `pytest tests/test_reve_benchmark_irun.py`.
-
-Ejecutar tras cada cambio del motor #6087.
+Criterio éxito: plan ≤4 paradas, sin micro-parada <15 min con arr>40%, tiempo total competitivo con Tesla (margen +30 min).
 
 ---
 
@@ -1301,6 +1198,220 @@ Documentar select_fastest_route_payload: alternativas OSRM, tolerancia 5%, prefe
 | Actualizado | 2026-07-04 11:07 UTC |
 
 HTTPS y dominio público ya operativos vía Cloudflare Tunnel (electro.jualas.es). Actualizar #6039: marcar completada o reescribir como «documentar arquitectura TLS Cloudflare» en DEPLOYMENT.md. No implementar nginx+Let's Encrypt duplicado.
+
+---
+
+<a id="task-6085"></a>
+### [#6085] Plan maestro — paridad planificador REVE + IA consumo Grafana
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6085` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-09 16:09 UTC |
+
+Documento de referencia y hoja de ruta para alinear Electrolineras con el planificador de mapareve.es e integrar telemetría Tesla/Grafana.
+
+## Referencia REVE (Cartagena → Irun, ~812 km)
+Entradas: capacidad 60 kWh, carga máx 100 kW, consumo 17 kWh/100km, SOC salida 100%, SOC mín destino 10%, SOC mín parada 10%, SOC máx carga 80%, evitar peajes, excluir carga lenta.
+Salidas: 10h38 total, 3 paradas, 50 min recarga, 10% al destino, 138 kWh consumo, paradas cada ~200 km / ~2h20 con SOC llegada ~10% y recarga recomendada hasta ~66%, ~20 min carga a 100 kW.
+
+## Estado actual Electrolineras (gap)
+| Área | Tenemos | Falta vs REVE |
+|------|---------|---------------|
+| Parámetros | SOC manual, capacidad, Wh/km, min kW, evitar peajes | SOC mín destino/parada/max carga configurables; consumo en kWh/100km; excluir AC |
+| Motor | Greedy multi-hop, curva DC, tramos ~2h DGT, exclusión origen | Optimización global tiempo total (conducción+recarga); SOC objetivo por parada (10→66%); kWh por tramo |
+| Salida viaje | range_km, warnings, planned_stops parcial | Resumen: tiempo total, min recarga, kWh total, coste €, % destino |
+| Salida parada | leg_km, leg_min, SOC llegada/salida, charge_min | kWh tramo, potencia efectiva, % recarga recomendada, coste parada |
+| Telemetría | TeslaMate MQTT/API, simulación salida 100% | Consumo histórico Grafana por tipo ruta; instantáneos en motor |
+| IA | Dify narrativa sobre JSON motor | Consumo histórico en contexto; sugerencias adaptadas sin recalcular SOC |
+
+## Fases propuestas
+1. Parámetros y contrato API REVE (#tareas hijas)
+2. Motor optimizador + métricas (#tareas hijas)
+3. UI presentación REVE (#tareas hijas)
+4. Telemetría Grafana → perfil consumo (#tareas hijas)
+5. Dify enriquecido (#tareas hijas)
+6. Benchmark Irun automatizado
+
+Crear/actualizar docs/REVE_ROUTE_PLANNER_PLAN.md con esta especificación. Bloquea épicas #6073+.
+
+---
+
+<a id="task-6086"></a>
+### [#6086] Planificador REVE — parámetros API/UI (SOC y consumo)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6086` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-09 16:09 UTC |
+
+Alinear entradas del planificador con REVE.
+
+Añadir en API `charging-plan` y UI (Asistente + Plan de carga):
+- `battery_capacity_kwh` (ya existe usable_capacity_kwh — alias/documentar)
+- `max_charge_power_kw` (potencia máx aceptada por vehículo, default 100)
+- `consumption_kwh_per_100km` (además de Wh/km; mostrar como REVE)
+- `departure_soc_pct` (SOC salida, default 100)
+- `min_destination_soc_pct` (default 10, hoy hardcoded 30)
+- `min_stop_arrival_soc_pct` (default 10 — SOC mínimo al llegar a cargador)
+- `max_charge_soc_pct` (default 80 — techo carga DC rápida)
+- `exclude_slow_chargers` (excluir AC / <50 kW del corredor planificación)
+
+Mantener simulación salida 100% con coche al 65% (TeslaMate) como opción avanzada, no como default del motor.
+
+Tests: validación rangos, defaults REVE, regresión Granada→Irun.
+Depende de plan maestro #6073.
+
+---
+
+<a id="task-6087"></a>
+### [#6087] Planificador REVE — motor optimización global multi-parada
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6087` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-10 15:36 UTC |
+
+Sustituir/evolucionar el greedy actual (`build_planned_route_stops`) por un optimizador estilo REVE.
+
+Objetivo: minimizar tiempo total viaje (conducción OSRM + recarga DC) respetando:
+- Tramos conducción ~2h (DGT), máx 3h
+- SOC llegada parada ≥ min_stop_arrival_soc (10%)
+- SOC destino ≥ min_destination_soc (10%)
+- Carga hasta max_charge_soc (80%) solo si hace falta para el siguiente tramo
+- Sin paradas en zona origen si SOC salida ≥10% (ya iniciado — consolidar)
+- Excluir cargadores lentos si `exclude_slow_chargers`
+- Ranking: potencia efectiva, precio REVE, desvío, tiempo recarga
+
+Algoritmo propuesto (fases):
+1. Segmentar ruta en ventanas ~2h por velocidad OSRM
+2. Por ventana, candidatos del corredor espaciado (#planning_corridor)
+3. Evaluar combinaciones (beam search / DP acotado) con curva DC (#6070)
+4. Elegir secuencia que minimice tiempo total y cumpla SOC
+
+Referencia benchmark: Cartagena→Irun debe dar ~3 paradas, ~50 min carga, ~10% destino, tramos ~200 km (como REVE jul-2026).
+
+Archivos: `charging_plan.py`, tests `test_reve_benchmark_irun.py`.
+Depende de parámetros REVE.
+
+---
+
+<a id="task-6093"></a>
+### [#6093] Benchmark CI — Cartagena→Irun vs planificador REVE
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6093` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-10 15:36 UTC |
+
+Test de regresión automatizado comparando nuestro plan con REVE.
+
+**Caso fijo:** origen Cartagena (37.62, -0.99) → Irun (43.34, -1.79), parámetros REVE estándar (60 kWh, 17 kWh/100km, 100 kW, SOC 100/10/10/80).
+
+**Aserciones tolerancia:**
+- 3±1 paradas
+- 45–60 min recarga total
+- SOC destino 8–15%
+- 1ª parada ≥150 km desde origen
+- Tramos conducción 1h45–2h45 cada uno
+- kWh total 120–150
+
+Fixture JSON golden (actualizar manualmente si REVE cambia). CI `pytest tests/test_reve_benchmark_irun.py`.
+
+Ejecutar tras cada cambio del motor #6087.
+
+---
+
+<a id="task-6094"></a>
+### [#6094] Motor — paradas monótonas en ruta (km crecientes)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6094` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-09 17:22 UTC |
+
+Bug crítico Cartagena→Irun: secuencia km 180→198→182 (parada 3 retrocede). Causas: distance_from_origin_km relativo vs absoluto; candidatos sin filtrar route_position > current_route_km.
+
+Entregables:
+- Filtrar estrictamente stop.route_distance_km > current_route_km
+- Guardar distance_from_origin_km absoluto desde salida del viaje
+- leg_distance_km = stop_km - previous_stop_km
+- Test CI que falle si km[i] >= km[i+1]
+
+Prioridad P0 — bloquea planes ejecutables en mapa/Google Maps.
+
+---
+
+<a id="task-6095"></a>
+### [#6095] Motor — estrategia carga corta 10→60-70% (Model 3 LFP / REVE)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6095` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-09 17:22 UTC |
+
+Sobrecarga actual: paradas 49→87% (~135 min total vs REVE ~71 min). Filosofía Tesla/REVE: más paradas, más cortas, zona rápida de la curva DC.
+
+Regla: llegada 5-10%, salida 60-70% en paradas intermedias; solo cargar más en tramo final o parada larga (comida). Primer tramo desde 100% puede ser ~3h.
+
+Implementar en _optimal_departure_soc_for_stop: techo ~65%, tramo objetivo ~2h (no 3h) para calcular energía mínima.
+
+Prioridad P0.
+
+---
+
+<a id="task-6096"></a>
+### [#6096] Motor — penalizar desvío >5 km en ranking paradas
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6096` |
+| Estado | `completed` |
+| Complejidad | simple |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-09 17:22 UTC |
+
+Parada La Puebla de Valverde con 18.9 km desvío elegida vs alternativas en corredor. Aumentar peso de deviation_km en _rank_key / _planned_stop_selection_key.
+
+Prioridad P1.
+
+---
+
+<a id="task-6097"></a>
+### [#6097] Tests CI — regresión Cartagena→Irun monotonía + carga ≤80 min
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6097` |
+| Estado | `completed` |
+| Complejidad | simple |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-09 17:22 UTC |
+
+Extender test_reve_benchmark_irun.py:
+- assert planned_stops[i].distance_from_origin_km estrictamente creciente
+- assert total_charge_minutes en rango 45-90 min (ajustar tras motor)
+- assert soc_departure_pct <= 72 en paradas intermedias
+
+Prioridad P1.
 
 ---
 

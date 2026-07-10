@@ -14,11 +14,13 @@ from api.routing.charging_plan import (
     MAX_DRIVING_LEG_MINUTES,
     MAX_PLANNED_ROUTE_STOPS,
     MIN_FORWARD_PROGRESS_KM,
+    MIN_LEG_PROGRESS_FRACTION,
     TARGET_DRIVING_LEG_MINUTES,
     PlannedRouteStop,
     VehicleEnergyProfile,
     _is_final_driving_hop,
     _is_meaningful_charging_stop,
+    _is_worth_charging_stop,
     _optimal_departure_soc_for_stop,
     _profile_at_soc,
     _stop_from_corridor_match,
@@ -108,6 +110,57 @@ def _reduce_corridor_candidates(
 
     selected.sort(key=lambda c: c.route_km)
     return selected
+
+
+def _min_leg_km_for_stop(
+    *,
+    target_leg_km: float,
+    max_leg_km: float,
+    profile: VehicleEnergyProfile,
+    from_soc: float,
+) -> float:
+    min_leg_km = target_leg_km * MIN_LEG_PROGRESS_FRACTION
+    if from_soc >= 70.0:
+        min_leg_km = max(min_leg_km, target_leg_km * 0.8)
+    min_leg_km = min(min_leg_km, max_leg_km)
+    charging_reach_km = estimate_charging_reach_km(_profile_at_soc(profile, from_soc))
+    return min(min_leg_km, charging_reach_km * 0.95)
+
+
+def _worth_stop_transition(
+    *,
+    profile: VehicleEnergyProfile,
+    from_soc: float,
+    arrival_soc: float,
+    departure_soc: float,
+    charge_min: float,
+    leg_km: float,
+    cand_route_km: float,
+    trip_start_route_km: float,
+    origin_exclusion_km: float,
+    is_first_hop: bool,
+    target_leg_km: float,
+    max_leg_km: float,
+    avg_speed_kmh: float,
+) -> bool:
+    min_leg_km = _min_leg_km_for_stop(
+        target_leg_km=target_leg_km,
+        max_leg_km=max_leg_km,
+        profile=profile,
+        from_soc=from_soc,
+    )
+    return _is_worth_charging_stop(
+        arrival_soc_pct=arrival_soc,
+        departure_soc_pct=departure_soc,
+        charge_minutes=charge_min,
+        leg_distance_km=leg_km,
+        min_leg_km=min_leg_km,
+        stop_route_km=cand_route_km,
+        trip_start_route_km=trip_start_route_km,
+        origin_exclusion_km=origin_exclusion_km if is_first_hop else 0.0,
+        trip_start_soc_pct=profile.soc_percent,
+        avg_speed_kmh=avg_speed_kmh,
+    )
 
 
 def _drive_and_arrival(
@@ -214,6 +267,7 @@ def optimize_planned_route_stops(
     trip_start = origin_position_km if trip_start_route_km is None else trip_start_route_km
     avg_speed_kmh = resolve_avg_speed_kmh(route_distance_km, route_duration_minutes)
     target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
+    max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
     origin_exclusion_km = origin_exclusion_radius_km(target_leg_km, profile.soc_percent)
 
     distance_to_dest = max(0.0, destination_distance_km - origin_position_km)
@@ -245,7 +299,7 @@ def optimize_planned_route_stops(
         )
         if leg is None:
             continue
-        _, arrival, drive_min = leg
+        leg_km, arrival, drive_min = leg
         dep_soc, charge_min = _charge_at_stop(
             profile=profile,
             arrival_soc=arrival,
@@ -255,6 +309,22 @@ def optimize_planned_route_stops(
             destination_target_soc=resolved_destination_soc,
             station_max_kw=cand.match.station.max_power_kw,
         )
+        if not _worth_stop_transition(
+            profile=profile,
+            from_soc=profile.soc_percent,
+            arrival_soc=arrival,
+            departure_soc=dep_soc,
+            charge_min=charge_min,
+            leg_km=leg_km,
+            cand_route_km=cand.route_km,
+            trip_start_route_km=trip_start,
+            origin_exclusion_km=origin_exclusion_km,
+            is_first_hop=True,
+            target_leg_km=target_leg_km,
+            max_leg_km=max_leg_km,
+            avg_speed_kmh=avg_speed_kmh,
+        ):
+            continue
         best[j] = _NodeState(
             time_min=drive_min + charge_min,
             dep_soc=dep_soc,
@@ -280,7 +350,7 @@ def optimize_planned_route_stops(
                 )
                 if leg is None:
                     continue
-                _, arrival, drive_min = leg
+                leg_km, arrival, drive_min = leg
                 dep_soc, charge_min = _charge_at_stop(
                     profile=profile,
                     arrival_soc=arrival,
@@ -290,6 +360,22 @@ def optimize_planned_route_stops(
                     destination_target_soc=resolved_destination_soc,
                     station_max_kw=cand_j.match.station.max_power_kw,
                 )
+                if not _worth_stop_transition(
+                    profile=profile,
+                    from_soc=state_i.dep_soc,
+                    arrival_soc=arrival,
+                    departure_soc=dep_soc,
+                    charge_min=charge_min,
+                    leg_km=leg_km,
+                    cand_route_km=cand_j.route_km,
+                    trip_start_route_km=trip_start,
+                    origin_exclusion_km=origin_exclusion_km,
+                    is_first_hop=False,
+                    target_leg_km=target_leg_km,
+                    max_leg_km=max_leg_km,
+                    avg_speed_kmh=avg_speed_kmh,
+                ):
+                    continue
                 new_time = state_i.time_min + drive_min + charge_min
                 if best[j] is None or new_time < best[j].time_min - 1e-6:
                     best[j] = _NodeState(time_min=new_time, dep_soc=dep_soc, prev=i)
@@ -401,7 +487,12 @@ def optimize_planned_route_stops(
             departure_soc_pct=dep_soc,
             charge_minutes=charge_min,
             leg_distance_km=leg_km,
-            min_leg_km=MIN_FORWARD_PROGRESS_KM,
+            min_leg_km=_min_leg_km_for_stop(
+                target_leg_km=target_leg_km,
+                max_leg_km=max_leg_km,
+                profile=profile,
+                from_soc=from_soc,
+            ),
             stop_route_km=cand.route_km,
             trip_start_route_km=trip_start,
             origin_exclusion_km=origin_exclusion_km if order == 1 else 0.0,
