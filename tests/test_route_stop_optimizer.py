@@ -110,6 +110,18 @@ def test_is_worth_charging_stop_rejects_albacete_pattern() -> None:
         trip_start_soc_pct=100.0,
         avg_speed_kmh=90.0,
     )
+    assert not _is_worth_charging_stop(
+        arrival_soc_pct=44.6,
+        departure_soc_pct=56.0,
+        charge_minutes=7.0,
+        leg_distance_km=232.0,
+        min_leg_km=120.0,
+        stop_route_km=232.0,
+        trip_start_route_km=0.0,
+        origin_exclusion_km=180.0,
+        trip_start_soc_pct=100.0,
+        avg_speed_kmh=90.0,
+    )
     assert _is_worth_charging_stop(
         arrival_soc_pct=22.0,
         departure_soc_pct=56.0,

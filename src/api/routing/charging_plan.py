@@ -420,6 +420,7 @@ MIN_MEANINGFUL_CHARGE_MINUTES = 8.0
 MIN_WORTHWHILE_CHARGE_MINUTES = 12.0
 MIN_WORTHWHILE_SOC_GAIN_PCT = 10.0
 HIGH_ARRIVAL_MICRO_STOP_SOC_PCT = 45.0
+MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT = 44.0
 MIN_FORWARD_PROGRESS_KM = 5.0
 DEVIATION_PENALTY_KM_BUCKET = 5.0
 MIN_LEG_PROGRESS_FRACTION = 0.65
@@ -533,6 +534,11 @@ def _is_worth_charging_stop(
 ) -> bool:
     """Descarta micro-paradas (#6098): alta llegada y poca ganancia de carga."""
     soc_gain = departure_soc_pct - arrival_soc_pct
+    if (
+        arrival_soc_pct >= MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT
+        and charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES
+    ):
+        return False
     if arrival_soc_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT:
         return False
     if charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT:
