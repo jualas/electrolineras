@@ -39,10 +39,9 @@ data/logs/*
 # Frontend
 node_modules/
 src/web/dist/
-img/totp-authenticator-qr.png
-img/totp-setup-qr.png
-totp-authenticator-qr.png
-totp-setup-qr.png
+# img/ — capturas locales para revisión con el asistente (no versionar)
+img/*
+!img/.gitkeep
 
 # IDEs y herramientas
 .idea/
