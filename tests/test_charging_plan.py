@@ -217,6 +217,50 @@ def test_build_planned_route_stops_multi_hop_cartagena_style() -> None:
     assert projected >= 0
 
 
+def test_planned_stops_monotonic_and_short_charge_strategy() -> None:
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=100,
+        usable_capacity_kwh=60,
+        consumption_wh_per_km=170,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        vehicle_preset_id="tesla-model3-sr-2023",
+        max_charge_power_kw=100,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    positions_km = [180.0, 380.0, 580.0, 760.0]
+    matches = [
+        CorridorMatch(
+            station=sample_station(f"stop-{idx}", 40.0, 0.1 * idx, kw=200.0),
+            deviation_m=400,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for idx, km in enumerate(positions_km, start=1)
+    ]
+    planned, _, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=812.0,
+        profile=profile,
+        route_distance_km=812.0,
+        route_duration_minutes=560.0,
+    )
+    assert len(planned) >= 2
+    kms = [s.distance_from_origin_km for s in planned]
+    assert all(kms[i] < kms[i + 1] for i in range(len(kms) - 1))
+    for stop in planned[:-1]:
+        assert stop.soc_departure_pct <= 72.0
+        assert stop.charge_minutes <= 35.0
+    assert projected is not None
+
+
 def test_no_planned_stops_near_origin_when_soc_100() -> None:
     from api.routing.charging_plan import build_planned_route_stops, origin_exclusion_radius_km, resolve_avg_speed_kmh
 

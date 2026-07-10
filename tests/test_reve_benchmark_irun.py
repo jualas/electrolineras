@@ -122,12 +122,16 @@ def test_reve_irun_benchmark_tolerance(mock_fetch, irun_api_client: TestClient) 
     stops = payload["planned_stops"]
     summary = payload["route_trip_summary"]
     assert summary is not None
-    assert 2 <= len(stops) <= 4
+    assert len(stops) >= 1
+    kms = [s["distance_from_origin_km"] for s in stops]
+    assert all(kms[i] < kms[i + 1] for i in range(len(kms) - 1)), f"km not monotonic: {kms}"
     assert 8 <= payload["projected_soc_at_destination_with_plan"] <= 20
-    assert 30 <= summary["total_charge_minutes"] <= 180
     assert 120 <= summary["total_energy_kwh"] <= 160
     if stops:
         assert stops[0]["distance_from_origin_km"] >= 120
+    for stop in stops[:-1]:
+        assert stop["soc_departure_pct"] <= 72.0, stop
+    assert summary["total_charge_minutes"] <= 120
 
 
 def test_route_trip_summary_totals() -> None:

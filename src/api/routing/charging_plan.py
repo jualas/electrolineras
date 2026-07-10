@@ -409,8 +409,16 @@ MAX_DRIVING_LEG_MINUTES = 180.0
 DEFAULT_AVG_SPEED_KMH = 90.0
 INTERMEDIATE_ARRIVAL_SOC_TARGET = 10.0
 DEPARTURE_SOC_BUFFER_PCT = 3.0
+# Techo DC rápido (UI REVE max_charge_soc); no implica cargar siempre hasta aquí.
 OPTIMAL_CHARGE_CEILING_SOC_PCT = 80.0
+# Punto dulce Tesla/REVE: 10→60-70 % minimiza tiempo total (curva DC LFP/NMC).
+INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT = 65.0
+# Primer tramo desde 100 %: hasta ~3 h antes de la 1.ª parada.
+FIRST_LEG_FULL_SOC_THRESHOLD_PCT = 95.0
+FIRST_LEG_DRIVING_MINUTES = 180.0
 MIN_MEANINGFUL_CHARGE_MINUTES = 8.0
+MIN_FORWARD_PROGRESS_KM = 5.0
+DEVIATION_PENALTY_KM_BUCKET = 5.0
 MIN_LEG_PROGRESS_FRACTION = 0.65
 HIGH_SOC_SKIP_ORIGIN_FRACTION = 0.75
 # Por debajo de este SOC se permite cargar junto al punto de salida antes de iniciar el viaje.
@@ -595,6 +603,15 @@ def _is_final_driving_hop(
     return remaining_km <= max_leg_km + 1e-6
 
 
+def _intermediate_charge_ceiling_pct(profile: VehicleEnergyProfile) -> float:
+    """Techo de carga en paradas intermedias (zona rápida DC, estilo Tesla/REVE)."""
+    return min(
+        profile.max_charge_soc_pct,
+        OPTIMAL_CHARGE_CEILING_SOC_PCT,
+        INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT,
+    )
+
+
 def _optimal_departure_soc_for_stop(
     *,
     arrival_soc_pct: float,
@@ -612,22 +629,23 @@ def _optimal_departure_soc_for_stop(
         soc_at_dest = soc_at_distance_km(segment_profile, remaining_km)
         min_departure = arrival_soc_pct + max(0.0, destination_target_soc_pct - soc_at_dest)
         buffered = min(100.0, min_departure + DEPARTURE_SOC_BUFFER_PCT)
-        return min(100.0, max(buffered, arrival_soc_pct + 5.0))
+        capped = min(buffered, profile.max_charge_soc_pct)
+        return min(100.0, max(capped, arrival_soc_pct + 5.0))
 
-    max_next_leg_km = min(
+    # Paradas intermedias: energía para ~2 h de conducción, sin llenar hasta el taper lento.
+    next_leg_km = min(
         remaining_km,
-        leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES),
+        leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES),
     )
-
     min_departure = soc_required_to_drive_km(
         profile,
-        max_next_leg_km,
+        next_leg_km,
         profile.min_stop_arrival_soc_pct,
     )
     buffered = min(100.0, min_departure + DEPARTURE_SOC_BUFFER_PCT)
-    if buffered <= profile.max_charge_soc_pct:
-        return max(buffered, arrival_soc_pct + 5.0)
-    return min(100.0, max(buffered, arrival_soc_pct + 5.0))
+    sweet_spot_ceiling = _intermediate_charge_ceiling_pct(profile)
+    departure = min(buffered, sweet_spot_ceiling)
+    return max(departure, arrival_soc_pct + 5.0)
 
 
 def _planned_stop_selection_key(
@@ -639,8 +657,10 @@ def _planned_stop_selection_key(
 ) -> tuple[float, ...]:
     distance_to_target = abs(stop.route_distance_km - target_stop_km)
     distance_bucket = round(distance_to_target / 25.0)
+    deviation_bucket = round(stop.deviation_km / DEVIATION_PENALTY_KM_BUCKET)
     base = _rank_key(stop, preferences)
     return (
+        deviation_bucket,
         distance_bucket,
         float(CLASSIFICATION_ORDER[stop.classification]),
         charge_minutes,
@@ -752,7 +772,16 @@ def build_planned_route_stops(
 
         charging_reach_km = estimate_charging_reach_km(segment_profile)
         segment_end_km = current_route_km + min(charging_reach_km, max_leg_km, remaining_km)
-        target_stop_km = current_route_km + min(charging_reach_km, target_leg_km, remaining_km)
+        first_leg_from_full = (
+            current_route_km <= trip_start_route_km + 1e-6
+            and current_soc >= FIRST_LEG_FULL_SOC_THRESHOLD_PCT
+        )
+        leg_target_km = (
+            leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES)
+            if first_leg_from_full
+            else target_leg_km
+        )
+        target_stop_km = current_route_km + min(charging_reach_km, leg_target_km, remaining_km)
         segment_min_km = _segment_min_route_km(
             trip_start_route_km=trip_start_route_km,
             current_route_km=current_route_km,
@@ -822,9 +851,20 @@ def build_planned_route_stops(
             )
             break
 
-        forward_viable = [stop for stop in viable if stop.route_distance_km >= segment_min_km - 1e-6]
+        forward_viable = [
+            stop
+            for stop in viable
+            if stop.route_distance_km > current_route_km + MIN_FORWARD_PROGRESS_KM - 1e-6
+            and stop.route_distance_km >= segment_min_km - 1e-6
+        ]
         if forward_viable:
             viable = forward_viable
+        elif viable:
+            warnings.append(
+                f"Sin cargadores por delante de km {current_route_km:.0f}; "
+                "revisa corredor o filtros kW."
+            )
+            break
 
         chosen, departure_soc, charge_minutes = _pick_best_planned_stop(
             viable,
@@ -836,6 +876,12 @@ def build_planned_route_stops(
             preferences=preferences,
         )
         stop_route_km = chosen.route_distance_km
+        if stop_route_km <= previous_route_km + 1e-6:
+            used_station_ids.add(chosen.station.id)
+            warnings.append(
+                f"Omitido cargador a km {stop_route_km:.0f} (retrocede respecto a km {previous_route_km:.0f})."
+            )
+            continue
         leg_distance_km = max(0.0, stop_route_km - previous_route_km)
         if not _is_meaningful_charging_stop(
             arrival_soc_pct=chosen.soc_arrival_pct,
@@ -868,7 +914,7 @@ def build_planned_route_stops(
                 route_distance_km=chosen.route_distance_km,
                 extra_minutes=chosen.extra_minutes,
                 wrong_side=chosen.wrong_side,
-                distance_from_origin_km=chosen.distance_from_origin_km,
+                distance_from_origin_km=round(stop_route_km - trip_start_route_km, 2),
                 leg_distance_km=round(leg_distance_km, 2),
                 leg_driving_minutes=round(leg_driving_minutes, 1),
                 soc_arrival_pct=chosen.soc_arrival_pct,
