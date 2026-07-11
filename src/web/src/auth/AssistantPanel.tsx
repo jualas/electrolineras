@@ -490,13 +490,15 @@ export function AssistantPanel({
               </button>
             </div>
           )}
-          {!advice.guide_text && advice.plan && (
+          {!advice.guide_text && advice.plan && (advice.plan.planned_stops?.length ?? 0) === 0 && (
             <p className="assistant-panel__muted">
               Plan listo en el mapa. Pulsa <strong>Guía de viaje con IA</strong> para la narrativa.
             </p>
           )}
-          <p className="assistant-advice__summary">{advice.agent_summary}</p>
-          {advice.agent_bullets.length > 0 && (
+          {!advice.plan?.route_trip_summary && advice.agent_summary ? (
+            <p className="assistant-advice__summary">{advice.agent_summary}</p>
+          ) : null}
+          {!advice.plan?.planned_stops?.length && advice.agent_bullets.length > 0 && (
             <ul className="assistant-advice__bullets">
               {advice.agent_bullets.map((line) => (
                 <li key={line}>{line}</li>

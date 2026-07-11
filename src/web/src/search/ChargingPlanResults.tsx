@@ -34,8 +34,43 @@ function plannedStopDistanceLabel(stop: PlannedRouteStopResult): string {
   return `${stop.distance_from_origin_km.toFixed(0)} km · tramo ${stop.leg_distance_km.toFixed(0)} km${drive}${energy} · ${stop.soc_arrival_pct.toFixed(0)}→${stop.soc_departure_pct.toFixed(0)} % · ~${stop.charge_minutes.toFixed(0)} min carga${cost}`
 }
 
-function totalPlannedChargeMinutes(stops: PlannedRouteStopResult[]): number {
-  return stops.reduce((sum, stop) => sum + stop.charge_minutes, 0)
+function compactStopDistanceLabel(stop: PlannedRouteStopResult): string {
+  return `km ${stop.distance_from_origin_km.toFixed(0)} · llegada ${stop.soc_arrival_pct.toFixed(0)} % · carga ${stop.charge_minutes.toFixed(0)} min → ${stop.soc_departure_pct.toFixed(0)} % · ${stop.station.max_power_kw.toFixed(0)} kW`
+}
+
+function TripSummaryBox({ summary }: { summary: NonNullable<ChargingPlanResponse['route_trip_summary']> }) {
+  return (
+    <div className="reve-trip-summary" aria-label="Resumen del viaje">
+      <p className="reve-trip-summary__title">Resumen del viaje</p>
+      <ul className="reve-trip-summary__stats">
+        <li>
+          <strong>{summary.total_duration_minutes.toFixed(0)} min</strong> total
+        </li>
+        <li>
+          <strong>{summary.driving_duration_minutes.toFixed(0)} min</strong> conducción
+        </li>
+        <li>
+          <strong>{summary.total_charge_minutes.toFixed(0)} min</strong> recarga
+        </li>
+        <li>
+          <strong>{summary.stop_count}</strong> parada{summary.stop_count === 1 ? '' : 's'}
+        </li>
+        <li>
+          <strong>{summary.total_energy_kwh.toFixed(0)} kWh</strong> consumo
+        </li>
+        {summary.projected_destination_soc_pct != null && (
+          <li>
+            <strong>{summary.projected_destination_soc_pct.toFixed(0)} %</strong> al destino
+          </li>
+        )}
+        {summary.estimated_charge_cost_eur != null && (
+          <li>
+            <strong>~{summary.estimated_charge_cost_eur.toFixed(2)} €</strong> carga est.
+          </li>
+        )}
+      </ul>
+    </div>
+  )
 }
 
 export function ChargingPlanResults({
@@ -52,41 +87,46 @@ export function ChargingPlanResults({
   const routeExport = routeExportSpecFromChargingPlan(plan)
   const routeStrategies = plan.strategies.filter((strategy) => !ORIGIN_NOISE_STRATEGY_IDS.has(strategy.id))
   const tripSummary = plan.route_trip_summary
+  const compactPlan =
+    assistant || (plan.mode === 'route' && tripSummary != null && plannedStops.length > 0)
+
+  if (compactPlan && plan.mode === 'route') {
+    return (
+      <>
+        {hasPlannedRoute ? (
+          <>
+            <h3 className="charge-section-title">Dónde cargar en la ruta</h3>
+            {!planComplete && plannedStops.length > 0 && (
+              <p className="route-message route-message--error" role="alert">
+                Plan incompleto: no llegarías con batería suficiente. Revisa corredor o filtros kW.
+              </p>
+            )}
+            <ChargingStopList
+              stops={routeStops}
+              selectedStationId={selectedStationId}
+              onSelectStation={onSelectStation}
+              ariaLabel="Paradas planificadas en la ruta"
+              showRouteDeviation={false}
+              distanceLabel={(item) =>
+                plannedStops.length > 0
+                  ? compactStopDistanceLabel(item as PlannedRouteStopResult)
+                  : `${item.distance_from_origin_km.toFixed(0)} km · ${item.soc_arrival_pct.toFixed(0)} % SOC`
+              }
+            />
+          </>
+        ) : plan.reachable_without_stop ? (
+          <p className="route-message">Con el SOC actual llegas al destino sin parar a cargar.</p>
+        ) : (
+          <p className="route-message">No hay paradas en el corredor alcanzables con el SOC actual.</p>
+        )}
+        {tripSummary && <TripSummaryBox summary={tripSummary} />}
+      </>
+    )
+  }
 
   return (
     <>
-      {tripSummary && plan.mode === 'route' && (
-        <div className="reve-trip-summary" aria-label="Resumen del viaje">
-          <p className="reve-trip-summary__title">Resumen del viaje</p>
-          <ul className="reve-trip-summary__stats">
-            <li>
-              <strong>{tripSummary.total_duration_minutes.toFixed(0)} min</strong> total
-            </li>
-            <li>
-              <strong>{tripSummary.driving_duration_minutes.toFixed(0)} min</strong> conducción
-            </li>
-            <li>
-              <strong>{tripSummary.total_charge_minutes.toFixed(0)} min</strong> recarga
-            </li>
-            <li>
-              <strong>{tripSummary.stop_count}</strong> parada{tripSummary.stop_count === 1 ? '' : 's'}
-            </li>
-            <li>
-              <strong>{tripSummary.total_energy_kwh.toFixed(0)} kWh</strong> consumo
-            </li>
-            {tripSummary.projected_destination_soc_pct != null && (
-              <li>
-                <strong>{tripSummary.projected_destination_soc_pct.toFixed(0)} %</strong> al destino
-              </li>
-            )}
-            {tripSummary.estimated_charge_cost_eur != null && (
-              <li>
-                <strong>~{tripSummary.estimated_charge_cost_eur.toFixed(2)} €</strong> carga est.
-              </li>
-            )}
-          </ul>
-        </div>
-      )}
+      {tripSummary && plan.mode === 'route' && <TripSummaryBox summary={tripSummary} />}
 
       {plan.warnings.length > 0 && (!assistant || !planComplete) && (
         <ul className="charge-warnings" aria-label="Alertas del plan">
@@ -137,7 +177,7 @@ export function ChargingPlanResults({
               {plannedStops.length > 0 && (
                 <>
                   {' · '}
-                  ~{totalPlannedChargeMinutes(plannedStops).toFixed(0)} min carga total
+                  ~{plannedStops.reduce((sum, stop) => sum + stop.charge_minutes, 0).toFixed(0)} min carga total
                 </>
               )}
             </>
