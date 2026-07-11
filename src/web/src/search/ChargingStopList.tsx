@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+
 import { stationLabel } from '../api/chargingPlan'
 import type { ChargingPlanStopResult, Station } from '../api/types'
 import {
@@ -26,6 +28,14 @@ export function ChargingStopList({
   distanceLabel,
   showRouteDeviation = true,
 }: ChargingStopListProps) {
+  useEffect(() => {
+    if (!selectedStationId) {
+      return
+    }
+    const element = document.querySelector(`[data-station-id="${selectedStationId}"]`)
+    element?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [selectedStationId])
+
   if (stops.length === 0) {
     return null
   }
@@ -33,7 +43,7 @@ export function ChargingStopList({
   return (
     <ol className="route-results" aria-label={ariaLabel}>
       {stops.map((item, index) => (
-        <li key={`${item.station.id}-${index}`} className="route-result-card">
+        <li key={`${item.station.id}-${index}`} className="route-result-card" data-station-id={item.station.id}>
           <button
             type="button"
             className={`route-result ${selectedStationId === item.station.id ? 'route-result--active' : ''}`}

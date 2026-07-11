@@ -177,7 +177,7 @@ export function AssistantPanel({
         excludeSlowChargers: revePlanning.excludeSlowChargers,
         consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
         vehiclePresetId: vehicleProfile.presetId,
-        usableCapacityKwh: vehiclePreset.usableCapacityKwh,
+        minKw: revePlanning.excludeSlowChargers ? 50 : 100,
       })
       setAdvice((prev) =>
         prev
@@ -244,7 +244,7 @@ export function AssistantPanel({
         excludeSlowChargers: revePlanning.excludeSlowChargers,
         consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
         vehiclePresetId: vehicleProfile.presetId,
-        usableCapacityKwh: vehiclePreset.usableCapacityKwh,
+        minKw: revePlanning.excludeSlowChargers ? 50 : 100,
       })
       setAdvice(result)
       onPlanResults(result.plan)

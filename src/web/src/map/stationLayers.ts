@@ -20,13 +20,21 @@ export const STATIONS_SOURCE_ID = STATIONS_BROWSE_SOURCE_ID
 export const CLUSTER_LAYER_ID = 'station-browse-clusters'
 export const CLUSTER_COUNT_LAYER_ID = 'station-browse-cluster-count'
 export const POINT_LAYER_ID = 'station-browse-points'
+export const PLANNED_STOP_CIRCLE_LAYER_ID = 'station-overlay-planned-circles'
 export const PLANNED_STOP_LABEL_LAYER_ID = 'station-overlay-planned-labels'
 
 export const OVERLAY_POINT_LAYER_ID = 'station-overlay-points'
 
+const PLANNED_STOP_COLOR = '#2563eb'
+const PLANNED_STOP_SELECTED_COLOR = '#ea580c'
+
 const BROWSE_CLUSTER_LAYERS = [CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID] as const
 const BROWSE_POINT_LAYERS = [POINT_LAYER_ID] as const
-const OVERLAY_LAYERS = [OVERLAY_POINT_LAYER_ID, PLANNED_STOP_LABEL_LAYER_ID] as const
+const OVERLAY_LAYERS = [
+  OVERLAY_POINT_LAYER_ID,
+  PLANNED_STOP_CIRCLE_LAYER_ID,
+  PLANNED_STOP_LABEL_LAYER_ID,
+] as const
 
 type ThemeMode = 'light' | 'dark'
 
@@ -222,17 +230,29 @@ export function ensureStationLayers(map: maplibregl.Map, theme: ThemeMode): void
       id: OVERLAY_POINT_LAYER_ID,
       type: 'circle',
       source: STATIONS_OVERLAY_SOURCE_ID,
+      filter: ['!', ['has', 'planned_stop_order']],
       paint: {
         'circle-color': pointColorExpression(theme),
-        'circle-radius': [
-          'case',
-          ['has', 'planned_stop_order'],
-          ['interpolate', ['linear'], ['zoom'], 5, 9, 10, 13, 14, 16],
-          ['interpolate', ['linear'], ['zoom'], 5, 7, 10, 10, 14, 13],
-        ],
-        'circle-stroke-width': ['case', ['has', 'planned_stop_order'], 3, 2],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 7, 10, 10, 14, 13],
+        'circle-stroke-width': 2,
         'circle-stroke-color': colors.pointStroke,
         'circle-opacity': 0.96,
+      },
+    })
+  }
+
+  if (!map.getLayer(PLANNED_STOP_CIRCLE_LAYER_ID)) {
+    map.addLayer({
+      id: PLANNED_STOP_CIRCLE_LAYER_ID,
+      type: 'circle',
+      source: STATIONS_OVERLAY_SOURCE_ID,
+      filter: ['has', 'planned_stop_order'],
+      paint: {
+        'circle-color': PLANNED_STOP_COLOR,
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 11, 10, 15, 14, 18],
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 1,
       },
     })
   }
@@ -246,8 +266,9 @@ export function ensureStationLayers(map: maplibregl.Map, theme: ThemeMode): void
       layout: {
         'text-field': ['to-string', ['get', 'planned_stop_order']],
         'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-        'text-size': 12,
+        'text-size': ['interpolate', ['linear'], ['zoom'], 5, 11, 10, 13, 14, 16],
         'text-allow-overlap': true,
+        'text-ignore-placement': true,
       },
       paint: {
         'text-color': '#ffffff',
@@ -256,6 +277,10 @@ export function ensureStationLayers(map: maplibregl.Map, theme: ThemeMode): void
   }
 
   setStationMapMode(map, 'browse')
+
+  if (map.getLayer(OVERLAY_POINT_LAYER_ID)) {
+    map.setFilter(OVERLAY_POINT_LAYER_ID, ['!', ['has', 'planned_stop_order']])
+  }
 }
 
 export function updateStationLayerTheme(map: maplibregl.Map, theme: ThemeMode): void {
@@ -270,9 +295,41 @@ export function updateStationLayerTheme(map: maplibregl.Map, theme: ThemeMode): 
   map.setPaintProperty(POINT_LAYER_ID, 'circle-stroke-color', colors.pointStroke)
   map.setPaintProperty(OVERLAY_POINT_LAYER_ID, 'circle-color', pointColorExpression(theme))
   map.setPaintProperty(OVERLAY_POINT_LAYER_ID, 'circle-stroke-color', colors.pointStroke)
+  if (map.getLayer(PLANNED_STOP_CIRCLE_LAYER_ID)) {
+    map.setPaintProperty(PLANNED_STOP_CIRCLE_LAYER_ID, 'circle-color', PLANNED_STOP_COLOR)
+    map.setPaintProperty(PLANNED_STOP_CIRCLE_LAYER_ID, 'circle-stroke-color', '#ffffff')
+  }
   if (map.getLayer(PLANNED_STOP_LABEL_LAYER_ID)) {
     map.setPaintProperty(PLANNED_STOP_LABEL_LAYER_ID, 'text-color', '#ffffff')
   }
+}
+
+export function updatePlannedStopSelection(map: maplibregl.Map, selectedOrder: number | null): void {
+  if (!map.getLayer(PLANNED_STOP_CIRCLE_LAYER_ID)) {
+    return
+  }
+  const circleColor = (
+    selectedOrder == null
+      ? PLANNED_STOP_COLOR
+      : [
+          'case',
+          ['==', ['get', 'planned_stop_order'], selectedOrder],
+          PLANNED_STOP_SELECTED_COLOR,
+          PLANNED_STOP_COLOR,
+        ]
+  ) as maplibregl.ExpressionSpecification
+  map.setPaintProperty(PLANNED_STOP_CIRCLE_LAYER_ID, 'circle-color', circleColor)
+  const circleRadius = (
+    selectedOrder == null
+      ? ['interpolate', ['linear'], ['zoom'], 5, 11, 10, 15, 14, 18]
+      : [
+          'case',
+          ['==', ['get', 'planned_stop_order'], selectedOrder],
+          ['interpolate', ['linear'], ['zoom'], 5, 13, 10, 17, 14, 20],
+          ['interpolate', ['linear'], ['zoom'], 5, 11, 10, 15, 14, 18],
+        ]
+  ) as maplibregl.ExpressionSpecification
+  map.setPaintProperty(PLANNED_STOP_CIRCLE_LAYER_ID, 'circle-radius', circleRadius)
 }
 
 /** Modo mapa: datos clusterizados en fuente browse. */
@@ -303,7 +360,7 @@ export function interactiveStationLayers(mode: StationMapMode): string[] {
     return [POINT_LAYER_ID, CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID]
   }
   if (mode === 'overlay') {
-    return [OVERLAY_POINT_LAYER_ID, PLANNED_STOP_LABEL_LAYER_ID]
+    return [OVERLAY_POINT_LAYER_ID, PLANNED_STOP_CIRCLE_LAYER_ID, PLANNED_STOP_LABEL_LAYER_ID]
   }
   return []
 }

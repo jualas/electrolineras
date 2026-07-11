@@ -268,7 +268,11 @@ def optimize_planned_route_stops(
     avg_speed_kmh = resolve_avg_speed_kmh(route_distance_km, route_duration_minutes)
     target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
     max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
-    origin_exclusion_km = origin_exclusion_radius_km(target_leg_km, profile.soc_percent)
+    origin_exclusion_km = origin_exclusion_radius_km(
+        target_leg_km,
+        profile.soc_percent,
+        charging_reach_km=estimate_charging_reach_km(profile),
+    )
 
     distance_to_dest = max(0.0, destination_distance_km - origin_position_km)
     if distance_to_dest <= estimate_range_km(profile) + 1e-6:

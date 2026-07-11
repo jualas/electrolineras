@@ -40,6 +40,7 @@ export async function fetchTripAdviceFromCar(params: {
   preferredOperators?: string[]
   maxPriceEurKwh?: number | null
   maxChargePowerKw?: number
+  minKw?: number
   minDestinationSocPct?: number
   minStopArrivalSocPct?: number
   maxChargeSocPct?: number
@@ -89,6 +90,7 @@ function appendRevePlanningParams(
   query: URLSearchParams,
   params: {
     maxChargePowerKw?: number
+    minKw?: number
     minDestinationSocPct?: number
     minStopArrivalSocPct?: number
     maxChargeSocPct?: number
@@ -100,6 +102,9 @@ function appendRevePlanningParams(
 ): void {
   if (params.maxChargePowerKw != null) {
     query.set('max_charge_power_kw', String(params.maxChargePowerKw))
+  }
+  if (params.minKw != null) {
+    query.set('min_kw', String(params.minKw))
   }
   if (params.minDestinationSocPct != null) {
     query.set('min_destination_soc_pct', String(params.minDestinationSocPct))
@@ -141,6 +146,7 @@ export async function fetchTripGuideFromCar(params: {
   preferredOperators?: string[]
   maxPriceEurKwh?: number | null
   maxChargePowerKw?: number
+  minKw?: number
   minDestinationSocPct?: number
   minStopArrivalSocPct?: number
   maxChargeSocPct?: number

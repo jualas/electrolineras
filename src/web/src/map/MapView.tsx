@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 
-import { chargingPlanRouteMapFeatures, routeChargingStops, routeMapFitPoints } from '../charging/planRouteStops'
+import { chargingPlanRouteMapFeatures, routeChargingStops, routeMapFitPoints, type RouteChargingStop } from '../charging/planRouteStops'
 import { alongRouteToFeatures } from '../api/route'
 import { fetchStationsGeoJSON } from '../api/stations'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station, StationFeature } from '../api/types'
@@ -38,12 +38,15 @@ import {
   interactiveStationLayers,
   mapShowsStationGlyphs,
   OVERLAY_POINT_LAYER_ID,
+  PLANNED_STOP_CIRCLE_LAYER_ID,
+  PLANNED_STOP_LABEL_LAYER_ID,
   POINT_LAYER_ID,
   setBrowseStationData,
   setOverlayStationData,
   setStationMapMode,
   stationPopupHtml,
   STATIONS_BROWSE_SOURCE_ID,
+  updatePlannedStopSelection,
   updateStationLayerTheme,
   type StationMapMode,
 } from './stationLayers'
@@ -100,6 +103,8 @@ type MapViewProps = {
   chargePlanData?: ChargingPlanResponse | null
   chargePlanSearching?: boolean
   focusStation?: Station | null
+  selectedPlannedStopOrder?: number | null
+  onPlannedStopSelect?: (stop: RouteChargingStop | null) => void
   mapFocusPlace?: GeocodeResult | null
   onRegisterMapBounds?: (getter: MapBoundsGetter | null) => void
 }
@@ -206,6 +211,8 @@ export function MapView({
   chargePlanData = null,
   chargePlanSearching = false,
   focusStation = null,
+  selectedPlannedStopOrder = null,
+  onPlannedStopSelect,
   mapFocusPlace = null,
   onRegisterMapBounds,
 }: MapViewProps) {
@@ -235,6 +242,8 @@ export function MapView({
   const routeDataRef = useRef(routeData)
   const routeChargePlanDataRef = useRef(routeChargePlanData)
   const chargePlanDataRef = useRef(chargePlanData)
+  const selectedPlannedStopOrderRef = useRef(selectedPlannedStopOrder)
+  const onPlannedStopSelectRef = useRef(onPlannedStopSelect)
   const clusterNavUntilRef = useRef(0)
   const loadVisibleStationsRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
   const scheduleLoadRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
@@ -256,6 +265,49 @@ export function MapView({
   routeDataRef.current = routeData
   routeChargePlanDataRef.current = routeChargePlanData
   chargePlanDataRef.current = chargePlanData
+  selectedPlannedStopOrderRef.current = selectedPlannedStopOrder
+  onPlannedStopSelectRef.current = onPlannedStopSelect
+
+  const resolveRouteChargingStop = useCallback(
+    (order: number): RouteChargingStop | null => {
+      const plan = chargePlanDataRef.current ?? routeChargePlanDataRef.current
+      if (!plan) {
+        return null
+      }
+      const planned = plan.planned_stops?.find((stop) => stop.order === order)
+      if (planned) {
+        return planned
+      }
+      const routeStops = routeChargingStops(plan)
+      return (
+        routeStops.find((stop, index) => {
+          if ('order' in stop && typeof stop.order === 'number') {
+            return stop.order === order
+          }
+          return index + 1 === order
+        }) ?? null
+      )
+    },
+    [],
+  )
+
+  const handlePlannedStopFeatureClick = useCallback(
+    (properties: Record<string, unknown>) => {
+      const rawOrder = properties.planned_stop_order
+      if (rawOrder == null || Number.isNaN(Number(rawOrder))) {
+        return false
+      }
+      const stop = resolveRouteChargingStop(Number(rawOrder))
+      if (!stop) {
+        return false
+      }
+      onPlannedStopSelectRef.current?.(stop)
+      return true
+    },
+    [resolveRouteChargingStop],
+  )
+  const handlePlannedStopFeatureClickRef = useRef(handlePlannedStopFeatureClick)
+  handlePlannedStopFeatureClickRef.current = handlePlannedStopFeatureClick
 
   const [loadState, setLoadState] = useState<LoadState>('idle')
   const [stationCount, setStationCount] = useState(0)
@@ -308,6 +360,7 @@ export function MapView({
         features,
       })
       bringOverlayStationLayersToFront(map)
+      updatePlannedStopSelection(map, selectedPlannedStopOrderRef.current)
       setStationCount(features.length)
       setHasMore(false)
       setLoadState(features.length > 0 ? 'ready' : 'idle')
@@ -602,8 +655,23 @@ export function MapView({
       if (!feature || feature.geometry.type !== 'Point') {
         return
       }
+      const properties = feature.properties ?? {}
+      if (handlePlannedStopFeatureClickRef.current(properties)) {
+        popupRef.current?.remove()
+        return
+      }
       const coordinates = feature.geometry.coordinates.slice() as [number, number]
-      showStationPopup(map, popupRef.current, coordinates, feature.properties ?? {})
+      showStationPopup(map, popupRef.current, coordinates, properties)
+    }
+
+    const onPlannedLabelClick = (event: maplibregl.MapLayerMouseEvent) => {
+      const feature = event.features?.[0]
+      if (!feature) {
+        return
+      }
+      if (handlePlannedStopFeatureClickRef.current(feature.properties ?? {})) {
+        popupRef.current?.remove()
+      }
     }
 
     const onStationPointerEnter = () => {
@@ -642,6 +710,8 @@ export function MapView({
     map.on('click', CLUSTER_COUNT_LAYER_ID, onClusterClick)
     map.on('click', POINT_LAYER_ID, onPointClick)
     map.on('click', OVERLAY_POINT_LAYER_ID, onPointClick)
+    map.on('click', PLANNED_STOP_CIRCLE_LAYER_ID, onPointClick)
+    map.on('click', PLANNED_STOP_LABEL_LAYER_ID, onPlannedLabelClick)
 
     map.on('click', (event) => {
       const mode = stationMapModeRef.current
@@ -650,10 +720,20 @@ export function MapView({
       })
       if (hit.length === 0) {
         popupRef.current?.remove()
+        if (mode === 'overlay' && selectedPlannedStopOrderRef.current != null) {
+          onPlannedStopSelectRef.current?.(null)
+        }
       }
     })
 
-    for (const layerId of [CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID, POINT_LAYER_ID, OVERLAY_POINT_LAYER_ID]) {
+    for (const layerId of [
+      CLUSTER_LAYER_ID,
+      CLUSTER_COUNT_LAYER_ID,
+      POINT_LAYER_ID,
+      OVERLAY_POINT_LAYER_ID,
+      PLANNED_STOP_CIRCLE_LAYER_ID,
+      PLANNED_STOP_LABEL_LAYER_ID,
+    ]) {
       map.on('mouseenter', layerId, onStationPointerEnter)
       map.on('mouseleave', layerId, onStationPointerLeave)
     }
@@ -712,11 +792,37 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current
+    if (!map || !map.isStyleLoaded()) {
+      return
+    }
+    updatePlannedStopSelection(map, selectedPlannedStopOrder)
+  }, [selectedPlannedStopOrder])
+
+  useEffect(() => {
+    const map = mapRef.current
     if (!map || !map.isStyleLoaded() || !focusStation) {
       return
     }
+    const plan = chargePlanData ?? routeChargePlanData
+    let plannedOrder: number | null = null
+    if (plan) {
+      const fromPlanned = plan.planned_stops?.find((stop) => stop.station.id === focusStation.id)
+      if (fromPlanned) {
+        plannedOrder = fromPlanned.order
+      } else {
+        const index = routeChargingStops(plan).findIndex((stop) => stop.station.id === focusStation.id)
+        if (index >= 0) {
+          plannedOrder = index + 1
+        }
+      }
+    }
+    const isPlannedStop = plannedOrder != null
     const { lat, lon } = focusStation.location
     map.flyTo({ center: [lon, lat], zoom: 14, duration: 700 })
+    if (isPlannedStop) {
+      popupRef.current?.remove()
+      return
+    }
     showStationPopup(
       map,
       popupRef.current,
@@ -736,7 +842,7 @@ export function MapView({
         external_comments: focusStation.external_comments ?? [],
       },
     )
-  }, [focusStation])
+  }, [focusStation, chargePlanData, routeChargePlanData])
 
   useEffect(() => {
     const map = mapRef.current

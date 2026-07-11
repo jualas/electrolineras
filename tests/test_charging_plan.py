@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from api.routing.charging_plan import (
     VehicleEnergyProfile,
     build_emergency_charging_plan,
@@ -261,6 +263,45 @@ def test_planned_stops_monotonic_and_short_charge_strategy() -> None:
     assert projected is not None
 
 
+def test_origin_exclusion_capped_by_charging_reach() -> None:
+    from api.routing.charging_plan import estimate_charging_reach_km, origin_exclusion_radius_km
+
+    profile = VehicleEnergyProfile(
+        soc_percent=100,
+        usable_capacity_kwh=57,
+        consumption_wh_per_km=361,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        vehicle_preset_id="tesla-model3-sr-2023",
+    )
+    reach = estimate_charging_reach_km(profile)
+    exclusion = origin_exclusion_radius_km(176.0, 100.0, charging_reach_km=reach)
+    assert reach == pytest.approx(150.0, abs=1.0)
+    assert exclusion < reach
+    assert exclusion == pytest.approx(120.0, abs=1.0)
+
+
+def test_telemetry_capacity_model_3_50() -> None:
+    from api.integrations.telemetry_energy import resolve_telemetry_capacity_kwh
+    from api.integrations.teslamate import VehicleTelemetry
+
+    telemetry = VehicleTelemetry(
+        car_id=1,
+        display_name="The Ship",
+        state="online",
+        lat=37.6,
+        lon=-1.0,
+        battery_level_pct=39.0,
+        usable_battery_level_pct=39.0,
+        est_battery_range_km=483.0,
+        rated_battery_range_km=158.0,
+        model="3",
+        trim_badging="50",
+        car_model_label="Model 3 50",
+    )
+    assert resolve_telemetry_capacity_kwh(telemetry=telemetry) == 50.0
+
+
 def test_no_planned_stops_near_origin_when_soc_100() -> None:
     from api.routing.charging_plan import build_planned_route_stops, origin_exclusion_radius_km, resolve_avg_speed_kmh
 
@@ -275,7 +316,11 @@ def test_no_planned_stops_near_origin_when_soc_100() -> None:
     route_km = 808.0
     route_duration = 480.0
     avg_speed = resolve_avg_speed_kmh(route_km, route_duration)
-    exclusion = origin_exclusion_radius_km(avg_speed * 2, 100.0)
+    exclusion = origin_exclusion_radius_km(
+        avg_speed * 2,
+        100.0,
+        charging_reach_km=estimate_charging_reach_km(profile),
+    )
 
     matches = [
         CorridorMatch(
@@ -297,7 +342,23 @@ def test_no_planned_stops_near_origin_when_soc_100() -> None:
         CorridorMatch(
             station=sample_station("two-hours", 40.5, 0.5, kw=200.0),
             deviation_m=400,
-            route_position_m=int((exclusion + 15) * 1000),
+            route_position_m=int((exclusion + 50) * 1000),
+            extra_minutes=3.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+        CorridorMatch(
+            station=sample_station("mid", 41.0, 0.8, kw=200.0),
+            deviation_m=400,
+            route_position_m=450_000,
+            extra_minutes=3.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+        CorridorMatch(
+            station=sample_station("late", 41.5, 1.1, kw=200.0),
+            deviation_m=400,
+            route_position_m=650_000,
             extra_minutes=3.0,
             behind_route=False,
             wrong_side=False,

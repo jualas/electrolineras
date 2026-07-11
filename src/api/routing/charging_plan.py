@@ -434,11 +434,21 @@ def allows_origin_zone_charging(trip_start_soc_pct: float) -> bool:
     return trip_start_soc_pct < ORIGIN_CHARGE_SOC_THRESHOLD_PCT
 
 
-def origin_exclusion_radius_km(target_leg_km: float, trip_start_soc_pct: float) -> float:
+def origin_exclusion_radius_km(
+    target_leg_km: float,
+    trip_start_soc_pct: float,
+    *,
+    charging_reach_km: float | None = None,
+) -> float:
     """Distancia mínima desde la salida antes de la 1.ª parada (≈2 h DGT si SOC ≥10 %)."""
     if allows_origin_zone_charging(trip_start_soc_pct):
         return 0.0
-    return max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, target_leg_km)
+    exclusion = max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, target_leg_km)
+    if charging_reach_km is not None and charging_reach_km > 0:
+        # No exigir parada más lejos de lo que la batería puede alcanzar (TeslaMate / alto consumo).
+        max_exclusion = max(0.0, charging_reach_km - 30.0)
+        exclusion = min(exclusion, max_exclusion)
+    return exclusion
 
 
 def resolve_avg_speed_kmh(
@@ -478,7 +488,11 @@ def _segment_min_route_km(
     max_leg_km: float,
     profile: VehicleEnergyProfile,
 ) -> float:
-    exclusion_km = origin_exclusion_radius_km(target_leg_km, trip_start_soc)
+    exclusion_km = origin_exclusion_radius_km(
+        target_leg_km,
+        trip_start_soc,
+        charging_reach_km=estimate_charging_reach_km(profile),
+    )
     from_trip_start = current_route_km - trip_start_route_km
 
     if exclusion_km > 0 and from_trip_start < 1.0:
@@ -807,7 +821,11 @@ def build_planned_route_stops_greedy(
 
     max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
     target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
-    origin_exclusion_km = origin_exclusion_radius_km(target_leg_km, trip_start_soc)
+    origin_exclusion_km = origin_exclusion_radius_km(
+        target_leg_km,
+        trip_start_soc,
+        charging_reach_km=estimate_charging_reach_km(profile),
+    )
     allow_origin_zone = allows_origin_zone_charging(trip_start_soc)
 
     for _attempt in range(max_stops):

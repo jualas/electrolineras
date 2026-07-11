@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
+import { routeChargingStops, type RouteChargingStop } from '../../charging/planRouteStops'
 import { MapStationFilters, type MapStationFilterState } from '../../filters/MapStationFilters'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
@@ -48,6 +49,7 @@ export function AppShell() {
   const [chargePlanData, setChargePlanData] = useState<ChargingPlanResponse | null>(null)
   const [chargePlanSearching, setChargePlanSearching] = useState(false)
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
+  const [selectedPlannedStopOrder, setSelectedPlannedStopOrder] = useState<number | null>(null)
   const [mapFocusPlace, setMapFocusPlace] = useState<GeocodeResult | null>(null)
   const [mapSearchText, setMapSearchText] = useState('')
   const [mapLayers, setMapLayers] = useState<MapLayerToggles>(DEFAULT_MAP_LAYERS)
@@ -98,12 +100,79 @@ export function AppShell() {
       setPanelOpen(true)
     }
     setSelectedStation(null)
+    setSelectedPlannedStopOrder(null)
     setPanelOpen(nextMode !== 'map')
   }
+
+  const activeChargePlan = useCallback((): ChargingPlanResponse | null => {
+    if (mode === 'assistant' || (CHARGE_PLAN_NAV_ENABLED && mode === 'charge')) {
+      return chargePlanData
+    }
+    if (mode === 'route') {
+      return routeChargePlanData
+    }
+    return null
+  }, [mode, chargePlanData, routeChargePlanData])
+
+  const resolvePlannedStopOrder = useCallback(
+    (station: Station | null, plan: ChargingPlanResponse | null): number | null => {
+      if (!station || !plan) {
+        return null
+      }
+      const fromPlanned = plan.planned_stops?.find((stop) => stop.station.id === station.id)
+      if (fromPlanned) {
+        return fromPlanned.order
+      }
+      const routeStops = routeChargingStops(plan)
+      const index = routeStops.findIndex((stop) => stop.station.id === station.id)
+      if (index < 0) {
+        return null
+      }
+      const stop = routeStops[index]
+      if ('order' in stop && typeof stop.order === 'number') {
+        return stop.order
+      }
+      return index + 1
+    },
+    [],
+  )
+
+  const handleSelectStation = useCallback(
+    (station: Station | null) => {
+      setSelectedStation(station)
+      setSelectedPlannedStopOrder(resolvePlannedStopOrder(station, activeChargePlan()))
+      if (station) {
+        setPanelOpen(true)
+      }
+    },
+    [activeChargePlan, resolvePlannedStopOrder],
+  )
+
+  const handlePlannedStopSelect = useCallback(
+    (stop: RouteChargingStop | null) => {
+      if (!stop) {
+        setSelectedStation(null)
+        setSelectedPlannedStopOrder(null)
+        return
+      }
+      setSelectedStation(stop.station)
+      if ('order' in stop && typeof stop.order === 'number') {
+        setSelectedPlannedStopOrder(stop.order)
+      } else {
+        const plan = activeChargePlan()
+        const routeStops = plan ? routeChargingStops(plan) : []
+        const index = routeStops.findIndex((item) => item.station.id === stop.station.id)
+        setSelectedPlannedStopOrder(index >= 0 ? index + 1 : null)
+      }
+      setPanelOpen(true)
+    },
+    [activeChargePlan],
+  )
 
   const handleRouteResults = useCallback((response: AlongRouteResponse | null) => {
     setRouteData(response)
     setSelectedStation(null)
+    setSelectedPlannedStopOrder(null)
   }, [])
 
   const handleRouteChargePlanResults = useCallback((response: ChargingPlanResponse | null) => {
@@ -117,6 +186,7 @@ export function AppShell() {
   const handleChargePlanResults = useCallback((response: ChargingPlanResponse | null) => {
     setChargePlanData(response)
     setSelectedStation(null)
+    setSelectedPlannedStopOrder(null)
   }, [])
 
   const handleChargePlanSearchStateChange = useCallback((status: 'idle' | 'loading' | 'ready' | 'error') => {
@@ -127,6 +197,7 @@ export function AppShell() {
     setMapFocusPlace(place)
     setMapSearchText(place?.label ?? '')
     setSelectedStation(null)
+    setSelectedPlannedStopOrder(null)
   }, [])
 
   const handleMapSearchTextChange = useCallback(
@@ -143,6 +214,7 @@ export function AppShell() {
     setMapSearchText('')
     setMapFocusPlace(null)
     setSelectedStation(null)
+    setSelectedPlannedStopOrder(null)
   }, [])
 
   const handleRegisterMapBounds = useCallback((getter: (() => MapBounds | null) | null) => {
@@ -175,6 +247,8 @@ export function AppShell() {
           (mode === 'assistant' || (CHARGE_PLAN_NAV_ENABLED && mode === 'charge')) && chargePlanSearching
         }
         focusStation={mode !== 'map' ? selectedStation : null}
+        selectedPlannedStopOrder={mode !== 'map' ? selectedPlannedStopOrder : null}
+        onPlannedStopSelect={mode !== 'map' ? handlePlannedStopSelect : undefined}
         mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
         onRegisterMapBounds={handleRegisterMapBounds}
       />
@@ -255,10 +329,10 @@ export function AppShell() {
             onMapStationFiltersChange={setMapStationFilters}
             onRouteResults={handleRouteResults}
             onRouteChargePlanResults={handleRouteChargePlanResults}
-            onRouteSelectStation={setSelectedStation}
+            onRouteSelectStation={handleSelectStation}
             onRouteSearchStateChange={handleRouteSearchStateChange}
             onChargePlanResults={handleChargePlanResults}
-            onChargePlanSelectStation={setSelectedStation}
+            onChargePlanSelectStation={handleSelectStation}
             onChargePlanSearchStateChange={handleChargePlanSearchStateChange}
             selectedStationId={selectedStation?.id ?? null}
           />

@@ -87,25 +87,38 @@ export function ChargingPlanResults({
   const routeExport = routeExportSpecFromChargingPlan(plan)
   const routeStrategies = plan.strategies.filter((strategy) => !ORIGIN_NOISE_STRATEGY_IDS.has(strategy.id))
   const tripSummary = plan.route_trip_summary
-  const compactPlan =
-    assistant || (plan.mode === 'route' && tripSummary != null && plannedStops.length > 0)
+  const compactPlan = assistant || (plan.mode === 'route' && tripSummary != null && plannedStops.length > 0)
+  const corridorFallbackStops =
+    plannedStops.length === 0 && !plan.reachable_without_stop ? routeChargingStops(plan) : []
+  const displayStops = plannedStops.length > 0 ? routeStops : corridorFallbackStops
+  const hasDisplayStops = displayStops.length > 0
 
   if (compactPlan && plan.mode === 'route') {
     return (
       <>
-        {hasPlannedRoute ? (
+        {hasDisplayStops ? (
           <>
-            <h3 className="charge-section-title">Dónde cargar en la ruta</h3>
+            <h3 className="charge-section-title">
+              {plannedStops.length > 0 ? 'Dónde cargar en la ruta' : 'Cargadores viables en el corredor'}
+            </h3>
+            {plannedStops.length === 0 && (
+              <p className="route-message route-message--error" role="alert">
+                No se pudo completar un plan multi-parada con tu autonomía actual. Revisa consumo, kW mínimos
+                o carga antes de salir. Estos son los mejores candidatos en ruta.
+              </p>
+            )}
             {!planComplete && plannedStops.length > 0 && (
               <p className="route-message route-message--error" role="alert">
                 Plan incompleto: no llegarías con batería suficiente. Revisa corredor o filtros kW.
               </p>
             )}
             <ChargingStopList
-              stops={routeStops}
+              stops={displayStops}
               selectedStationId={selectedStationId}
               onSelectStation={onSelectStation}
-              ariaLabel="Paradas planificadas en la ruta"
+              ariaLabel={
+                plannedStops.length > 0 ? 'Paradas planificadas en la ruta' : 'Candidatos de carga en ruta'
+              }
               showRouteDeviation={false}
               distanceLabel={(item) =>
                 plannedStops.length > 0

@@ -46,7 +46,12 @@ function minDistanceFromOriginKm(plan: ChargingPlanResponse): number {
   if (plan.vehicle.soc_percent < ORIGIN_CHARGE_SOC_THRESHOLD) {
     return 0
   }
-  return Math.max(MIN_ORIGIN_SKIP_KM, targetLegKm)
+  const exclusion = Math.max(MIN_ORIGIN_SKIP_KM, targetLegKm)
+  const reach = plan.charging_reach_km ?? 0
+  if (reach > 0) {
+    return Math.min(exclusion, Math.max(0, reach - 30))
+  }
+  return exclusion
 }
 
 function excludeOriginNearStops(
@@ -140,7 +145,11 @@ export function routeChargingStops(plan: ChargingPlanResponse): RouteChargingSto
     plan.route_shortest_distance_km ??
     0
   const count = estimateChargingStopCount(plan)
-  return pickStopsByRouteDistance(viable, count, routeKm)
+  const picked = pickStopsByRouteDistance(viable, count, routeKm)
+  if (picked.length > 0) {
+    return picked
+  }
+  return viable.slice(0, Math.max(count, 3))
 }
 
 export function routeChargingWaypoints(plan: ChargingPlanResponse): MapCoords[] {

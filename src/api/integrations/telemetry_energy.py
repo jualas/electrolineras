@@ -25,12 +25,33 @@ def resolve_telemetry_capacity_kwh(
     *,
     vehicle_preset_id: str | None = None,
     usable_capacity_kwh: float | None = None,
+    telemetry: VehicleTelemetry | None = None,
 ) -> float:
     if usable_capacity_kwh is not None and usable_capacity_kwh > 0:
         return usable_capacity_kwh
+    if telemetry is not None:
+        from_telemetry = _capacity_kwh_from_telemetry_model(telemetry)
+        if from_telemetry is not None:
+            return from_telemetry
     if vehicle_preset_id:
         return resolve_dc_profile(vehicle_preset_id, GENERIC_DC_PROFILE.usable_capacity_kwh).usable_capacity_kwh
     return GENERIC_DC_PROFILE.usable_capacity_kwh
+
+
+def _capacity_kwh_from_telemetry_model(telemetry: VehicleTelemetry) -> float | None:
+    """Capacidad útil aproximada según modelo TeslaMate (p. ej. Model 3 50)."""
+    label = (telemetry.car_model_label or "").lower()
+    trim = (telemetry.trim_badging or "").lower()
+    model = (telemetry.model or "").strip()
+    if model == "3" or "model 3" in label:
+        if "50" in label or trim in {"50", "sr", "standard", "standard range"}:
+            return 50.0
+        if "lr" in label or "long" in label or trim in {"long range", "lr"}:
+            return 75.0
+    if model == "y" or "model y" in label:
+        if "lr" in label or "long" in label:
+            return 75.0
+    return None
 
 
 def vehicle_energy_from_telemetry(
@@ -59,6 +80,7 @@ def vehicle_energy_from_telemetry(
     capacity = resolve_telemetry_capacity_kwh(
         vehicle_preset_id=vehicle_preset_id,
         usable_capacity_kwh=usable_capacity_kwh,
+        telemetry=telemetry,
     )
     # Consumo coherente con capacidad útil y autonomía nominal TeslaMate al 100 %
     consumption_wh_per_km = (capacity * 1000.0 / rated_km) * terrain
