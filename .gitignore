@@ -10,6 +10,7 @@ env/
 !.env.example
 !.env.production.example
 scripts/cron/electrolineras.env
+scripts/deploy/deploy.env
 dist/
 build/
 *.egg-info/
