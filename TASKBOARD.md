@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-07-10T18:38:39Z -->
+<!-- taskboard-exported-at: 2026-07-31T19:07:19Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
-**Estado del proyecto:** `planning`  
+**Estado del proyecto:** `development`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-07-10 18:38 UTC  
-**Git:** `main` @ `8a19ff6e`  
+**Exportado:** 2026-07-31 19:07 UTC  
+**Git:** `develop` @ `dfe84848`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -22,9 +22,9 @@ donde se publica la informacion de los puntos de carga )
 
 | Estado | Tareas |
 |--------|--------|
-| En progreso (`in_progress`) | 1 |
-| Pendiente (`pending`) | 15 |
-| Completada (`completed`) | 62 |
+| En progreso (`in_progress`) | 2 |
+| Pendiente (`pending`) | 42 |
+| Completada (`completed`) | 63 |
 
 ---
 
@@ -61,6 +61,29 @@ Extender `ChargingPlanResponse` / `planned_stops[]` con salida comparable a REVE
 
 Actualizar `agent_trip_guide` snapshot y narrativa Dify con nuevos campos.
 Depende de motor optimización REVE.
+
+---
+
+<a id="task-6126"></a>
+### [#6126] Routing — alinear ruta rápida con Google Maps (tráfico / motor)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6126` |
+| Estado | `in_progress` |
+| Complejidad | compleja |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-31 19:06 UTC |
+
+Hallazgo de test usuario (2026-07-31): en ciertos viajes la ruta «rápida» OSRM no coincide con Google Maps y las diferencias de tiempo son altas.
+
+**Fase 1 hecha (2026-07-31):** `OSRM_FASTEST_ALTERNATIVES_COUNT=3`, tolerancia desempate **8 %**, avisos UI (sin tráfico / Google recalcula), docs + tests (Plasencia / Garrote Gordo / Zaragoza). Motor con tráfico queda en **#6067**.
+
+Causa raíz:
+- OSRM self-host sin tráfico; Google usa tráfico + históricos.
+- «Abrir en Google Maps» recalcula el corredor (no fuerza la polilínea OSRM).
+
+Casos calibración: Cartagena→Plasencia, Cartagena→Camping Garrote Gordo (a veces poca diferencia; Garrote = 1 sola alt OSRM).
 
 ---
 
@@ -331,31 +354,454 @@ Depende de métricas REVE API + perfil consumo Grafana.
 
 ---
 
-<a id="task-6098"></a>
-### [#6098] Penalizar micro-paradas y benchmark Cartagena→Mundaka vs Tesla
+<a id="task-6127"></a>
+### [#6127] Navegación — mejorar envío de rutas a app Tesla
 
 | Campo | Valor |
 |-------|-------|
-| ID | `6098` |
+| ID | `6127` |
 | Estado | `pending` |
 | Complejidad | media |
 | Posición Kanban | 999.0 |
-| Actualizado | 2026-07-10 18:37 UTC |
+| Actualizado | 2026-07-31 18:04 UTC |
 
-Tras comparar Cartagena→Mundaka (882 km) con la app Tesla (3 paradas, 74 min recarga, 9h40 total) vs Electrolineras (4 paradas, 44 min, 10h22): el optimizador genera una micro-parada prematura en Albacete km 198 (llegada 53%, solo 5 min carga) que Tesla evita (1ª parada Atalaya ~280 km, 22%).
+Hallazgo de test usuario (2026-07-31): no puede enviar las rutas a la app Tesla de forma fiable.
 
-Objetivo motor (#6087):
-- Penalizar o descartar paradas si SOC llegada > umbral (p.ej. 40%) o carga añade <10 min autonomía.
-- Forzar progreso mínimo antes de 1ª parada en autopista (~180–200 km, alineado REVE/Tesla).
-- Evitar cadenas con parada casi inútil (53%→58%).
+Estado actual:
+- Botón «Enviar a app Tesla» = Web Share API (navigator.share) solo en móvil; en escritorio/navegador Tesla a menudo no aparece o falla.
+- Comparte URL de Google Maps; Tesla suele aceptar un destino, no la ruta multi-parada completa.
+- No hay Tesla Fleet API (navigation_gps_request / waypoints). Ver docs/NAVIGATION.md.
 
-Benchmark CI / regresión:
-- Fixture Cartagena (37.625, -0.996) → Mundaka (43.407, -2.698).
-- Params: Model 3 SR (57 kWh, 136 Wh/km, 170 kW), SOC 100/10/10/80, exclude_slow.
-- Tolerancias: 3–4 paradas, total_charge_minutes ≤ Tesla+20%, sin parada con soc_arrival > 45% salvo emergencia, km monótonos.
-- Referencia Tesla jul-2026: Atalaya, Rivas, Aranda; destino ~15%.
+Mejoras posibles:
+1) Clarificar UX: en desktop indicar flujo Google Maps → Compartir → Tesla; no etiquetar como envío directo si no hay share.
+2) Botón «1.ª parada → Tesla» más visible / por defecto en móvil.
+3) Fase B: OAuth Tesla Fleet API → enviar siguiente parada al coche (precondicionamiento).
+4) QR / deep link para abrir destino en móvil desde el coche.
 
-Criterio éxito: plan ≤4 paradas, sin micro-parada <15 min con arr>40%, tiempo total competitivo con Tesla (margen +30 min).
+Prioridad: media (secundaria respecto al desajuste de ruta rápida).
+
+---
+
+<a id="task-6099"></a>
+### [#6099] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6099` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1000.0 |
+| Actualizado | 2026-07-13 09:05 UTC |
+
+Commit 8517baae5218: Mostrar números de parada con insignias canvas en el mapa.
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6100"></a>
+### [#6100] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6100` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1001.0 |
+| Actualizado | 2026-07-13 09:05 UTC |
+
+Hay 6 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6101"></a>
+### [#6101] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6101` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1002.0 |
+| Actualizado | 2026-07-13 09:05 UTC |
+
+Commit 73bb719bd60c: Penalizar micro-paradas en el optimizador (#6098) y benchmark Mundaka.
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6102"></a>
+### [#6102] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6102` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1003.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Commit ae297143611f: Alinear planificador con REVE: parámetros, métricas y fix de paradas.
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6103"></a>
+### [#6103] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6103` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1004.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 46 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6104"></a>
+### [#6104] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6104` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1005.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 11 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6105"></a>
+### [#6105] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6105` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1006.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Commit b55f2a405c83: Evitar source completo del cron env en test-reve-api.
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6106"></a>
+### [#6106] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6106` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1007.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 13 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6107"></a>
+### [#6107] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6107` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1008.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Commit 5a64f694cfa0: Arreglar mapa estilo REVE y endurecer auth y API de estaciones.
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6108"></a>
+### [#6108] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6108` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1009.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 7 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6109"></a>
+### [#6109] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6109` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1010.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Commit d221bd776bac: Actualizar TASKBOARD.md tras cerrar #6080 (snapshot 4d42138).
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6110"></a>
+### [#6110] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6110` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1011.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 92 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6111"></a>
+### [#6111] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6111` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1012.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 52 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6112"></a>
+### [#6112] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6112` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1013.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 38 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6113"></a>
+### [#6113] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6113` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1014.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 15 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6114"></a>
+### [#6114] Prod — Activación host post-#6040 (logrotate + webhook)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6114` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1015.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+En el mini PC: (1) instalar logrotate — sudo cp scripts/cron/logrotate.electrolineras.example /etc/logrotate.d/electrolineras; (2) configurar INGEST_WEBHOOK_URL en scripts/cron/electrolineras.env y probar POST con fallo simulado; (3) verificar checklist en docs/DEPLOYMENT.md §5 y enlazar desde runbook (#6047).
+
+---
+
+<a id="task-6115"></a>
+### [#6115] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6115` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1016.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Commit e8cb1c640ffa: Actualizar TASKBOARD.md con hash del commit 443a89c.
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6116"></a>
+### [#6116] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6116` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1017.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 53 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6117"></a>
+### [#6117] Frontend — búsqueda en ruta (Granada→Cartagena)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6117` |
+| Estado | `pending` |
+| Complejidad | compleja |
+| Posición Kanban | 1018.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Implementar flujo UI: origen (GPS o ciudad), destino, preset de potencia, resultados en lista y mapa dentro del corredor anti-retroceso, ordenados por menor desvío. Integrar con API REST de búsqueda en ruta existente. Caso de uso principal del MVP.
+
+---
+
+<a id="task-6118"></a>
+### [#6118] Frontend — búsqueda en ruta (Granada→Cartagena)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6118` |
+| Estado | `pending` |
+| Complejidad | compleja |
+| Posición Kanban | 1019.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Formulario origen/destino (GPS o ciudad), preset potencia Viaje, llamada a /api/v1/stations/along-route, polilínea y estaciones en corredor en MapView, lista ordenada por menor desvío. Referencia: docs/ROUTE_CORRIDOR_SEARCH.md.
+
+---
+
+<a id="task-6119"></a>
+### [#6119] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6119` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1020.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 14 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6120"></a>
+### [#6120] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6120` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1021.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Commit ea585e258898: Actualizar TASKBOARD.md con hash del commit 11a9314.
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6121"></a>
+### [#6121] API — búsqueda en ciudad (potencia + ubicación + acceso)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6121` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1022.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Exponer GET /api/v1/stations/nearby con lat/lon, radio default 1 km, min/max kW y filtros de acceso (público, ad-hoc, excluir CC) según docs/FILTERS.md. Reutilizar repository.nearby existente; respuesta GeoJSON/JSON paginada alineada con el resto de la API.
+
+---
+
+<a id="task-6122"></a>
+### [#6122] Cerrar #6022: commitear bootstrap y sincronizar TaskBoard
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6122` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1023.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Consolidar en un commit el entorno de desarrollo (Python 3.11+, FastAPI, Vite+React, Makefile, .gitignore data/) y cerrar la tarea en TaskBoard con export de TASKBOARD.md y actualización de docs/STATUS.md.
+
+---
+
+<a id="task-6123"></a>
+### [#6123] Revisar cambios del último commit
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6123` |
+| Estado | `pending` |
+| Complejidad | media |
+| Posición Kanban | 1024.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Commit 1002dbec57ae: Alinear documentación del repo con backlog TaskBoard (proyecto id=7).
+
+Comprobar coherencia con el backlog y actualizar tareas si aplica.
+
+---
+
+<a id="task-6124"></a>
+### [#6124] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6124` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1025.0 |
+| Actualizado | 2026-07-13 09:06 UTC |
+
+Hay 5 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
+
+---
+
+<a id="task-6125"></a>
+### [#6125] Organizar y commitear cambios pendientes
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6125` |
+| Estado | `pending` |
+| Complejidad | simple |
+| Posición Kanban | 1026.0 |
+| Actualizado | 2026-07-13 09:07 UTC |
+
+Hay 6 archivo(s) con cambios sin commitear en el workspace. Agrupa el trabajo en commits coherentes con el backlog.
 
 ---
 
@@ -1412,6 +1858,34 @@ Extender test_reve_benchmark_irun.py:
 - assert soc_departure_pct <= 72 en paradas intermedias
 
 Prioridad P1.
+
+---
+
+<a id="task-6098"></a>
+### [#6098] Penalizar micro-paradas y benchmark Cartagena→Mundaka vs Tesla
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6098` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-10 18:44 UTC |
+
+Tras comparar Cartagena→Mundaka (882 km) con la app Tesla (3 paradas, 74 min recarga, 9h40 total) vs Electrolineras (4 paradas, 44 min, 10h22): el optimizador genera una micro-parada prematura en Albacete km 198 (llegada 53%, solo 5 min carga) que Tesla evita (1ª parada Atalaya ~280 km, 22%).
+
+Objetivo motor (#6087):
+- Penalizar o descartar paradas si SOC llegada > umbral (p.ej. 40%) o carga añade <10 min autonomía.
+- Forzar progreso mínimo antes de 1ª parada en autopista (~180–200 km, alineado REVE/Tesla).
+- Evitar cadenas con parada casi inútil (53%→58%).
+
+Benchmark CI / regresión:
+- Fixture Cartagena (37.625, -0.996) → Mundaka (43.407, -2.698).
+- Params: Model 3 SR (57 kWh, 136 Wh/km, 170 kW), SOC 100/10/10/80, exclude_slow.
+- Tolerancias: 3–4 paradas, total_charge_minutes ≤ Tesla+20%, sin parada con soc_arrival > 45% salvo emergencia, km monótonos.
+- Referencia Tesla jul-2026: Atalaya, Rivas, Aranda; destino ~15%.
+
+Criterio éxito: plan ≤4 paradas, sin micro-parada <15 min con arr>40%, tiempo total competitivo con Tesla (margen +30 min).
 
 ---
 

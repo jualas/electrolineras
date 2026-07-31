@@ -76,7 +76,8 @@ export function RouteExportActions({ route, variant = 'default' }: RouteExportAc
             Abre la ruta en Google Maps y compártela al móvil o al coche. En el móvil, el botón Tesla abre el
             menú nativo de compartir.
           </>
-        )}
+        )}{' '}
+        Google Maps recalcula la ruta: puede cambiar corredor y tiempos respecto al plan de esta app.
       </p>
       {shareState === 'error' && (
         <p className="route-export__error" role="alert">

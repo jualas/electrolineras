@@ -139,24 +139,33 @@ Peajes: `avoid_highways=true` añade `exclude=toll` (autovías libres permitidas
 
 ### Desempate «ruta más rápida» (`select_fastest_route_payload`)
 
-OSRM devuelve hasta **varias alternativas** cuando `OSRM_FASTEST_REQUEST_ALTERNATIVES=true` (default). No basta con `min(duration)`: en corredores con tiempos muy parecidos, la alternativa **más larga pero con mayor velocidad media** suele ser la que un conductor (o Google Maps) elegiría por autopista.
+OSRM pide varias alternativas cuando `OSRM_FASTEST_REQUEST_ALTERNATIVES=true` (default), con `OSRM_FASTEST_ALTERNATIVES_COUNT` (default **3**). No basta con `min(duration)`: en corredores con tiempos muy parecidos, la alternativa **más larga pero con mayor velocidad media** suele ser la que un conductor (o Google Maps) elegiría por autopista.
 
 Algoritmo (`src/api/routing/osrm.py`):
 
 1. `min_duration` = menor `duration` entre alternativas.
-2. **Ventana de tolerancia:** candidatas con `duration ≤ min_duration × (1 + T)`, donde `T = OSRM_FASTEST_ALTERNATIVE_TOLERANCE` (default **0.05** = 5 %).
+2. **Ventana de tolerancia:** candidatas con `duration ≤ min_duration × (1 + T)`, donde `T = OSRM_FASTEST_ALTERNATIVE_TOLERANCE` (default **0.08** = 8 %).
 3. Entre candidatas, gana la de **mayor velocidad media** `distance / duration`.
 
-**Caso de referencia — Cartagena → Zaragoza:** OSRM a veces marca ~3 min menos por interior (N-330 / Teruel), pero la ruta por **A-7 + A-23 Mudéjar** (vía Valencia) queda dentro del 5 % de tiempo y tiene mejor velocidad media; el motor elige la segunda. Tests: `tests/test_osrm_route.py` (`test_select_fastest_route_prefers_similar_time_higher_avg_speed`).
+**Casos de referencia (desde Cartagena):**
 
-**Limitación:** OSRM **no tiene tráfico en tiempo real** (#6067). La heurística aproxima «ruta rápida habitual», no congestión del momento.
+| Destino | Alternativas OSRM (`alternatives=3`) | Comportamiento |
+|---------|--------------------------------------|----------------|
+| Zaragoza | Varias (~0,8 % empate) | Elige A-7 + A-23 (mayor velocidad media) frente a interior N-330 |
+| Plasencia | 2 (2.ª ~+9 % tiempo) | Se queda con la más rápida; la 2.ª queda fuera de la ventana 8 % |
+| Camping Garrote Gordo | 1 | Sin alternativas: la heurística no puede empatar con Google |
+
+Tests: `tests/test_osrm_route.py` (`test_select_fastest_route_*`).
+
+**Limitación:** OSRM **no tiene tráfico en tiempo real** (#6067). La heurística aproxima «ruta rápida habitual», no congestión del momento. «Abrir en Google Maps» recalcula el corredor en Google (#6126 Fase 1: aviso en UI).
 
 ### Variables relacionadas (`.env`)
 
 | Variable | Default | Efecto |
 |----------|---------|--------|
-| `OSRM_FASTEST_REQUEST_ALTERNATIVES` | `true` | Pide `alternatives=true` al calcular la variante fastest. |
-| `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.05` | Ventana ±5 % sobre el mínimo tiempo para desempate por velocidad media (#6069). |
+| `OSRM_FASTEST_REQUEST_ALTERNATIVES` | `true` | Pide alternativas al calcular la variante fastest. |
+| `OSRM_FASTEST_ALTERNATIVES_COUNT` | `3` | Número de alternativas OSRM (`alternatives=3`); saca más corredores que `true`. |
+| `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.08` | Ventana ±8 % sobre el mínimo tiempo para desempate por velocidad media (#6069 / #6126). |
 | `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza rutas «circulares» en modo shortest. |
 | `OSRM_USE_MULTI_PROFILE` | `true` en prod | Tres perfiles OSRM (`fastest` / `shortest` / `conventional`); convencionales con `exclude=motorway` en perfil propio. |
 | `OSRM_PROFILE_CONVENTIONAL` | `conventional` | Nombre del perfil Lua en OSRM self-hosted (`docker/osrm/`). |

@@ -131,7 +131,8 @@ def _shortest_directness_score(distance_m: float, geodesic_km: float) -> float:
 def select_fastest_route_payload(routes: list[dict[str, Any]]) -> dict[str, Any]:
     """Elige la ruta más rápida; si hay alternativas casi empate, prefiere mayor velocidad media.
 
-    Caso típico ES: Cartagena→Zaragoza — OSRM marca 3 min menos por N-330/Teruel, pero Google
+    Ventana: duration ≤ min_duration × (1 + OSRM_FASTEST_ALTERNATIVE_TOLERANCE), default 8 %.
+    Caso típico ES: Cartagena→Zaragoza — OSRM marca ~3 min menos por N-330/Teruel, pero Google
     (y muchos conductores) van por A-7 + A-23 Mudéjar vía Valencia con tiempos similares.
     """
     if not routes:
@@ -267,6 +268,17 @@ def _osrm_http_error_detail(response: httpx.Response) -> str:
     return response.text[:200] or "sin detalle"
 
 
+def _osrm_alternatives_param(enabled: bool, *, count: int | None = None) -> str:
+    if not enabled:
+        return "false"
+    resolved = count if count is not None else settings.osrm_fastest_alternatives_count
+    if resolved <= 0:
+        return "false"
+    if resolved == 1:
+        return "true"
+    return str(resolved)
+
+
 def _request_osrm_profile_route(
     origin_lat: float,
     origin_lon: float,
@@ -285,7 +297,7 @@ def _request_osrm_profile_route(
         "overview": "full",
         "geometries": "geojson",
         "steps": "false",
-        "alternatives": "true" if alternatives else "false",
+        "alternatives": _osrm_alternatives_param(alternatives),
     }
     if exclude:
         params["exclude"] = exclude
@@ -322,11 +334,14 @@ def _request_osrm_routes(
 ) -> tuple[list[dict[str, Any]], list[str], bool]:
     path = f"{origin_lon},{origin_lat};{dest_lon},{dest_lat}"
     request_url = f"{base_url.rstrip('/')}/route/v1/{profile}/{path}"
+    request_alternatives = (
+        route_preference == "fastest" and settings.osrm_fastest_request_alternatives
+    )
     params: dict[str, str] = {
         "overview": "full",
         "geometries": "geojson",
         "steps": "false",
-        "alternatives": "true",
+        "alternatives": _osrm_alternatives_param(request_alternatives),
     }
     exclude = build_osrm_exclude_param(route_preference, avoid_highways)
     routing_warnings: list[str] = []

@@ -92,6 +92,13 @@ export function ChargingPlanResults({
     plannedStops.length === 0 && !plan.reachable_without_stop ? routeChargingStops(plan) : []
   const displayStops = plannedStops.length > 0 ? routeStops : corridorFallbackStops
   const hasDisplayStops = displayStops.length > 0
+  const fastestNoTrafficNote =
+    plan.mode === 'route' && plan.route_preference === 'fastest' ? (
+      <p className="route-message" role="note">
+        Ruta rápida estimada sin tráfico en vivo. Si abres Google Maps, puede elegir otro corredor: revisa
+        que las paradas de carga sigan en tu camino.
+      </p>
+    ) : null
 
   if (compactPlan && plan.mode === 'route') {
     return (
@@ -112,6 +119,7 @@ export function ChargingPlanResults({
                 Plan incompleto: no llegarías con batería suficiente. Revisa corredor o filtros kW.
               </p>
             )}
+            {fastestNoTrafficNote}
             <ChargingStopList
               stops={displayStops}
               selectedStationId={selectedStationId}
@@ -148,6 +156,8 @@ export function ChargingPlanResults({
           ))}
         </ul>
       )}
+
+      {fastestNoTrafficNote}
 
       <div className="charge-summary">
         <p className="route-summary__meta">

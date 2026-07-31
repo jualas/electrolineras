@@ -26,6 +26,42 @@ def test_select_fastest_route_prefers_similar_time_higher_avg_speed() -> None:
     assert selected["distance"] == 581_400
 
 
+def test_select_fastest_route_within_8pct_prefers_higher_avg_speed() -> None:
+    """Dentro de la ventana 8 % gana mayor velocidad media (caso Zaragoza ampliado)."""
+    from api.config import settings
+    from api.routing.osrm import select_fastest_route_payload
+
+    original = settings.osrm_fastest_alternative_tolerance
+    settings.osrm_fastest_alternative_tolerance = 0.08
+    try:
+        routes = [
+            {"distance": 500_000, "duration": 20_000},  # 90 km/h
+            {"distance": 540_000, "duration": 21_200},  # +6 % tiempo, ~91.7 km/h
+        ]
+        selected = select_fastest_route_payload(routes)
+        assert selected["distance"] == 540_000
+    finally:
+        settings.osrm_fastest_alternative_tolerance = original
+
+
+def test_select_fastest_route_rejects_plasencia_like_9pct_slower() -> None:
+    """Alt ~9 % más lenta (Plasencia 2.ª) queda fuera de la ventana y no se elige."""
+    from api.config import settings
+    from api.routing.osrm import select_fastest_route_payload
+
+    original = settings.osrm_fastest_alternative_tolerance
+    settings.osrm_fastest_alternative_tolerance = 0.08
+    try:
+        routes = [
+            {"distance": 657_300, "duration": 26_040},  # 434 min
+            {"distance": 721_800, "duration": 28_446},  # 474 min (~+9 %)
+        ]
+        selected = select_fastest_route_payload(routes)
+        assert selected["distance"] == 657_300
+    finally:
+        settings.osrm_fastest_alternative_tolerance = original
+
+
 def test_select_fastest_route_keeps_clear_winner() -> None:
     from api.routing.osrm import select_fastest_route_payload
 
@@ -35,6 +71,20 @@ def test_select_fastest_route_keeps_clear_winner() -> None:
     ]
     selected = select_fastest_route_payload(routes)
     assert selected["duration"] == 3000
+
+
+def test_osrm_alternatives_param_count() -> None:
+    from api.config import settings
+    from api.routing.osrm import _osrm_alternatives_param
+
+    original_count = settings.osrm_fastest_alternatives_count
+    settings.osrm_fastest_alternatives_count = 3
+    try:
+        assert _osrm_alternatives_param(False) == "false"
+        assert _osrm_alternatives_param(True) == "3"
+        assert _osrm_alternatives_param(True, count=1) == "true"
+    finally:
+        settings.osrm_fastest_alternatives_count = original_count
 
 
 def test_select_osrm_route_shortest() -> None:

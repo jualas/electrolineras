@@ -22,8 +22,8 @@ export function RoutePreferenceFields({
 }: RoutePreferenceFieldsProps) {
   const fastestHint =
     variant === 'assistant'
-      ? 'Menor tiempo con velocidades reales de cada vía; autovía si compensa.'
-      : 'Menor tiempo; autovía cuando reduce duración.'
+      ? 'Menor tiempo estimado (OSRM, sin tráfico en vivo); autovía si reduce duración.'
+      : 'Menor tiempo estimado sin tráfico en vivo; autovía cuando reduce duración.'
 
   return (
     <fieldset className="route-preference" disabled={disabled}>
@@ -85,7 +85,7 @@ export function RoutePreferenceFields({
         <p className="route-comparison-legend" role="note">
           En el mapa: línea <strong>sólida</strong> = ruta del plan (
           {routePreferenceLabel(comparisonPlan.route_preference)}). Líneas <strong>discontinuas</strong> = otras
-          opciones (rápida, directa o sin autovía). Cambiar tipo recalcula paradas.
+          opciones (rápida, directa o sin autovía). Cambiar tipo muestra al instante la variante precalculada.
         </p>
       ) : null}
     </fieldset>

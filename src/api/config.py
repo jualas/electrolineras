@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     osrm_profile_conventional: str = "driving"
     osrm_shortest_directness_penalty: float = 0.35
     osrm_fastest_request_alternatives: bool = True
-    osrm_fastest_alternative_tolerance: float = 0.05
+    osrm_fastest_alternatives_count: int = 3
+    osrm_fastest_alternative_tolerance: float = 0.08
 
     def osrm_shortest_url(self) -> str:
         return self.osrm_shortest_base_url.strip() or self.osrm_base_url
