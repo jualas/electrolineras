@@ -386,6 +386,93 @@ class TripGuideResponse(TripAdviceResponse):
     context: TripGuideContext
 
 
+class ItineraryPlaceResult(BaseModel):
+    order: int
+    raw: str
+    label: str
+    lat: float
+    lon: float
+    overnight: bool = False
+    nights: int | None = None
+    is_home: bool = False
+    confidence: str = "high"
+
+
+class ParseItineraryRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=4000)
+    home_label: str | None = Field(default=None, max_length=200)
+
+
+class ParseItineraryResponse(BaseModel):
+    departure_soc_percent: float | None = None
+    return_home: bool = False
+    stops: list[ItineraryPlaceResult] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class MultiLegStopInputSchema(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    label: str = Field(min_length=1, max_length=500)
+    overnight: bool = False
+    nights: int | None = Field(default=None, ge=1, le=30)
+
+
+class MultiLegChargingPlanRequest(BaseModel):
+    stops: list[MultiLegStopInputSchema] = Field(min_length=1, max_length=5)
+    departure_soc_percent: float | None = Field(default=None, ge=5, le=100)
+    include_route: bool = True
+    route_preference: RoutePreference = "fastest"
+    avoid_highways: bool = False
+    terrain_factor: float = Field(default=1.0, gt=0, le=2)
+    reserve_soc_percent: float = Field(default=10.0, ge=0, le=50)
+    min_kw: float = Field(default=100.0, ge=0)
+    corridor_km: float = Field(default=10.0, gt=0, le=50.0)
+    destination_radius_km: float = Field(default=10.0, gt=0, le=50)
+    local_mobility_km: float = Field(default=40.0, gt=0, le=200)
+    preferred_operators: str | None = Field(default=None, max_length=500)
+    max_price_eur_kwh: float | None = Field(default=None, gt=0, le=2)
+    max_charge_power_kw: float = Field(default=100.0, gt=0, le=350)
+    min_destination_soc_pct: float = Field(default=10.0, ge=0, le=50)
+    min_stop_arrival_soc_pct: float = Field(default=10.0, ge=0, le=50)
+    max_charge_soc_pct: float = Field(default=80.0, ge=20, le=100)
+    exclude_slow_chargers: bool = False
+    consumption_kwh_per_100km: float | None = Field(default=None, gt=0, le=50)
+    vehicle_preset_id: str | None = Field(default=None, max_length=64)
+    usable_capacity_kwh: float | None = Field(default=None, gt=0, le=200)
+    car_id: int | None = Field(default=None, ge=1)
+
+
+class MultiLegPlanLegResult(BaseModel):
+    order: int
+    from_label: str
+    to_label: str
+    overnight: bool = False
+    nights: int | None = None
+    departure_soc_pct: float
+    arrival_soc_pct: float
+    next_departure_soc_pct: float | None = None
+    plan: ChargingPlanResponse
+
+
+class MultiLegAggregate(BaseModel):
+    total_route_km: float
+    total_driving_minutes: float
+    total_charge_minutes: float
+    final_soc_pct: float | None = None
+    all_planned_stops: list[PlannedRouteStopResult] = Field(default_factory=list)
+    origin: RouteEndpoint
+    final_destination: RouteEndpoint
+
+
+class MultiLegChargingPlanResponse(BaseModel):
+    legs: list[MultiLegPlanLegResult]
+    aggregate: MultiLegAggregate
+    warnings: list[str] = Field(default_factory=list)
+    agent_summary: str = ""
+    agent_bullets: list[str] = Field(default_factory=list)
+
+
 class PrivateStackStatusResult(BaseModel):
     private_stack_enabled: bool
     token_required: bool

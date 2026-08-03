@@ -411,6 +411,55 @@ export type TripGuideResponse = TripAdviceResponse & {
   context: TripGuideContext
 }
 
+export type ItineraryPlaceResult = {
+  order: number
+  raw: string
+  label: string
+  lat: number
+  lon: number
+  overnight: boolean
+  nights?: number | null
+  is_home: boolean
+  confidence: string
+}
+
+export type ParseItineraryResponse = {
+  departure_soc_percent?: number | null
+  return_home: boolean
+  stops: ItineraryPlaceResult[]
+  warnings: string[]
+}
+
+export type MultiLegPlanLegResult = {
+  order: number
+  from_label: string
+  to_label: string
+  overnight: boolean
+  nights?: number | null
+  departure_soc_pct: number
+  arrival_soc_pct: number
+  next_departure_soc_pct?: number | null
+  plan: ChargingPlanResponse
+}
+
+export type MultiLegAggregate = {
+  total_route_km: number
+  total_driving_minutes: number
+  total_charge_minutes: number
+  final_soc_pct?: number | null
+  all_planned_stops: PlannedRouteStopResult[]
+  origin: { lat: number; lon: number }
+  final_destination: { lat: number; lon: number }
+}
+
+export type MultiLegChargingPlanResponse = {
+  legs: MultiLegPlanLegResult[]
+  aggregate: MultiLegAggregate
+  warnings: string[]
+  agent_summary: string
+  agent_bullets: string[]
+}
+
 export type AuthConfigResponse = {
   private_stack_enabled: boolean
   login_enabled: boolean

@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-08-03T17:52:21Z -->
+<!-- taskboard-exported-at: 2026-08-03T20:25:37Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `development`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-08-03 17:52 UTC  
-**Git:** `develop` @ `e33d5442`  
+**Exportado:** 2026-08-03 20:25 UTC  
+**Git:** `develop` @ `7a779bcb`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -23,8 +23,8 @@ donde se publica la informacion de los puntos de carga )
 | Estado | Tareas |
 |--------|--------|
 | En progreso (`in_progress`) | 1 |
-| Pendiente (`pending`) | 39 |
-| Completada (`completed`) | 67 |
+| Pendiente (`pending`) | 38 |
+| Completada (`completed`) | 69 |
 
 ---
 
@@ -241,29 +241,6 @@ Panel ajustes (colapsable): mismos campos que REVE (capacidad, potencia máx, co
 Mapa: solo pins de paradas planificadas (no corredor completo).
 
 Depende de métricas API REVE.
-
----
-
-<a id="task-6127"></a>
-### [#6127] Navegación — Google Maps móvil + BT + preacond (Asistente usable)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6127` |
-| Estado | `completed` |
-| Complejidad | media |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-08-03 18:20 UTC |
-
-Redefinido: no app Android ni Fleet API ahora. Flujo: Electrolineras → Google Maps en el móvil → Bluetooth (audio). Sin promesa de «Enviar a Tesla» multi-parada.
-
-Hecho:
-- CTA primario «Abrir en Google Maps»; «Siguiente parada (preacondicionar)»; compartir enlace; QR desktop.
-- Copy honesto: Maps/BT; ~30–40 min antes, nav Tesla para preacondicionar.
-- Asistente móvil: panel casi fullscreen, mapa colapsado («Ver mapa»), ajustes/guía en details.
-- Docs: `docs/NAVIGATION.md`.
-
-Futuro (fuera de esta entrega): Fleet API parada a parada.
 
 ---
 
@@ -1888,6 +1865,52 @@ Entregables sugeridos:
 4) Documentar limitación en UI (OSRM sin tráfico).
 
 Prioridad: alta (preocupación principal del usuario).
+
+---
+
+<a id="task-6127"></a>
+### [#6127] Navegación — mejorar envío de rutas a app Tesla
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6127` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-08-03 18:33 UTC |
+
+Hallazgo de test usuario (2026-07-31): no puede enviar las rutas a la app Tesla de forma fiable.
+
+Estado actual:
+- Botón «Enviar a app Tesla» = Web Share API (navigator.share) solo en móvil; en escritorio/navegador Tesla a menudo no aparece o falla.
+- Comparte URL de Google Maps; Tesla suele aceptar un destino, no la ruta multi-parada completa.
+- No hay Tesla Fleet API (navigation_gps_request / waypoints). Ver docs/NAVIGATION.md.
+
+Mejoras posibles:
+1) Clarificar UX: en desktop indicar flujo Google Maps → Compartir → Tesla; no etiquetar como envío directo si no hay share.
+2) Botón «1.ª parada → Tesla» más visible / por defecto en móvil.
+3) Fase B: OAuth Tesla Fleet API → enviar siguiente parada al coche (precondicionamiento).
+4) QR / deep link para abrir destino en móvil desde el coche.
+
+Prioridad: media (secundaria respecto al desajuste de ruta rápida).
+
+---
+
+<a id="task-6128"></a>
+### [#6128] Simulación de viaje — itinerario texto + multi-pierna + IA
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6128` |
+| Estado | `completed` |
+| Complejidad | high |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-08-03 20:25 UTC |
+
+Modo Asistente «Simulación de viaje»: textarea con paradas/pernoctas y vuelta a casa; parse heurístico + geocode; motor multi-pierna (SOC encadenado + destination_stay); export Google Maps; análisis IA sobre el plan del motor (no inventa cargadores). Salida al 100 % por defecto en este modo.
+
+Endpoints: POST /api/v1/private/parse-itinerary, POST /api/v1/private/multi-leg-charging-plan.
+UI: TripSimulationPanel en Asistente.
 
 ---
 

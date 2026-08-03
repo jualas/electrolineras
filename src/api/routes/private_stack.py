@@ -30,11 +30,18 @@ from api.integrations.vehicle_telemetry import (
     teslamate_api_configured,
     vehicle_telemetry_configured,
 )
+from api.multi_leg_plan_service import MultiLegStopInput, build_multi_leg_charging_plan
 from api.routes.agent_tools import agent_trip_advice
+from api.routing.itinerary_parse import parse_and_geocode_itinerary
 from api.schemas import (
     MAX_CORRIDOR_KM,
     ConsumptionBinResult,
     ConsumptionProfileResponse,
+    ItineraryPlaceResult,
+    MultiLegChargingPlanRequest,
+    MultiLegChargingPlanResponse,
+    ParseItineraryRequest,
+    ParseItineraryResponse,
     PrivateStackStatusResult,
     RoutePreference,
     TripAdviceResponse,
@@ -284,6 +291,129 @@ def private_consumption_profile(
     """Perfil histórico de consumo (bins) vía Grafana → TeslaMate Postgres."""
     profile = fetch_consumption_profile(car_id=car_id)
     return _profile_to_schema(profile)
+
+
+@router.post("/parse-itinerary")
+def private_parse_itinerary(
+    body: ParseItineraryRequest,
+    car_id: Annotated[int | None, Query(ge=1)] = None,
+) -> ParseItineraryResponse:
+    """Interpreta un viaje en texto (paradas/pernoctas → casa) y geocodifica hitos."""
+    if not settings.charging_agent_enabled:
+        raise HTTPException(status_code=503, detail="Asistente de viaje desactivado")
+
+    telemetry = _get_vehicle_telemetry(car_id=car_id)
+    home_label = body.home_label or telemetry.display_name or "Casa"
+    parsed = parse_and_geocode_itinerary(
+        body.text,
+        home_lat=telemetry.lat,
+        home_lon=telemetry.lon,
+        home_label=home_label,
+    )
+    return ParseItineraryResponse(
+        departure_soc_percent=parsed.departure_soc_percent,
+        return_home=parsed.return_home,
+        stops=[
+            ItineraryPlaceResult(
+                order=stop.order,
+                raw=stop.raw,
+                label=stop.label,
+                lat=stop.lat,
+                lon=stop.lon,
+                overnight=stop.overnight,
+                nights=stop.nights,
+                is_home=stop.is_home,
+                confidence=stop.confidence,
+            )
+            for stop in parsed.stops
+        ],
+        warnings=parsed.warnings,
+    )
+
+
+@router.post("/multi-leg-charging-plan")
+def private_multi_leg_charging_plan(
+    body: MultiLegChargingPlanRequest,
+    repo: Annotated[StationRepository, Depends(get_repository)],
+) -> MultiLegChargingPlanResponse:
+    """Plan de carga encadenado por piernas (itinerario con pernoctas)."""
+    if not settings.charging_agent_enabled:
+        raise HTTPException(status_code=503, detail="Asistente de viaje desactivado")
+
+    telemetry = _get_vehicle_telemetry(car_id=body.car_id)
+    try:
+        soc_percent, resolved_capacity, telemetry_wh_per_km, reserve, live_soc = _resolve_car_energy(
+            telemetry,
+            terrain_factor=1.0,
+            reserve_soc_percent=body.reserve_soc_percent,
+            departure_soc_percent=body.departure_soc_percent,
+            vehicle_preset_id=body.vehicle_preset_id,
+            usable_capacity_kwh=body.usable_capacity_kwh,
+        )
+    except TeslaMateError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    if body.consumption_kwh_per_100km is not None:
+        consumption_wh_per_km = float(body.consumption_kwh_per_100km) * 10.0
+        effective_terrain = body.terrain_factor
+        consumption_kwh_override = None
+    else:
+        profile = fetch_consumption_profile(car_id=telemetry.car_id)
+        resolved = resolve_consumption_for_route(
+            profile,
+            route_preference=body.route_preference,
+            avoid_highways=body.avoid_highways,
+            fallback_wh_per_km=telemetry_wh_per_km,
+            fallback_source="telemetry",
+        )
+        consumption_wh_per_km = resolved.wh_per_km
+        effective_terrain = 1.0
+        consumption_kwh_override = None
+
+    origin_label = telemetry.display_name or "Coche"
+    result = build_multi_leg_charging_plan(
+        repo,
+        origin_lat=telemetry.lat,
+        origin_lon=telemetry.lon,
+        origin_label=origin_label,
+        stops=[
+            MultiLegStopInput(
+                lat=stop.lat,
+                lon=stop.lon,
+                label=stop.label,
+                overnight=stop.overnight,
+                nights=stop.nights,
+            )
+            for stop in body.stops
+        ],
+        soc_percent=soc_percent,
+        usable_capacity_kwh=resolved_capacity,
+        consumption_wh_per_km=consumption_wh_per_km,
+        terrain_factor=effective_terrain,
+        reserve_soc_percent=reserve,
+        min_kw=body.min_kw,
+        corridor_km=body.corridor_km,
+        include_route=body.include_route,
+        destination_radius_km=body.destination_radius_km,
+        local_mobility_km=body.local_mobility_km,
+        route_preference=body.route_preference,
+        avoid_highways=body.avoid_highways,
+        preferred_operators=body.preferred_operators,
+        max_price_eur_kwh=body.max_price_eur_kwh,
+        vehicle_preset_id=body.vehicle_preset_id,
+        max_charge_power_kw=body.max_charge_power_kw,
+        min_destination_soc_pct=body.min_destination_soc_pct,
+        min_stop_arrival_soc_pct=body.min_stop_arrival_soc_pct,
+        max_charge_soc_pct=body.max_charge_soc_pct,
+        exclude_slow_chargers=body.exclude_slow_chargers,
+        consumption_kwh_per_100km=consumption_kwh_override,
+    )
+    if abs(soc_percent - live_soc) >= 1:
+        result.warnings.insert(
+            0,
+            f"Simulación al salir: {soc_percent:.0f} % SOC (ahora {live_soc:.0f} % en el coche).",
+        )
+    return result
 
 
 @router.get("/trip-advice-from-car")

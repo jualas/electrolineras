@@ -31,6 +31,7 @@ import {
 } from './DepartureChargeSimulator'
 import { useAuth } from './AuthContext'
 import { LoginPanel } from './LoginPanel'
+import { TripSimulationPanel } from './TripSimulationPanel'
 import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
 
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
@@ -107,6 +108,7 @@ export function AssistantPanel({
   const [departureSoc, setDepartureSoc] = useState(80)
   const [aiNote, setAiNote] = useState('')
   const [guideError, setGuideError] = useState<string | null>(null)
+  const [tripMode, setTripMode] = useState<'simple' | 'simulation'>('simple')
   const [settingsOpen, setSettingsOpen] = useState(
     () => typeof window === 'undefined' || !window.matchMedia('(max-width: 640px)').matches,
   )
@@ -487,161 +489,220 @@ export function AssistantPanel({
         </div>
       )}
 
-      {activeTrip && !destination && (
-        <p className="panel-hint active-trip-restore" role="status">
-          Viaje activo a {activeTrip.destination.label}. Se restaurará el destino al cargar.
-        </p>
-      )}
-
-      <div className="assistant-panel__block assistant-panel__block--trip">
-        <PlaceAutocomplete
-          id="assistant-dest"
-          label="Destino"
-          placeholder="Ciudad o lugar"
-          value={destinationText}
-          onChange={(text) => {
-            setDestinationText(text)
-            setDestination(null)
+      <div className="chip-row assistant-trip-mode" role="group" aria-label="Modo de viaje">
+        <button
+          type="button"
+          className={`chip ${tripMode === 'simple' ? 'chip--active' : ''}`}
+          onClick={() => {
+            setTripMode('simple')
+          }}
+        >
+          Destino único
+        </button>
+        <button
+          type="button"
+          className={`chip ${tripMode === 'simulation' ? 'chip--active' : ''}`}
+          onClick={() => {
+            setTripMode('simulation')
             setAdvice(null)
             onPlanResults(null)
             onPlanStateChange?.('idle')
           }}
-          onSelect={(place) => {
-            setDestinationText(place.label)
-            setDestination(place)
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
-          }}
-        />
-
-        <RoutePreferenceFields
-          routePreference={routePreference}
-          avoidTolls={avoidTolls}
-          variant="assistant"
-          comparisonPlan={advice?.plan ?? null}
-          onRoutePreferenceChange={(value) => {
-            setRoutePreference(value)
-            if (advice?.plan && cachedPlanRef.current) {
-              if (!applyCachedRoutePreference(value)) {
-                recalcOnRouteSettingsRef.current = true
-              }
-            } else {
-              setAdvice(null)
-              cachedPlanRef.current = null
-              onPlanResults(null)
-              onPlanStateChange?.('idle')
-            }
-          }}
-          onAvoidTollsChange={(value) => {
-            setAvoidTolls(value)
-            if (advice?.plan) {
-              recalcOnRouteSettingsRef.current = true
-            } else {
-              setAdvice(null)
-              cachedPlanRef.current = null
-              onPlanResults(null)
-              onPlanStateChange?.('idle')
-            }
-          }}
-          disabled={busy}
-        />
-      </div>
-
-      <div className="assistant-ai-actions assistant-panel__block--cta">
-        <button
-          type="button"
-          className="assistant-ai-actions__map"
-          disabled={busy || !destination}
-          onClick={() => void runMapPlan()}
         >
-          {loadingPlan ? 'Calculando mapa…' : 'Planificar en mapa'}
-        </button>
-        <button
-          type="button"
-          className="assistant-ai-actions__ia auth-form__submit"
-          disabled={busy || !destination}
-          onClick={() => void runAiGuide()}
-        >
-          {loadingGuide ? 'Generando guía IA…' : 'Guía de viaje con IA'}
+          Simulación de viaje
         </button>
       </div>
-      <p className="assistant-panel__hint assistant-panel__hint--actions assistant-panel__hint--desktop">
-        El mapa es rápido (motor local). La guía IA usa Dify + Cursor y puede tardar 1–2 minutos.
-      </p>
 
-      {planError && <p className="auth-form__error">{planError}</p>}
-      {guideError && <p className="auth-form__error">{guideError}</p>}
-
-      {advice?.plan && destination ? (
-        <ReplanOnRouteBar
-          destinationLabel={destination.label}
-          originLabel={
-            vehicle
-              ? `${vehicle.display_name ?? 'Coche'} · ${vehicle.lat.toFixed(3)}, ${vehicle.lon.toFixed(3)}`
-              : 'Posición TeslaMate'
-          }
-          socPercent={vehicle?.battery_level_pct ?? advice.live_soc_percent ?? 0}
-          socSourceLabel="TeslaMate"
-          loading={busy}
-          autoFollow={enMarchaSettings.autoFollow}
-          onAutoFollowChange={setAutoFollow}
-          onReplan={() => void runReplanFromHere()}
-          onRefreshOrigin={() => void loadVehicle()}
-          canReplan={Boolean(destination) && !busy}
-          lastUpdatedAt={activeTrip?.updatedAt ?? null}
-          showAutoFollow
-        />
-      ) : null}
-
-      {advice && (
-        <div className="assistant-advice assistant-panel__block--results">
-          {!advice.plan?.route_trip_summary && advice.agent_summary ? (
-            <p className="assistant-advice__summary">{advice.agent_summary}</p>
-          ) : null}
-          {!advice.plan?.planned_stops?.length && advice.agent_bullets.length > 0 && (
-            <ul className="assistant-advice__bullets">
-              {advice.agent_bullets.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          )}
-          <ChargingPlanResults
-            plan={advice.plan}
-            selectedStationId={selectedStationId}
-            onSelectStation={onSelectStation}
+      {tripMode === 'simulation' ? (
+        <div className="assistant-panel__block assistant-panel__block--trip">
+          <RoutePreferenceFields
+            routePreference={routePreference}
+            avoidTolls={avoidTolls}
             variant="assistant"
+            comparisonPlan={null}
+            onRoutePreferenceChange={setRoutePreference}
+            onAvoidTollsChange={setAvoidTolls}
+            disabled={busy}
           />
-          {advice.guide_text ? (
-            <details className="assistant-guide assistant-collapsible">
-              <summary className="assistant-guide__header">
-                <span className="assistant-guide__title">Guía de viaje</span>
-                <span className="assistant-guide__badge">
-                  {advice.guide_source === 'dify' ? 'IA · Cursor' : 'Motor local'}
-                </span>
-              </summary>
-              <pre className="assistant-guide__text">{advice.guide_text}</pre>
-              <button
-                type="button"
-                className="assistant-guide__refresh"
-                disabled={busy || !destination}
-                onClick={() => void runAiGuide()}
-              >
-                {loadingGuide ? 'Regenerando…' : 'Actualizar guía IA'}
-              </button>
-            </details>
-          ) : null}
-          {!advice.guide_text && advice.plan && (advice.plan.planned_stops?.length ?? 0) === 0 && (
-            <p className="assistant-panel__muted">
-              Plan listo. Pulsa <strong>Guía de viaje con IA</strong> para la narrativa.
+          <TripSimulationPanel
+            routePreference={routePreference}
+            avoidTolls={avoidTolls}
+            revePlanning={revePlanning}
+            disabled={busy}
+            onPlanForMap={(plan) => {
+              if (plan) {
+                publishPlan(plan)
+                onPlanStateChange?.('ready')
+              } else {
+                onPlanResults(null)
+                onPlanStateChange?.('idle')
+              }
+            }}
+            onBusyChange={(isBusy) => {
+              setLoadingPlan(isBusy)
+              onPlanStateChange?.(isBusy ? 'loading' : 'idle')
+            }}
+          />
+        </div>
+      ) : (
+        <>
+          {activeTrip && !destination && (
+            <p className="panel-hint active-trip-restore" role="status">
+              Viaje activo a {activeTrip.destination.label}. Se restaurará el destino al cargar.
             </p>
           )}
-          {activeTrip ? (
-            <button type="button" className="btn btn--ghost replan-bar__clear" onClick={clearActiveTrip}>
-              Finalizar viaje activo
+
+          <div className="assistant-panel__block assistant-panel__block--trip">
+            <PlaceAutocomplete
+              id="assistant-dest"
+              label="Destino"
+              placeholder="Ciudad o lugar"
+              value={destinationText}
+              onChange={(text) => {
+                setDestinationText(text)
+                setDestination(null)
+                setAdvice(null)
+                onPlanResults(null)
+                onPlanStateChange?.('idle')
+              }}
+              onSelect={(place) => {
+                setDestinationText(place.label)
+                setDestination(place)
+                setAdvice(null)
+                onPlanResults(null)
+                onPlanStateChange?.('idle')
+              }}
+            />
+
+            <RoutePreferenceFields
+              routePreference={routePreference}
+              avoidTolls={avoidTolls}
+              variant="assistant"
+              comparisonPlan={advice?.plan ?? null}
+              onRoutePreferenceChange={(value) => {
+                setRoutePreference(value)
+                if (advice?.plan && cachedPlanRef.current) {
+                  if (!applyCachedRoutePreference(value)) {
+                    recalcOnRouteSettingsRef.current = true
+                  }
+                } else {
+                  setAdvice(null)
+                  cachedPlanRef.current = null
+                  onPlanResults(null)
+                  onPlanStateChange?.('idle')
+                }
+              }}
+              onAvoidTollsChange={(value) => {
+                setAvoidTolls(value)
+                if (advice?.plan) {
+                  recalcOnRouteSettingsRef.current = true
+                } else {
+                  setAdvice(null)
+                  cachedPlanRef.current = null
+                  onPlanResults(null)
+                  onPlanStateChange?.('idle')
+                }
+              }}
+              disabled={busy}
+            />
+          </div>
+
+          <div className="assistant-ai-actions assistant-panel__block--cta">
+            <button
+              type="button"
+              className="assistant-ai-actions__map"
+              disabled={busy || !destination}
+              onClick={() => void runMapPlan()}
+            >
+              {loadingPlan ? 'Calculando mapa…' : 'Planificar en mapa'}
             </button>
+            <button
+              type="button"
+              className="assistant-ai-actions__ia auth-form__submit"
+              disabled={busy || !destination}
+              onClick={() => void runAiGuide()}
+            >
+              {loadingGuide ? 'Generando guía IA…' : 'Guía de viaje con IA'}
+            </button>
+          </div>
+          <p className="assistant-panel__hint assistant-panel__hint--actions assistant-panel__hint--desktop">
+            El mapa es rápido (motor local). La guía IA usa Dify + Cursor y puede tardar 1–2 minutos.
+          </p>
+
+          {planError && <p className="auth-form__error">{planError}</p>}
+          {guideError && <p className="auth-form__error">{guideError}</p>}
+
+          {advice?.plan && destination ? (
+            <ReplanOnRouteBar
+              destinationLabel={destination.label}
+              originLabel={
+                vehicle
+                  ? `${vehicle.display_name ?? 'Coche'} · ${vehicle.lat.toFixed(3)}, ${vehicle.lon.toFixed(3)}`
+                  : 'Posición TeslaMate'
+              }
+              socPercent={vehicle?.battery_level_pct ?? advice.live_soc_percent ?? 0}
+              socSourceLabel="TeslaMate"
+              loading={busy}
+              autoFollow={enMarchaSettings.autoFollow}
+              onAutoFollowChange={setAutoFollow}
+              onReplan={() => void runReplanFromHere()}
+              onRefreshOrigin={() => void loadVehicle()}
+              canReplan={Boolean(destination) && !busy}
+              lastUpdatedAt={activeTrip?.updatedAt ?? null}
+              showAutoFollow
+            />
           ) : null}
-        </div>
+
+          {advice && (
+            <div className="assistant-advice assistant-panel__block--results">
+              {!advice.plan?.route_trip_summary && advice.agent_summary ? (
+                <p className="assistant-advice__summary">{advice.agent_summary}</p>
+              ) : null}
+              {!advice.plan?.planned_stops?.length && advice.agent_bullets.length > 0 && (
+                <ul className="assistant-advice__bullets">
+                  {advice.agent_bullets.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              )}
+              <ChargingPlanResults
+                plan={advice.plan}
+                selectedStationId={selectedStationId}
+                onSelectStation={onSelectStation}
+                variant="assistant"
+              />
+              {advice.guide_text ? (
+                <details className="assistant-guide assistant-collapsible">
+                  <summary className="assistant-guide__header">
+                    <span className="assistant-guide__title">Guía de viaje</span>
+                    <span className="assistant-guide__badge">
+                      {advice.guide_source === 'dify' ? 'IA · Cursor' : 'Motor local'}
+                    </span>
+                  </summary>
+                  <pre className="assistant-guide__text">{advice.guide_text}</pre>
+                  <button
+                    type="button"
+                    className="assistant-guide__refresh"
+                    disabled={busy || !destination}
+                    onClick={() => void runAiGuide()}
+                  >
+                    {loadingGuide ? 'Regenerando…' : 'Actualizar guía IA'}
+                  </button>
+                </details>
+              ) : null}
+              {!advice.guide_text && advice.plan && (advice.plan.planned_stops?.length ?? 0) === 0 && (
+                <p className="assistant-panel__muted">
+                  Plan listo. Pulsa <strong>Guía de viaje con IA</strong> para la narrativa.
+                </p>
+              )}
+              {activeTrip ? (
+                <button type="button" className="btn btn--ghost replan-bar__clear" onClick={clearActiveTrip}>
+                  Finalizar viaje activo
+                </button>
+              ) : null}
+            </div>
+          )}
+        </>
       )}
 
       <details
@@ -653,7 +714,7 @@ export function AssistantPanel({
       >
         <summary>Ajustes y detalles</summary>
         <div className="assistant-collapsible__body">
-          {vehicle && nominalKm != null && (
+          {vehicle && nominalKm != null && tripMode === 'simple' && (
             <DepartureChargeSimulator
               liveSocPercent={vehicle.battery_level_pct}
               departureSocPercent={departureSoc}
@@ -741,27 +802,31 @@ export function AssistantPanel({
             }}
           />
 
-          <label className="assistant-panel__option">
-            <input
-              type="checkbox"
-              checked={culturalPoi}
-              onChange={(e) => setCulturalPoi(e.target.checked)}
-            />
-            Incluir ideas culturales y gastronomía en la guía
-          </label>
+          {tripMode === 'simple' ? (
+            <>
+              <label className="assistant-panel__option">
+                <input
+                  type="checkbox"
+                  checked={culturalPoi}
+                  onChange={(e) => setCulturalPoi(e.target.checked)}
+                />
+                Incluir ideas culturales y gastronomía en la guía
+              </label>
 
-          <label className="field" htmlFor="assistant-ai-note">
-            <span className="field__label">Pregunta o nota para la IA (opcional)</span>
-            <textarea
-              id="assistant-ai-note"
-              className="assistant-ai-note"
-              rows={3}
-              placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
-              value={aiNote}
-              onChange={(e) => setAiNote(e.target.value)}
-              disabled={busy}
-            />
-          </label>
+              <label className="field" htmlFor="assistant-ai-note">
+                <span className="field__label">Pregunta o nota para la IA (opcional)</span>
+                <textarea
+                  id="assistant-ai-note"
+                  className="assistant-ai-note"
+                  rows={3}
+                  placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
+                  value={aiNote}
+                  onChange={(e) => setAiNote(e.target.value)}
+                  disabled={busy}
+                />
+              </label>
+            </>
+          ) : null}
         </div>
       </details>
     </section>

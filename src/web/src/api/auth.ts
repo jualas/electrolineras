@@ -129,6 +129,70 @@ function appendRevePlanningParams(
   }
 }
 
+export async function parseItineraryFromCar(params: {
+  text: string
+  homeLabel?: string
+}): Promise<import('../api/types').ParseItineraryResponse> {
+  return fetchApi('/api/v1/private/parse-itinerary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: params.text,
+      home_label: params.homeLabel,
+    }),
+  })
+}
+
+export async function fetchMultiLegChargingPlan(params: {
+  stops: Array<{
+    lat: number
+    lon: number
+    label: string
+    overnight?: boolean
+    nights?: number | null
+  }>
+  departureSocPercent?: number
+  includeRoute?: boolean
+  routePreference?: import('./types').RoutePreference
+  avoidHighways?: boolean
+  maxChargePowerKw?: number
+  minKw?: number
+  minDestinationSocPct?: number
+  minStopArrivalSocPct?: number
+  maxChargeSocPct?: number
+  excludeSlowChargers?: boolean
+  consumptionKwhPer100km?: number | null
+  vehiclePresetId?: string
+  usableCapacityKwh?: number
+}): Promise<import('../api/types').MultiLegChargingPlanResponse> {
+  return fetchApi('/api/v1/private/multi-leg-charging-plan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      stops: params.stops.map((stop) => ({
+        lat: stop.lat,
+        lon: stop.lon,
+        label: stop.label,
+        overnight: stop.overnight ?? false,
+        nights: stop.nights ?? null,
+      })),
+      departure_soc_percent: params.departureSocPercent,
+      include_route: params.includeRoute ?? true,
+      route_preference: params.routePreference ?? 'fastest',
+      avoid_highways: params.avoidHighways ?? false,
+      max_charge_power_kw: params.maxChargePowerKw,
+      min_kw: params.minKw,
+      min_destination_soc_pct: params.minDestinationSocPct,
+      min_stop_arrival_soc_pct: params.minStopArrivalSocPct,
+      max_charge_soc_pct: params.maxChargeSocPct,
+      exclude_slow_chargers: params.excludeSlowChargers ?? false,
+      consumption_kwh_per_100km: params.consumptionKwhPer100km,
+      vehicle_preset_id: params.vehiclePresetId,
+      usable_capacity_kwh: params.usableCapacityKwh,
+    }),
+  })
+}
+
 export async function fetchTripGuideFromCar(params: {
   destLat: number
   destLon: number

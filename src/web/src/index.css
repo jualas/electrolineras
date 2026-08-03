@@ -1755,6 +1755,32 @@ button {
   padding: 0.35rem 0 0.5rem;
 }
 
+.assistant-trip-mode {
+  margin: 0.35rem 0 0.65rem;
+}
+
+.trip-simulation__stops {
+  margin: 0.5rem 0;
+  padding-left: 1.2rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.trip-simulation__warnings {
+  margin: 0.4rem 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.trip-simulation__results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
 .route-export-qr {
   margin-top: 0.55rem;
 }
