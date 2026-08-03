@@ -123,6 +123,8 @@ export function TripSimulationPanel({
       }
       if (parsed.stops.length === 0) {
         setError(parsed.warnings[0] ?? 'No se interpretó ningún destino.')
+      } else if (!parsed.stops.some((stop) => !stop.is_home)) {
+        setError('Falta el destino del viaje (solo se detectó casa). Reformula el texto.')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo interpretar el viaje.')
@@ -135,6 +137,11 @@ export function TripSimulationPanel({
 
   const runPlan = async () => {
     if (!stops?.length) return
+    const destinations = stops.filter((stop) => !stop.is_home)
+    if (destinations.length === 0) {
+      setError('Falta un destino distinto de casa para calcular el plan.')
+      return
+    }
     setError(null)
     setBusyPlan(true)
     setBusy(true)
@@ -218,8 +225,8 @@ export function TripSimulationPanel({
   return (
     <div className="trip-simulation">
       <p className="muted small" style={{ marginTop: 0 }}>
-        Describe el viaje (paradas, pernoctas y vuelta a casa). La app interpreta los hitos, calcula cada
-        tramo con el motor de carga y la IA puede analizar el resultado.
+        Describe el viaje en lenguaje natural. Ejemplo: «Vamos el sábado a Camping Garrote Gordo y volvemos a
+        casa el domingo (salimos al 100 %)». Luego: Interpretar → revisar hitos → Calcular plan.
       </p>
       <label className="field" htmlFor="trip-sim-text">
         <span className="field__label">Itinerario</span>
