@@ -288,8 +288,8 @@ export function TripSimulationPanel({
   return (
     <div className="trip-simulation">
       <p className="muted small" style={{ marginTop: 0 }}>
-        Describe el viaje y pulsa <strong>Interpretar y calcular</strong>. Primero se detectan los hitos; luego el
-        motor calcula las paradas de carga de cada tramo.
+        Describe el viaje y pulsa <strong>Calcular ruta de carga</strong>. Se interpretan los hitos y se calculan
+        las paradas de cada tramo.
       </p>
       <label className="field" htmlFor="trip-sim-text">
         <span className="field__label">Itinerario</span>
@@ -321,23 +321,25 @@ export function TripSimulationPanel({
         />
         Simular salida al 100 %
       </label>
-      <div className="assistant-ai-actions">
+      <div className="assistant-ai-actions trip-simulation__actions">
         <button
           type="button"
-          className="assistant-ai-actions__ia auth-form__submit"
+          className="btn btn--primary trip-simulation__primary"
           disabled={locallyBusy || disabled || text.trim().length < 5}
           onClick={() => void runParseAndPlan()}
         >
-          {busyParse || busyPlan ? 'Trabajando…' : 'Interpretar y calcular'}
+          {busyParse || busyPlan ? 'Calculando ruta…' : 'Calcular ruta de carga'}
         </button>
-        <button
-          type="button"
-          className="assistant-ai-actions__map"
-          disabled={!canRecalculate}
-          onClick={() => void runPlanOnly()}
-        >
-          {busyPlan ? 'Calculando…' : 'Recalcular plan'}
-        </button>
+        {stops && stops.length > 0 ? (
+          <button
+            type="button"
+            className="btn btn--ghost"
+            disabled={!canRecalculate}
+            onClick={() => void runPlanOnly()}
+          >
+            {busyPlan ? 'Recalculando…' : 'Recalcular solo el plan'}
+          </button>
+        ) : null}
       </div>
 
       {status ? (

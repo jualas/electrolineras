@@ -1785,6 +1785,17 @@ button {
   font-weight: 600;
 }
 
+.trip-simulation__actions {
+  margin-top: 0.75rem;
+}
+
+.trip-simulation__primary {
+  width: 100%;
+  min-height: 2.75rem;
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
 .trip-simulation__warnings {
   margin: 0.4rem 0;
   padding-left: 1.1rem;
@@ -2000,8 +2011,8 @@ button {
   padding: 0.65rem 0.85rem;
   border: none;
   border-radius: var(--radius-sm);
-  background: var(--color-primary);
-  color: var(--color-on-primary, #fff);
+  background: var(--color-primary, var(--color-accent));
+  color: var(--color-on-primary, var(--color-accent-contrast, #fff));
   font-weight: 600;
 }
 
