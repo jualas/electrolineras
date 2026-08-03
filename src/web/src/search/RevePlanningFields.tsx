@@ -30,6 +30,10 @@ type RevePlanningFieldsProps = {
   consumptionWhPerKm: number
   onChange: (options: RevePlanningOptions) => void
   disabled?: boolean
+  /** Oculta el input de consumo (p. ej. Asistente con perfil histórico). */
+  hideConsumption?: boolean
+  consumptionNote?: string | null
+  consumptionConfidence?: string | null
 }
 
 export function RevePlanningFields({
@@ -37,6 +41,9 @@ export function RevePlanningFields({
   consumptionWhPerKm,
   onChange,
   disabled = false,
+  hideConsumption = false,
+  consumptionNote = null,
+  consumptionConfidence = null,
 }: RevePlanningFieldsProps) {
   const displayConsumption =
     options.consumptionKwhPer100km ?? Math.round((consumptionWhPerKm / 10) * 10) / 10
@@ -45,24 +52,32 @@ export function RevePlanningFields({
     <details className="reve-planning" open>
       <summary className="reve-planning__summary">Ajustes del plan (estilo REVE)</summary>
       <div className="reve-planning__grid">
-        <label className="field">
-          <span className="field__label">Consumo (kWh/100 km)</span>
-          <input
-            type="number"
-            min={8}
-            max={50}
-            step={0.1}
-            value={displayConsumption}
-            disabled={disabled}
-            onChange={(event) => {
-              const value = Number(event.target.value)
-              onChange({
-                ...options,
-                consumptionKwhPer100km: Number.isFinite(value) ? value : null,
-              })
-            }}
-          />
-        </label>
+        {hideConsumption ? (
+          <p className="panel-hint reve-planning__consumption-note" role="status">
+            {consumptionNote ??
+              'Consumo del plan: automático desde histórico del vehículo (según tipo de ruta).'}
+            {consumptionConfidence ? ` · confianza ${consumptionConfidence}` : null}
+          </p>
+        ) : (
+          <label className="field">
+            <span className="field__label">Consumo (kWh/100 km)</span>
+            <input
+              type="number"
+              min={8}
+              max={50}
+              step={0.1}
+              value={displayConsumption}
+              disabled={disabled}
+              onChange={(event) => {
+                const value = Number(event.target.value)
+                onChange({
+                  ...options,
+                  consumptionKwhPer100km: Number.isFinite(value) ? value : null,
+                })
+              }}
+            />
+          </label>
+        )}
         <label className="field">
           <span className="field__label">Potencia máx. carga (kW)</span>
           <input

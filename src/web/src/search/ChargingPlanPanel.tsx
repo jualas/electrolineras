@@ -22,6 +22,7 @@ import { RoutePreferenceFields } from './RoutePreferenceFields'
 import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
+import { chargingPlanWithPreference } from '../routing/routeVariantSelection'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { ChargingPlanResults } from './ChargingPlanResults'
 import { ReplanOnRouteBar } from './ReplanOnRouteBar'
@@ -76,7 +77,8 @@ export function ChargingPlanPanel({
     null,
   )
   const lastSearchKeyRef = useRef<string | null>(null)
-  const recalcOnPreferenceRef = useRef(false)
+  const cachedPlanRef = useRef<ChargingPlanResponse | null>(null)
+  const recalcOnRouteSettingsRef = useRef(false)
   const tripRestoredRef = useRef(false)
   const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow } = useActiveTrip()
 
@@ -246,9 +248,11 @@ export function ChargingPlanPanel({
         chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
       })
       lastSearchKeyRef.current = searchKey
-      setLastResponse(response)
+      cachedPlanRef.current = response
+      const displayed = chargingPlanWithPreference(response, routePreference) ?? response
+      setLastResponse(displayed)
       setStatus('ready')
-      onResults(response)
+      onResults(displayed)
       if (!emergencyMode && destination) {
         saveActiveTrip({
           destination: {
@@ -272,6 +276,7 @@ export function ChargingPlanPanel({
       setStatus('error')
       setLastResponse(null)
       onResults(null)
+      cachedPlanRef.current = null
     }
   }, [
     carTelemetry,
@@ -397,15 +402,57 @@ export function ChargingPlanPanel({
   ])
 
   useEffect(() => {
-    if (!recalcOnPreferenceRef.current || emergencyMode) {
+    if (!recalcOnRouteSettingsRef.current || emergencyMode) {
       return
     }
     if (status === 'loading') {
       return
     }
-    recalcOnPreferenceRef.current = false
+    recalcOnRouteSettingsRef.current = false
     void runPlan()
-  }, [routePreference, avoidTolls, revePlanning, emergencyMode, runPlan, status])
+  }, [avoidTolls, revePlanning, emergencyMode, runPlan, status])
+
+  const applyCachedRoutePreference = useCallback(
+    (preference: RoutePreference) => {
+      const cached = cachedPlanRef.current
+      if (!cached) {
+        return false
+      }
+      const switched = chargingPlanWithPreference(cached, preference)
+      if (!switched) {
+        return false
+      }
+      setLastResponse(switched)
+      onResults(switched)
+      onSelectStation?.(null)
+      if (!emergencyMode && destPoint) {
+        saveActiveTrip({
+          destination: {
+            label: destPoint.label,
+            lat: destPoint.lat,
+            lon: destPoint.lon,
+          },
+          corridorKm,
+          routePreference: preference,
+          avoidTolls,
+          chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
+          originMode,
+          updatedAt: Date.now(),
+        })
+      }
+      return true
+    },
+    [
+      avoidTolls,
+      corridorKm,
+      destPoint,
+      emergencyMode,
+      onResults,
+      onSelectStation,
+      originMode,
+      saveActiveTrip,
+    ],
+  )
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -440,6 +487,7 @@ export function ChargingPlanPanel({
     setError(null)
     setLastResponse(null)
     onResults(null)
+    cachedPlanRef.current = null
   }
 
   const handleSimulationToggle = (enabled: boolean) => {
@@ -679,8 +727,10 @@ export function ChargingPlanPanel({
               avoidTolls={avoidTolls}
               onRoutePreferenceChange={(value) => {
                 setRoutePreference(value)
-                if (status === 'ready' && lastResponse && !emergencyMode) {
-                  recalcOnPreferenceRef.current = true
+                if (status === 'ready' && cachedPlanRef.current && !emergencyMode) {
+                  if (!applyCachedRoutePreference(value)) {
+                    recalcOnRouteSettingsRef.current = true
+                  }
                 } else {
                   lastSearchKeyRef.current = null
                 }
@@ -688,7 +738,7 @@ export function ChargingPlanPanel({
               onAvoidTollsChange={(value) => {
                 setAvoidTolls(value)
                 if (status === 'ready' && lastResponse && !emergencyMode) {
-                  recalcOnPreferenceRef.current = true
+                  recalcOnRouteSettingsRef.current = true
                 } else {
                   lastSearchKeyRef.current = null
                 }
@@ -704,7 +754,7 @@ export function ChargingPlanPanel({
               onChange={(value) => {
                 setRevePlanning(value)
                 if (status === 'ready' && lastResponse && !emergencyMode) {
-                  recalcOnPreferenceRef.current = true
+                  recalcOnRouteSettingsRef.current = true
                 } else {
                   lastSearchKeyRef.current = null
                 }

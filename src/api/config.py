@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     teslamate_mqtt_password: str = ""
     teslamate_mqtt_topic_prefix: str = "teslamate/cars"
     teslamate_mqtt_timeout_seconds: float = 3.0
+    grafana_base_url: str = ""
+    grafana_api_token: str = ""
+    grafana_datasource_uid: str = "TeslaMate"
+    grafana_timeout_seconds: float = 20.0
+    # 0 = todo el histórico TeslaMate; >0 limita a N días. Mínimo km excluye ciudad.
+    consumption_profile_lookback_days: int = 0
+    consumption_profile_min_distance_km: float = 20.0
+    # Alerta replan si |consumo instantáneo - plan| / plan supera este % (#6091).
+    consumption_divergence_alert_pct: float = 15.0
     dify_api_base_url: str = ""
     dify_trip_workflow_api_key: str = ""
     dify_timeout_seconds: float = 90.0

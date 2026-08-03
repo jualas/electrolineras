@@ -1,7 +1,7 @@
 app:
   description: 'Guía de viaje EV: motor Electrolineras (JSON) + narrativa vía cursor-cli-bridge
-    (sin OpenAI en Dify). Entradas trip_context_json + agent_summary. Salida guide_text.
-    Requiere puente en http://<IP-LAN-SERVIDOR>:18765/invoke — ver scripts/dify/run_cursor_bridge.sh'
+    (sin OpenAI en Dify). Entradas trip_context_json + agent_summary (incluye consumption_profile
+    #6092). Salida guide_text. Puente http://<IP-LAN-SERVIDOR>:18765/invoke — ver docs/DIFY_CURSOR.md'
   icon: ⚡
   icon_background: '#FEF3C7'
   icon_type: emoji

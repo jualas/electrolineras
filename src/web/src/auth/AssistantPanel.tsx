@@ -1,19 +1,28 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type SyntheticEvent } from 'react'
 
 import { fetchTripAdviceFromCar, fetchTripGuideFromCar } from '../api/auth'
-import type { GeocodeResult, TripGuideResponse } from '../api/types'
+import type {
+  ChargingPlanResponse,
+  GeocodeResult,
+  RoutePreference,
+  TripAdviceResponse,
+  TripGuideResponse,
+} from '../api/types'
+import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { VehicleTelemetryStrip } from '../components/vehicle/VehicleTelemetryStrip'
+import { useActiveTrip } from '../hooks/useActiveTrip'
 import {
   chargingReachFromNominal,
   nominalRangeKm,
   planningRangeFromNominal,
 } from '../vehicle/telemetryProfile'
 import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
-import { getTerrainFactor, getVehiclePreset, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
+import { getVehiclePreset, type TerrainFactorId } from '../vehicle/vehiclePresets'
 import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
+import { ReplanOnRouteBar } from '../search/ReplanOnRouteBar'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
+import { chargingPlanWithPreference } from '../routing/routeVariantSelection'
 import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
-import type { RoutePreference } from '../api/types'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
 import {
   defaultDepartureSoc,
@@ -25,6 +34,41 @@ import { LoginPanel } from './LoginPanel'
 import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
 
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
+
+function mergeAdviceFields(
+  base: Partial<TripGuideResponse> | null,
+  result: TripAdviceResponse,
+  displayedPlan: ChargingPlanResponse,
+  culturalPoiEnabled: boolean,
+): TripGuideResponse {
+  return {
+    guide_text: base?.guide_text ?? '',
+    guide_source: base?.guide_source ?? 'deterministic',
+    context: base?.context ?? {
+      cultural_poi_enabled: culturalPoiEnabled,
+      poi_hints: [],
+      nearest_destination_chargers: [],
+      vehicle_snapshot: {},
+      plan_snapshot: {},
+    },
+    plan: displayedPlan,
+    agent_summary: result.agent_summary,
+    agent_bullets: result.agent_bullets,
+    vehicle: result.vehicle ?? base?.vehicle ?? null,
+    live_soc_percent: result.live_soc_percent,
+    departure_soc_percent: result.departure_soc_percent,
+    soc_source: result.soc_source,
+    consumption_source: result.consumption_source,
+    consumption_kwh_per_100km: result.consumption_kwh_per_100km,
+    consumption_confidence: result.consumption_confidence,
+    consumption_note: result.consumption_note,
+    consumption_bin: result.consumption_bin,
+    consumption_profile: result.consumption_profile,
+    live_consumption_kwh_per_100km: result.live_consumption_kwh_per_100km,
+    consumption_divergence_pct: result.consumption_divergence_pct,
+    consumption_divergence_alert: result.consumption_divergence_alert,
+  }
+}
 
 type AssistantPanelProps = {
   vehicleProfile: VehicleProfile
@@ -39,12 +83,13 @@ type AssistantPanelProps = {
 export function AssistantPanel({
   vehicleProfile,
   onVehicleSocChange,
-  onVehicleTerrainChange,
+  onVehicleTerrainChange: _onVehicleTerrainChange,
   onPlanResults,
   onPlanStateChange,
   onSelectStation,
   selectedStationId,
 }: AssistantPanelProps) {
+  void _onVehicleTerrainChange
   const { loading, authenticated, loginEnabled, logout, privateStackEnabled } = useAuth()
   const [destination, setDestination] = useState<GeocodeResult | null>(null)
   const [destinationText, setDestinationText] = useState('')
@@ -62,7 +107,33 @@ export function AssistantPanel({
   const [departureSoc, setDepartureSoc] = useState(80)
   const [aiNote, setAiNote] = useState('')
   const [guideError, setGuideError] = useState<string | null>(null)
-  const recalcOnPreferenceRef = useRef(false)
+  const [settingsOpen, setSettingsOpen] = useState(
+    () => typeof window === 'undefined' || !window.matchMedia('(max-width: 640px)').matches,
+  )
+  const recalcOnRouteSettingsRef = useRef(false)
+  const cachedPlanRef = useRef<ChargingPlanResponse | null>(null)
+  const tripRestoredRef = useRef(false)
+  const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow } =
+    useActiveTrip()
+
+  const publishPlan = (plan: ChargingPlanResponse) => {
+    cachedPlanRef.current = plan
+    const displayed = chargingPlanWithPreference(plan, routePreference) ?? plan
+    onPlanResults(displayed)
+    return displayed
+  }
+
+  const persistActiveTrip = (dest: GeocodeResult) => {
+    saveActiveTrip({
+      destination: { label: dest.label, lat: dest.lat, lon: dest.lon },
+      corridorKm: 10,
+      routePreference,
+      avoidTolls,
+      chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
+      originMode: 'car',
+      updatedAt: Date.now(),
+    })
+  }
 
   const {
     vehicle,
@@ -75,6 +146,21 @@ export function AssistantPanel({
     onSocChange: onVehicleSocChange,
     pollIntervalMs: TELEMETRY_POLL_INTERVAL_MS,
   })
+
+  useEffect(() => {
+    if (tripRestoredRef.current || !activeTrip || destination) {
+      return
+    }
+    tripRestoredRef.current = true
+    setDestination({
+      label: activeTrip.destination.label,
+      lat: activeTrip.destination.lat,
+      lon: activeTrip.destination.lon,
+    })
+    setDestinationText(activeTrip.destination.label)
+    setRoutePreference(activeTrip.routePreference)
+    setAvoidTolls(activeTrip.avoidTolls)
+  }, [activeTrip, destination])
 
   useEffect(() => {
     setRevePlanning((prev) => ({
@@ -128,7 +214,6 @@ export function AssistantPanel({
     return <LoginPanel />
   }
 
-  const terrain = getTerrainFactor(vehicleProfile.terrainFactorId)
   const vehiclePreset = getVehiclePreset(vehicleProfile.presetId)
   const nominalKm = vehicle != null ? nominalRangeKm(vehicle) : null
   const planningSocPercent =
@@ -163,7 +248,7 @@ export function AssistantPanel({
       const result = await fetchTripAdviceFromCar({
         destLat: destination.lat,
         destLon: destination.lon,
-        terrainFactor: terrain.factor,
+        terrainFactor: 1.0,
         reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
         localMobilityKm: 40,
         includeRoute: true,
@@ -175,33 +260,17 @@ export function AssistantPanel({
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
         maxChargeSocPct: revePlanning.maxChargeSocPct,
         excludeSlowChargers: revePlanning.excludeSlowChargers,
-        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
+        consumptionKwhPer100km: null,
         vehiclePresetId: vehicleProfile.presetId,
         minKw: revePlanning.excludeSlowChargers ? 50 : 100,
       })
-      setAdvice((prev) =>
-        prev
-          ? { ...prev, plan: result.plan, agent_summary: result.agent_summary, agent_bullets: result.agent_bullets, vehicle: result.vehicle ?? prev.vehicle }
-          : {
-              plan: result.plan,
-              agent_summary: result.agent_summary,
-              agent_bullets: result.agent_bullets,
-              vehicle: result.vehicle,
-              guide_text: '',
-              guide_source: 'deterministic',
-              context: {
-                cultural_poi_enabled: culturalPoi,
-                poi_hints: [],
-                nearest_destination_chargers: [],
-                vehicle_snapshot: {},
-                plan_snapshot: {},
-              },
-            },
-      )
-      onPlanResults(result.plan)
+      const displayedPlan = publishPlan(result.plan)
+      persistActiveTrip(destination)
+      setAdvice((prev) => mergeAdviceFields(prev, result, displayedPlan, culturalPoi))
       onPlanStateChange?.('ready')
     } catch (err) {
       setAdvice(null)
+      cachedPlanRef.current = null
       onPlanResults(null)
       onPlanStateChange?.('error')
       setPlanError(err instanceof Error ? err.message : 'Error al planificar')
@@ -227,7 +296,7 @@ export function AssistantPanel({
         destLat: destination.lat,
         destLon: destination.lon,
         destLabel: destination.label,
-        terrainFactor: terrain.factor,
+        terrainFactor: 1.0,
         reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
         localMobilityKm: 40,
         includeRoute: true,
@@ -242,12 +311,13 @@ export function AssistantPanel({
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
         maxChargeSocPct: revePlanning.maxChargeSocPct,
         excludeSlowChargers: revePlanning.excludeSlowChargers,
-        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
+        consumptionKwhPer100km: null,
         vehiclePresetId: vehicleProfile.presetId,
         minKw: revePlanning.excludeSlowChargers ? 50 : 100,
       })
-      setAdvice(result)
-      onPlanResults(result.plan)
+      const displayedPlan = publishPlan(result.plan)
+      persistActiveTrip(destination)
+      setAdvice(mergeAdviceFields(result, result, displayedPlan, culturalPoi))
       onPlanStateChange?.('ready')
     } catch (err) {
       onPlanStateChange?.('error')
@@ -257,15 +327,105 @@ export function AssistantPanel({
     }
   }
 
-  const busy = loadingPlan || loadingGuide
-
-  useEffect(() => {
-    if (!recalcOnPreferenceRef.current || busy || !advice?.plan || !destination) {
+  const runReplanFromHere = async () => {
+    if (!destination) {
       return
     }
-    recalcOnPreferenceRef.current = false
+    // Replan en marcha: SOC vivo (no simulación de casa).
+    setSimulateDeparture(false)
+    setLoadingPlan(true)
+    setPlanError(null)
+    onPlanStateChange?.('loading')
+    try {
+      await loadVehicle()
+      const result = await fetchTripAdviceFromCar({
+        destLat: destination.lat,
+        destLon: destination.lon,
+        terrainFactor: 1.0,
+        reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
+        localMobilityKm: 40,
+        includeRoute: true,
+        routePreference,
+        avoidHighways: avoidTolls,
+        departureSocPercent: undefined,
+        maxChargePowerKw: revePlanning.maxChargePowerKw,
+        minDestinationSocPct: revePlanning.minDestinationSocPct,
+        minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
+        maxChargeSocPct: revePlanning.maxChargeSocPct,
+        excludeSlowChargers: revePlanning.excludeSlowChargers,
+        consumptionKwhPer100km: null,
+        vehiclePresetId: vehicleProfile.presetId,
+        minKw: revePlanning.excludeSlowChargers ? 50 : 100,
+      })
+      const displayedPlan = publishPlan(result.plan)
+      persistActiveTrip(destination)
+      setAdvice((prev) => mergeAdviceFields(prev, result, displayedPlan, culturalPoi))
+      onPlanStateChange?.('ready')
+    } catch (err) {
+      onPlanStateChange?.('error')
+      setPlanError(err instanceof Error ? err.message : 'Error al recalcular')
+    } finally {
+      setLoadingPlan(false)
+    }
+  }
+
+  const applyCachedRoutePreference = (preference: RoutePreference) => {
+    const cached = cachedPlanRef.current
+    if (!cached) {
+      return false
+    }
+    const switched = chargingPlanWithPreference(cached, preference)
+    if (!switched) {
+      return false
+    }
+    setAdvice((prev) => (prev ? { ...prev, plan: switched } : prev))
+    onPlanResults(switched)
+    onSelectStation?.(null)
+    return true
+  }
+
+  const busy = loadingPlan || loadingGuide
+  const lastFollowKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!recalcOnRouteSettingsRef.current || busy || !advice?.plan || !destination) {
+      return
+    }
+    recalcOnRouteSettingsRef.current = false
     void runMapPlan()
-  }, [routePreference, avoidTolls, revePlanning, busy, advice?.plan, destination])
+  }, [avoidTolls, revePlanning, busy, advice?.plan, destination])
+
+  useEffect(() => {
+    if (!enMarchaSettings.autoFollow || !advice?.plan || !destination || !vehicle || busy) {
+      return
+    }
+    const key = [
+      vehicle.lat.toFixed(3),
+      vehicle.lon.toFixed(3),
+      Math.round(vehicle.battery_level_pct),
+      routePreference,
+      avoidTolls ? '1' : '0',
+    ].join('|')
+    if (lastFollowKeyRef.current == null) {
+      lastFollowKeyRef.current = key
+      return
+    }
+    if (key === lastFollowKeyRef.current) {
+      return
+    }
+    lastFollowKeyRef.current = key
+    void runReplanFromHere()
+  }, [
+    avoidTolls,
+    advice?.plan,
+    busy,
+    destination,
+    enMarchaSettings.autoFollow,
+    routePreference,
+    vehicle?.battery_level_pct,
+    vehicle?.lat,
+    vehicle?.lon,
+  ])
 
   return (
     <section className="assistant-panel">
@@ -275,176 +435,120 @@ export function AssistantPanel({
           Salir
         </button>
       </div>
-      <p className="assistant-panel__hint">
+      <p className="assistant-panel__hint assistant-panel__hint--desktop">
         Datos en vivo desde TeslaMate (SOC, autonomía del cuadro y modelo). El plan usa esos valores, no presets
         genéricos.
       </p>
 
-      <VehicleTelemetryStrip
-        vehicle={vehicle}
-        loading={loadingVehicle}
-        error={vehicleError}
-        onRefresh={() => void loadVehicle()}
-      />
+      <div className="assistant-panel__block assistant-panel__block--telemetry">
+        <VehicleTelemetryStrip
+          vehicle={vehicle}
+          loading={loadingVehicle}
+          error={vehicleError}
+          onRefresh={() => void loadVehicle()}
+        />
 
-      {vehicle && nominalKm != null && (
-        <ul className="assistant-vehicle__stats assistant-vehicle__stats--extra">
-          {planKm != null && (
-            <li>
-              Plan reserva {DEFAULT_RESERVE_SOC_PERCENT} %: ~{planKm} km
-              {reachKm != null && <> · hasta cargador ≥5 %: ~{reachKm} km</>}
-            </li>
-          )}
-          {vehicle.est_battery_range_km != null &&
-            nominalKm != null &&
-            Math.abs(vehicle.est_battery_range_km - (nominalKm * vehicle.battery_level_pct) / 100) > 15 && (
-              <li className="assistant-panel__muted">
-                MQTT est_battery_range_km: ~{vehicle.est_battery_range_km.toFixed(0)} km (no usado en el plan)
+        {vehicle && nominalKm != null && (
+          <ul className="assistant-vehicle__stats assistant-vehicle__stats--extra">
+            {planKm != null && (
+              <li>
+                Plan reserva {DEFAULT_RESERVE_SOC_PERCENT} %: ~{planKm} km
+                {reachKm != null && <> · hasta cargador ≥5 %: ~{reachKm} km</>}
               </li>
             )}
-        </ul>
-      )}
-
-      {vehicle && nominalKm != null && (
-        <DepartureChargeSimulator
-          liveSocPercent={vehicle.battery_level_pct}
-          departureSocPercent={departureSoc}
-          simulateDeparture={simulateDeparture}
-          nominalKm={nominalKm}
-          disabled={busy}
-          onSimulateChange={(enabled) => {
-            setSimulateDeparture(enabled)
-            if (enabled && vehicle) {
-              setDepartureSoc(defaultDepartureSoc(vehicle.battery_level_pct))
-            } else if (!enabled && vehicle) {
-              setDepartureSoc(Math.round(vehicle.battery_level_pct))
-            }
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
-          }}
-          onDepartureSocChange={(value) => {
-            setDepartureSoc(value)
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
-          }}
-        />
-      )}
-
-      <div className="assistant-profile-sync">
-        <p className="panel-hint">
-          Terreno ajusta el plan si esperas más consumo (sierra, frío). El plan usa el SOC al salir si simulas
-          carga; si no, el nivel actual del coche.
-        </p>
-        <div className="vehicle-panel__terrain">
-          <span className="field__label">Terreno</span>
-          <div className="chip-row" role="list" aria-label="Factor de terreno">
-            {TERRAIN_FACTORS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="listitem"
-                className={`chip ${vehicleProfile.terrainFactorId === item.id ? 'chip--active' : ''}`}
-                onClick={() => onVehicleTerrainChange(item.id)}
-                aria-pressed={vehicleProfile.terrainFactorId === item.id}
-                title={item.hint}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
+            {vehicle.est_battery_range_km != null &&
+              nominalKm != null &&
+              Math.abs(vehicle.est_battery_range_km - (nominalKm * vehicle.battery_level_pct) / 100) > 15 && (
+                <li className="assistant-panel__muted">
+                  MQTT est_battery_range_km: ~{vehicle.est_battery_range_km.toFixed(0)} km (no usado en el plan)
+                </li>
+              )}
+          </ul>
+        )}
       </div>
 
-      <PlaceAutocomplete
-        id="assistant-dest"
-        label="Destino"
-        placeholder="Ciudad o lugar"
-        value={destinationText}
-        onChange={(text) => {
-          setDestinationText(text)
-          setDestination(null)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
-        }}
-        onSelect={(place) => {
-          setDestinationText(place.label)
-          setDestination(place)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
-        }}
-      />
+      {advice?.consumption_divergence_alert && (
+        <div className="assistant-divergence-alert assistant-panel__block--alert" role="alert">
+          <p>
+            El consumo instantáneo diverge más de 15 % respecto al plan
+            {advice.consumption_divergence_pct != null
+              ? ` (${advice.consumption_divergence_pct > 0 ? '+' : ''}${advice.consumption_divergence_pct.toFixed(0)} %)`
+              : ''}
+            . Recalcula desde tu posición y SOC actuales.
+          </p>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={busy || !destination}
+            onClick={() => void runReplanFromHere()}
+          >
+            {loadingPlan ? 'Recalculando…' : 'Recalcular desde aquí'}
+          </button>
+        </div>
+      )}
 
-      <RoutePreferenceFields
-        routePreference={routePreference}
-        avoidTolls={avoidTolls}
-        variant="assistant"
-        comparisonPlan={advice?.plan ?? null}
-        onRoutePreferenceChange={(value) => {
-          setRoutePreference(value)
-          if (advice?.plan) {
-            recalcOnPreferenceRef.current = true
-          } else {
+      {activeTrip && !destination && (
+        <p className="panel-hint active-trip-restore" role="status">
+          Viaje activo a {activeTrip.destination.label}. Se restaurará el destino al cargar.
+        </p>
+      )}
+
+      <div className="assistant-panel__block assistant-panel__block--trip">
+        <PlaceAutocomplete
+          id="assistant-dest"
+          label="Destino"
+          placeholder="Ciudad o lugar"
+          value={destinationText}
+          onChange={(text) => {
+            setDestinationText(text)
+            setDestination(null)
             setAdvice(null)
             onPlanResults(null)
             onPlanStateChange?.('idle')
-          }
-        }}
-        onAvoidTollsChange={(value) => {
-          setAvoidTolls(value)
-          if (advice?.plan) {
-            recalcOnPreferenceRef.current = true
-          } else {
+          }}
+          onSelect={(place) => {
+            setDestinationText(place.label)
+            setDestination(place)
             setAdvice(null)
             onPlanResults(null)
             onPlanStateChange?.('idle')
-          }
-        }}
-        disabled={busy}
-      />
-
-      <RevePlanningFields
-        options={revePlanning}
-        consumptionWhPerKm={consumptionWhPerKm}
-        disabled={busy}
-        onChange={(value) => {
-          setRevePlanning(value)
-          if (advice?.plan) {
-            recalcOnPreferenceRef.current = true
-          } else {
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
-          }
-        }}
-      />
-
-      <label className="assistant-panel__option">
-        <input
-          type="checkbox"
-          checked={culturalPoi}
-          onChange={(e) => setCulturalPoi(e.target.checked)}
+          }}
         />
-        Incluir ideas culturales y gastronomía en la guía
-      </label>
 
-      <label className="field" htmlFor="assistant-ai-note">
-        <span className="field__label">Pregunta o nota para la IA (opcional)</span>
-        <textarea
-          id="assistant-ai-note"
-          className="assistant-ai-note"
-          rows={3}
-          placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
-          value={aiNote}
-          onChange={(e) => setAiNote(e.target.value)}
+        <RoutePreferenceFields
+          routePreference={routePreference}
+          avoidTolls={avoidTolls}
+          variant="assistant"
+          comparisonPlan={advice?.plan ?? null}
+          onRoutePreferenceChange={(value) => {
+            setRoutePreference(value)
+            if (advice?.plan && cachedPlanRef.current) {
+              if (!applyCachedRoutePreference(value)) {
+                recalcOnRouteSettingsRef.current = true
+              }
+            } else {
+              setAdvice(null)
+              cachedPlanRef.current = null
+              onPlanResults(null)
+              onPlanStateChange?.('idle')
+            }
+          }}
+          onAvoidTollsChange={(value) => {
+            setAvoidTolls(value)
+            if (advice?.plan) {
+              recalcOnRouteSettingsRef.current = true
+            } else {
+              setAdvice(null)
+              cachedPlanRef.current = null
+              onPlanResults(null)
+              onPlanStateChange?.('idle')
+            }
+          }}
           disabled={busy}
         />
-      </label>
+      </div>
 
-      <div className="assistant-ai-actions">
+      <div className="assistant-ai-actions assistant-panel__block--cta">
         <button
           type="button"
           className="assistant-ai-actions__map"
@@ -462,39 +566,36 @@ export function AssistantPanel({
           {loadingGuide ? 'Generando guía IA…' : 'Guía de viaje con IA'}
         </button>
       </div>
-      <p className="assistant-panel__hint assistant-panel__hint--actions">
+      <p className="assistant-panel__hint assistant-panel__hint--actions assistant-panel__hint--desktop">
         El mapa es rápido (motor local). La guía IA usa Dify + Cursor y puede tardar 1–2 minutos.
       </p>
 
       {planError && <p className="auth-form__error">{planError}</p>}
       {guideError && <p className="auth-form__error">{guideError}</p>}
 
+      {advice?.plan && destination ? (
+        <ReplanOnRouteBar
+          destinationLabel={destination.label}
+          originLabel={
+            vehicle
+              ? `${vehicle.display_name ?? 'Coche'} · ${vehicle.lat.toFixed(3)}, ${vehicle.lon.toFixed(3)}`
+              : 'Posición TeslaMate'
+          }
+          socPercent={vehicle?.battery_level_pct ?? advice.live_soc_percent ?? 0}
+          socSourceLabel="TeslaMate"
+          loading={busy}
+          autoFollow={enMarchaSettings.autoFollow}
+          onAutoFollowChange={setAutoFollow}
+          onReplan={() => void runReplanFromHere()}
+          onRefreshOrigin={() => void loadVehicle()}
+          canReplan={Boolean(destination) && !busy}
+          lastUpdatedAt={activeTrip?.updatedAt ?? null}
+          showAutoFollow
+        />
+      ) : null}
+
       {advice && (
-        <div className="assistant-advice">
-          {advice.guide_text && (
-            <div className="assistant-guide">
-              <div className="assistant-guide__header">
-                <h3 className="assistant-guide__title">Guía de viaje</h3>
-                <span className="assistant-guide__badge">
-                  {advice.guide_source === 'dify' ? 'IA · Cursor' : 'Motor local'}
-                </span>
-              </div>
-              <pre className="assistant-guide__text">{advice.guide_text}</pre>
-              <button
-                type="button"
-                className="assistant-guide__refresh"
-                disabled={busy || !destination}
-                onClick={() => void runAiGuide()}
-              >
-                {loadingGuide ? 'Regenerando…' : 'Actualizar guía IA'}
-              </button>
-            </div>
-          )}
-          {!advice.guide_text && advice.plan && (advice.plan.planned_stops?.length ?? 0) === 0 && (
-            <p className="assistant-panel__muted">
-              Plan listo en el mapa. Pulsa <strong>Guía de viaje con IA</strong> para la narrativa.
-            </p>
-          )}
+        <div className="assistant-advice assistant-panel__block--results">
           {!advice.plan?.route_trip_summary && advice.agent_summary ? (
             <p className="assistant-advice__summary">{advice.agent_summary}</p>
           ) : null}
@@ -511,8 +612,158 @@ export function AssistantPanel({
             onSelectStation={onSelectStation}
             variant="assistant"
           />
+          {advice.guide_text ? (
+            <details className="assistant-guide assistant-collapsible">
+              <summary className="assistant-guide__header">
+                <span className="assistant-guide__title">Guía de viaje</span>
+                <span className="assistant-guide__badge">
+                  {advice.guide_source === 'dify' ? 'IA · Cursor' : 'Motor local'}
+                </span>
+              </summary>
+              <pre className="assistant-guide__text">{advice.guide_text}</pre>
+              <button
+                type="button"
+                className="assistant-guide__refresh"
+                disabled={busy || !destination}
+                onClick={() => void runAiGuide()}
+              >
+                {loadingGuide ? 'Regenerando…' : 'Actualizar guía IA'}
+              </button>
+            </details>
+          ) : null}
+          {!advice.guide_text && advice.plan && (advice.plan.planned_stops?.length ?? 0) === 0 && (
+            <p className="assistant-panel__muted">
+              Plan listo. Pulsa <strong>Guía de viaje con IA</strong> para la narrativa.
+            </p>
+          )}
+          {activeTrip ? (
+            <button type="button" className="btn btn--ghost replan-bar__clear" onClick={clearActiveTrip}>
+              Finalizar viaje activo
+            </button>
+          ) : null}
         </div>
       )}
+
+      <details
+        className="assistant-collapsible assistant-panel__block--settings"
+        open={settingsOpen}
+        onToggle={(event: SyntheticEvent<HTMLDetailsElement>) => {
+          setSettingsOpen(event.currentTarget.open)
+        }}
+      >
+        <summary>Ajustes y detalles</summary>
+        <div className="assistant-collapsible__body">
+          {vehicle && nominalKm != null && (
+            <DepartureChargeSimulator
+              liveSocPercent={vehicle.battery_level_pct}
+              departureSocPercent={departureSoc}
+              simulateDeparture={simulateDeparture}
+              nominalKm={nominalKm}
+              disabled={busy}
+              onSimulateChange={(enabled) => {
+                setSimulateDeparture(enabled)
+                if (enabled && vehicle) {
+                  setDepartureSoc(defaultDepartureSoc(vehicle.battery_level_pct))
+                } else if (!enabled && vehicle) {
+                  setDepartureSoc(Math.round(vehicle.battery_level_pct))
+                }
+                setAdvice(null)
+                onPlanResults(null)
+                onPlanStateChange?.('idle')
+              }}
+              onDepartureSocChange={(value) => {
+                setDepartureSoc(value)
+                setAdvice(null)
+                onPlanResults(null)
+                onPlanStateChange?.('idle')
+              }}
+            />
+          )}
+
+          <div className="assistant-profile-sync">
+            <p className="panel-hint">
+              El consumo del plan sale del histórico (≥20 km). El instantáneo MQTT solo alerta si diverge &gt;15 %;
+              no cambia el motor hasta que recalcules.
+            </p>
+            {advice && (
+              <ul className="assistant-energy-sources" aria-label="Fuentes de energía del plan">
+                <li>
+                  SOC:{' '}
+                  <strong>
+                    {advice.soc_source === 'simulated' ? 'simulado' : 'vivo'}{' '}
+                    {(advice.departure_soc_percent ?? advice.live_soc_percent ?? vehicle?.battery_level_pct)?.toFixed(0)} %
+                  </strong>
+                  {advice.soc_source === 'simulated' && advice.live_soc_percent != null
+                    ? ` (ahora ${advice.live_soc_percent.toFixed(0)} %)`
+                    : null}
+                </li>
+                {(advice.consumption_note || advice.plan.consumption_note) && (
+                  <li>
+                    Consumo plan:{' '}
+                    <strong>
+                      {(advice.consumption_kwh_per_100km ?? advice.plan.consumption_kwh_per_100km)?.toFixed(1)}{' '}
+                      kWh/100 km
+                    </strong>
+                    {advice.consumption_source ? ` · ${advice.consumption_source}` : null}
+                    {advice.consumption_confidence ? ` · confianza ${advice.consumption_confidence}` : null}
+                  </li>
+                )}
+                {advice.live_consumption_kwh_per_100km != null && (
+                  <li>
+                    Instantáneo MQTT:{' '}
+                    <strong>{advice.live_consumption_kwh_per_100km.toFixed(1)} kWh/100 km</strong>
+                    {advice.consumption_divergence_pct != null
+                      ? ` · ${advice.consumption_divergence_pct > 0 ? '+' : ''}${advice.consumption_divergence_pct.toFixed(0)} % vs plan`
+                      : null}
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+
+          <RevePlanningFields
+            options={revePlanning}
+            consumptionWhPerKm={consumptionWhPerKm}
+            disabled={busy}
+            hideConsumption
+            consumptionNote={advice?.consumption_note ?? advice?.plan.consumption_note}
+            consumptionConfidence={advice?.consumption_confidence ?? advice?.plan.consumption_confidence}
+            onChange={(value) => {
+              setRevePlanning({ ...value, consumptionKwhPer100km: null })
+              if (advice?.plan) {
+                recalcOnRouteSettingsRef.current = true
+              } else {
+                setAdvice(null)
+                cachedPlanRef.current = null
+                onPlanResults(null)
+                onPlanStateChange?.('idle')
+              }
+            }}
+          />
+
+          <label className="assistant-panel__option">
+            <input
+              type="checkbox"
+              checked={culturalPoi}
+              onChange={(e) => setCulturalPoi(e.target.checked)}
+            />
+            Incluir ideas culturales y gastronomía en la guía
+          </label>
+
+          <label className="field" htmlFor="assistant-ai-note">
+            <span className="field__label">Pregunta o nota para la IA (opcional)</span>
+            <textarea
+              id="assistant-ai-note"
+              className="assistant-ai-note"
+              rows={3}
+              placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
+              value={aiNote}
+              onChange={(e) => setAiNote(e.target.value)}
+              disabled={busy}
+            />
+          </label>
+        </div>
+      </details>
     </section>
   )
 }

@@ -223,21 +223,32 @@ Factible en export Google Maps y en planificador propio. Validar que waypoints l
 
 ---
 
-## Decisión recomendada (borrador)
+## Decisión de producto actual (#6127)
 
-| Necesidad | Enfoque recomendado |
-|-----------|---------------------|
-| Mandar **una parada** al coche | MVP: Google Maps. v2: Fleet API si usuario conecta Tesla |
-| **Ruta con paradas** que me interesen | Planificador propio + export Google Maps |
-| Enviar ruta **al nav Tesla** completa | No prometer en v1; parada a parada vía Fleet API |
-| Uso desde **Tesla browser** | Web responsive + plan de viaje en pantalla |
+Flujo primario **sin** app Android nativa ni Fleet API:
+
+1. Planificar en **Electrolineras** (web / Asistente).
+2. **Abrir en Google Maps** en el móvil (ruta completa con waypoints de carga).
+3. Conducir con el teléfono (soporte) y **Bluetooth** al coche (audio). La UI de navegación sigue en el teléfono; Tesla no recibe la ruta multi-parada de forma fiable vía “Enviar a Tesla”.
+4. **Preacondicionado:** Google Maps **no** lo activa. ~30–40 min antes de la parada, usar **«Siguiente parada (preacondicionar)»** o fijar ese pin en el navegador del Tesla para que prepare la batería.
+5. **Asistente en móvil (≤640px):** panel casi a pantalla completa, mapa colapsado con «Ver mapa», ajustes/guía en `<details>`.
+
+| Necesidad | Enfoque |
+|-----------|---------|
+| Ruta con paradas de carga | Plan propio + export Google Maps |
+| Audio en el coche | Google Maps móvil + Bluetooth |
+| Preacondicionar batería | CTA siguiente parada → nav Tesla cerca de la carga |
+| Envío directo al nav Tesla / Fleet API | Aplazado; no prometido en UI |
+
+UI: [`RouteExportActions.tsx`](../src/web/src/components/navigation/RouteExportActions.tsx), [`externalMaps.ts`](../src/web/src/navigation/externalMaps.ts).
 
 ---
 
-## Criterios de aceptación (cuando implementemos)
+## Criterios de aceptación
 
-- [ ] Desde un cargador: “Abrir en Google Maps” funciona en móvil y escritorio.
-- [ ] Desde un viaje planificado: URL con ≥ 3 waypoints abre ruta correcta en Google Maps.
-- [ ] (v2) Usuario Tesla vinculado: “Enviar al coche” llega en < 30 s con coche online.
-- [ ] (v2) Documentar en UI que la ruta completa al Tesla puede requerir enviar paradas una a una.
-- [ ] Probar en navegador Tesla: mapa usable y botones legibles.
+- [x] Desde un viaje planificado: «Abrir en Google Maps» con waypoints.
+- [x] «Siguiente parada (preacondicionar)» abre solo la 1.ª parada; copy honesto sobre BT y preacond.
+- [x] Sin promesa de «Enviar a Tesla» como envío directo fiable.
+- [x] Asistente móvil: panel dominante, mapa colapsable, ajustes/guía colapsados.
+- [x] QR desktop → misma URL Google Maps.
+- [ ] (futuro) Fleet API: envío parada a parada con preacond nativo.

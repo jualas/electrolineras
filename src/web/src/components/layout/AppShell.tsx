@@ -42,6 +42,7 @@ export function AppShell() {
   const { theme, toggleTheme } = useTheme()
   const [mode, setMode] = useState<SearchMode>(defaultNavMode)
   const [panelOpen, setPanelOpen] = useState(false)
+  const [assistantMapExpanded, setAssistantMapExpanded] = useState(false)
   const [apiOk, setApiOk] = useState(false)
   const [routeData, setRouteData] = useState<AlongRouteResponse | null>(null)
   const [routeChargePlanData, setRouteChargePlanData] = useState<ChargingPlanResponse | null>(null)
@@ -97,7 +98,10 @@ export function AppShell() {
       setMapSearchText('')
     }
     if (nextMode === 'assistant') {
+      setAssistantMapExpanded(false)
       setPanelOpen(true)
+    } else {
+      setAssistantMapExpanded(false)
     }
     setSelectedStation(null)
     setSelectedPlannedStopOrder(null)
@@ -221,8 +225,19 @@ export function AppShell() {
     mapBoundsGetterRef.current = getter
   }, [])
 
+  const assistantMode = mode === 'assistant'
+  const shellClass = [
+    'app-shell',
+    mode === 'map' ? 'app-shell--map-search' : '',
+    assistantMode ? 'app-shell--assistant' : '',
+    assistantMode && !assistantMapExpanded ? 'app-shell--assistant-map-collapsed' : '',
+    assistantMode && assistantMapExpanded ? 'app-shell--assistant-map-expanded' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className={`app-shell${mode === 'map' ? ' app-shell--map-search' : ''}`}>
+    <div className={shellClass}>
       <MapView
         className="app-map"
         theme={theme}
@@ -288,6 +303,16 @@ export function AppShell() {
                 </button>
               ))}
             </nav>
+            {assistantMode ? (
+              <button
+                type="button"
+                className="map-assistant-map-toggle"
+                onClick={() => setAssistantMapExpanded((open) => !open)}
+                aria-pressed={assistantMapExpanded}
+              >
+                {assistantMapExpanded ? 'Ocultar mapa' : 'Ver mapa'}
+              </button>
+            ) : null}
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </header>
 
@@ -357,7 +382,7 @@ export function AppShell() {
               onTerrainChange={setVehicleTerrain}
             />
           )}
-          {mode !== 'map' && (
+          {mode !== 'map' && mode !== 'assistant' && (
             <PowerFilterPanel
               filter={filter}
               onPresetChange={setPreset}

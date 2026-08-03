@@ -4,7 +4,9 @@ import pytest
 
 from api.integrations.telemetry_energy import (
     charging_reach_km,
+    consumption_divergence_pct,
     current_range_from_nominal,
+    live_consumption_wh_per_km,
     planning_range_km,
     vehicle_energy_from_telemetry,
 )
@@ -63,3 +65,21 @@ def test_vehicle_energy_requires_rated() -> None:
 
 def test_charging_reach_from_nominal() -> None:
     assert charging_reach_km(305.0, 75.0, 5.0) == 305.0 * 70 / 100
+
+
+def test_live_consumption_from_est_range() -> None:
+    telemetry = _telemetry(battery_level_pct=80.0, est_battery_range_km=200.0)
+    # 57 kWh * 0.8 / 200 km = 0.228 kWh/km → 228 Wh/km
+    live = live_consumption_wh_per_km(telemetry, capacity_kwh=57.0)
+    assert live == 228.0
+    assert live_consumption_wh_per_km(telemetry, capacity_kwh=57.0, soc_percent=0) is None
+
+
+def test_consumption_divergence_pct_alert_threshold() -> None:
+    planned = 140.0
+    live_ok = 150.0  # ~7 %
+    live_alert = 168.0  # +20 %
+    assert consumption_divergence_pct(live_ok, planned) == pytest.approx(7.1, abs=0.1)
+    assert abs(consumption_divergence_pct(live_ok, planned) or 0) < 15
+    assert consumption_divergence_pct(live_alert, planned) == pytest.approx(20.0, abs=0.1)
+    assert abs(consumption_divergence_pct(live_alert, planned) or 0) >= 15

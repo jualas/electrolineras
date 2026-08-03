@@ -12,8 +12,17 @@ from api.auth.private_access import (
 )
 from api.config import settings
 from api.dependencies import get_repository
+from api.integrations.consumption_profile_service import (
+    fetch_consumption_profile,
+    resolve_consumption_for_route,
+)
 from api.integrations.dify_client import dify_trip_guide_configured
-from api.integrations.telemetry_energy import vehicle_energy_from_telemetry
+from api.integrations.grafana_client import grafana_configured
+from api.integrations.telemetry_energy import (
+    consumption_divergence_pct,
+    live_consumption_wh_per_km,
+    vehicle_energy_from_telemetry,
+)
 from api.integrations.teslamate import TeslaMateError, VehicleTelemetry
 from api.integrations.vehicle_telemetry import (
     fetch_vehicle_telemetry,
@@ -24,6 +33,8 @@ from api.integrations.vehicle_telemetry import (
 from api.routes.agent_tools import agent_trip_advice
 from api.schemas import (
     MAX_CORRIDOR_KM,
+    ConsumptionBinResult,
+    ConsumptionProfileResponse,
     PrivateStackStatusResult,
     RoutePreference,
     TripAdviceResponse,
@@ -90,6 +101,7 @@ def private_stack_status() -> PrivateStackStatusResult:
         mqtt_configured=mqtt_configured(),
         teslamate_api_configured=teslamate_api_configured(),
         dify_trip_guide_configured=dify_trip_guide_configured(),
+        grafana_configured=grafana_configured(),
     )
 
 
@@ -123,6 +135,21 @@ def _resolve_car_energy(
     return soc_percent, usable_capacity_kwh, consumption_wh_per_km, reserve, live_soc
 
 
+def _profile_to_schema(profile) -> ConsumptionProfileResponse:
+    return ConsumptionProfileResponse(
+        available=profile.available,
+        source=profile.source,
+        lookback_days=profile.lookback_days,
+        min_distance_km=profile.min_distance_km,
+        drive_count=profile.drive_count,
+        car_id=profile.car_id,
+        note=profile.note,
+        bins={
+            key: ConsumptionBinResult(**stats.as_dict()) for key, stats in profile.bins.items()
+        },
+    )
+
+
 def _trip_advice_response(
     *,
     repo: StationRepository,
@@ -132,12 +159,13 @@ def _trip_advice_response(
     departure_soc_percent: float | None,
     vehicle_preset_id: str | None = None,
     usable_capacity_kwh: float | None = None,
+    consumption_kwh_per_100km: float | None = None,
     **agent_kwargs,
 ) -> TripAdviceResponse:
     try:
-        soc_percent, resolved_capacity, consumption_wh_per_km, reserve, live_soc = _resolve_car_energy(
+        soc_percent, resolved_capacity, telemetry_wh_per_km, reserve, live_soc = _resolve_car_energy(
             telemetry,
-            terrain_factor=terrain_factor,
+            terrain_factor=1.0,
             reserve_soc_percent=reserve_soc_percent,
             departure_soc_percent=departure_soc_percent,
             vehicle_preset_id=vehicle_preset_id,
@@ -146,6 +174,35 @@ def _trip_advice_response(
     except TeslaMateError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    route_preference = agent_kwargs.get("route_preference")
+    avoid_highways = bool(agent_kwargs.get("avoid_highways", False))
+    profile = fetch_consumption_profile(car_id=telemetry.car_id)
+    profile_schema = _profile_to_schema(profile)
+
+    if consumption_kwh_per_100km is not None:
+        consumption_wh_per_km = float(consumption_kwh_per_100km) * 10.0
+        effective_terrain = terrain_factor
+        consumption_source = "preset"
+        consumption_confidence = "medium"
+        consumption_note = f"Consumo manual {consumption_kwh_per_100km:.1f} kWh/100 km"
+        consumption_bin = None
+        consumption_kwh100 = round(float(consumption_kwh_per_100km), 2)
+    else:
+        resolved = resolve_consumption_for_route(
+            profile,
+            route_preference=route_preference,
+            avoid_highways=avoid_highways,
+            fallback_wh_per_km=telemetry_wh_per_km,
+            fallback_source="telemetry",
+        )
+        consumption_wh_per_km = resolved.wh_per_km
+        effective_terrain = 1.0
+        consumption_source = resolved.source
+        consumption_confidence = resolved.confidence
+        consumption_note = resolved.note
+        consumption_bin = resolved.bin
+        consumption_kwh100 = resolved.kwh_per_100km
+
     advice = agent_trip_advice(
         repo=repo,
         origin_lat=telemetry.lat,
@@ -153,9 +210,10 @@ def _trip_advice_response(
         soc_percent=soc_percent,
         usable_capacity_kwh=resolved_capacity,
         consumption_wh_per_km=consumption_wh_per_km,
-        terrain_factor=terrain_factor,
+        terrain_factor=effective_terrain,
         reserve_soc_percent=reserve,
         vehicle_preset_id=vehicle_preset_id,
+        consumption_kwh_per_100km=None,
         **agent_kwargs,
     )
     bullets = list(advice.agent_bullets)
@@ -164,14 +222,68 @@ def _trip_advice_response(
             0,
             f"Simulación al salir: {soc_percent:.0f} % SOC (ahora {live_soc:.0f} % en el coche).",
         )
+    if consumption_note:
+        bullets.insert(0, consumption_note)
+
+    live_wh = live_consumption_wh_per_km(
+        telemetry,
+        resolved_capacity,
+        soc_percent=live_soc,
+    )
+    live_kwh100 = round(live_wh / 10.0, 2) if live_wh is not None else None
+    divergence_pct = (
+        consumption_divergence_pct(live_wh, consumption_wh_per_km) if live_wh is not None else None
+    )
+    alert_threshold = max(1.0, float(settings.consumption_divergence_alert_pct))
+    divergence_alert = divergence_pct is not None and abs(divergence_pct) >= alert_threshold
+    if divergence_alert and divergence_pct is not None and live_kwh100 is not None:
+        bullets.insert(
+            0,
+            (
+                f"Consumo instantáneo ~{live_kwh100:.1f} kWh/100 km "
+                f"({divergence_pct:+.0f} % vs plan {consumption_kwh100:.1f}). "
+                "Conviene recalcular desde aquí."
+            ),
+        )
+
+    soc_source = "simulated" if abs(soc_percent - live_soc) >= 1 else "live"
+
+    plan = advice.plan.model_copy(
+        update={
+            "consumption_source": consumption_source,
+            "consumption_kwh_per_100km": consumption_kwh100,
+            "consumption_confidence": consumption_confidence,
+            "consumption_note": consumption_note,
+            "consumption_bin": consumption_bin,
+        }
+    )
     return TripAdviceResponse(
-        plan=advice.plan,
+        plan=plan,
         agent_summary=advice.agent_summary,
         agent_bullets=bullets,
         vehicle=_telemetry_to_schema(telemetry),
         live_soc_percent=round(live_soc, 1),
         departure_soc_percent=round(soc_percent, 1),
+        soc_source=soc_source,
+        consumption_source=consumption_source,
+        consumption_kwh_per_100km=consumption_kwh100,
+        consumption_confidence=consumption_confidence,
+        consumption_note=consumption_note,
+        consumption_bin=consumption_bin,
+        consumption_profile=profile_schema,
+        live_consumption_kwh_per_100km=live_kwh100,
+        consumption_divergence_pct=divergence_pct,
+        consumption_divergence_alert=divergence_alert,
     )
+
+
+@router.get("/consumption-profile")
+def private_consumption_profile(
+    car_id: Annotated[int | None, Query(ge=1, description="ID TeslaMate; default TESLAMATE_CAR_ID")] = None,
+) -> ConsumptionProfileResponse:
+    """Perfil histórico de consumo (bins) vía Grafana → TeslaMate Postgres."""
+    profile = fetch_consumption_profile(car_id=car_id)
+    return _profile_to_schema(profile)
 
 
 @router.get("/trip-advice-from-car")
@@ -309,11 +421,28 @@ def private_trip_guide_from_car(
         cultural_poi_enabled=cultural_poi,
         user_note=user_note,
         invoke_dify=invoke_dify,
+        consumption_profile=advice.consumption_profile,
+        consumption_source=advice.consumption_source,
+        consumption_kwh_per_100km=advice.consumption_kwh_per_100km,
+        consumption_confidence=advice.consumption_confidence,
+        consumption_note=advice.consumption_note,
+        consumption_bin=advice.consumption_bin,
     )
     return guide.model_copy(
         update={
+            "plan": advice.plan,
             "agent_bullets": advice.agent_bullets,
             "live_soc_percent": advice.live_soc_percent,
             "departure_soc_percent": advice.departure_soc_percent,
+            "soc_source": advice.soc_source,
+            "consumption_source": advice.consumption_source,
+            "consumption_kwh_per_100km": advice.consumption_kwh_per_100km,
+            "consumption_confidence": advice.consumption_confidence,
+            "consumption_note": advice.consumption_note,
+            "consumption_bin": advice.consumption_bin,
+            "consumption_profile": advice.consumption_profile,
+            "live_consumption_kwh_per_100km": advice.live_consumption_kwh_per_100km,
+            "consumption_divergence_pct": advice.consumption_divergence_pct,
+            "consumption_divergence_alert": advice.consumption_divergence_alert,
         }
     )

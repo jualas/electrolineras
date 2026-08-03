@@ -87,6 +87,42 @@ def vehicle_energy_from_telemetry(
     return soc, capacity, consumption_wh_per_km, reserve_soc_percent
 
 
+def live_consumption_wh_per_km(
+    telemetry: VehicleTelemetry,
+    capacity_kwh: float,
+    *,
+    soc_percent: float | None = None,
+) -> float | None:
+    """
+    Consumo instantáneo estimado (solo alerta), no para el motor del plan.
+
+    Usa est_battery_range_km: energía restante / autonomía estimada.
+    """
+    est_km = telemetry.est_battery_range_km
+    soc = telemetry.battery_level_pct if soc_percent is None else soc_percent
+    if est_km is None or est_km <= 0 or capacity_kwh <= 0 or soc <= 0:
+        return None
+    energy_kwh = capacity_kwh * soc / 100.0
+    wh_per_km = energy_kwh * 1000.0 / est_km
+    if wh_per_km < 80 or wh_per_km > 400:
+        return None
+    return round(wh_per_km, 2)
+
+
+def consumption_divergence_ratio(live_wh_per_km: float, planned_wh_per_km: float) -> float | None:
+    """Ratio (live - planned) / planned. +0.18 = vive un 18 % peor que el plan."""
+    if live_wh_per_km <= 0 or planned_wh_per_km <= 0:
+        return None
+    return (live_wh_per_km - planned_wh_per_km) / planned_wh_per_km
+
+
+def consumption_divergence_pct(live_wh_per_km: float, planned_wh_per_km: float) -> float | None:
+    ratio = consumption_divergence_ratio(live_wh_per_km, planned_wh_per_km)
+    if ratio is None:
+        return None
+    return round(ratio * 100.0, 1)
+
+
 def planning_range_km(
     nominal_km: float,
     soc_percent: float,

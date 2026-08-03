@@ -65,8 +65,21 @@ curl -s -X POST "http://<IP-LAN-SERVIDOR>:8590/v1/workflows/run" \
 
 | Variable | Tipo | Descripción |
 |----------|------|-------------|
-| `trip_context_json` | string | JSON de `TripGuideContext` + `plan_snapshot` (incluye rutas, `planned_stops[]`, SOC) |
+| `trip_context_json` | string | JSON de `TripGuideContext` (plan + consumo histórico #6092) |
 | `agent_summary` | string | Resumen rule-based del motor |
+
+### Campos de consumo en el contexto (#6092)
+
+| Campo | Descripción |
+|-------|-------------|
+| `consumption_note` | Texto listo (p. ej. histórico vía rápida 14,1 kWh/100 km) |
+| `consumption_kwh_per_100km` | Consumo efectivo usado por el motor |
+| `consumption_source` | `historical` \| `telemetry` \| `preset` \| `hybrid` |
+| `consumption_confidence` | `low` \| `medium` \| `high` |
+| `consumption_bin` | Bin elegido (`highway`, `mixed`, …) |
+| `consumption_profile` | Bins Grafana (viajes ≥20 km, todo el histórico) |
+
+El LLM usa el perfil **solo para narrativa**; no cambia paradas ni SOC del motor.
 
 ### Campos clave en `plan_snapshot`
 
@@ -79,7 +92,8 @@ El LLM debe usar **solo** estos datos; no recalcular SOC ni inventar estaciones.
 | `route_shortest_distance_km` / `route_fastest_distance_km` / `route_conventional_distance_km` | Referencias OSRM (directa, rápida, convencionales) |
 | `route_variants_approximate` | `true` si las refs son aproximadas (fallback) |
 | `route_preference` | `fastest` \| `shortest` \| `conventional` |
-| `planned_stops[]` | Paradas ordenadas: `order`, `label`, `route_distance_km`, `leg_distance_km`, `soc_arrival_pct`, `soc_departure_pct`, `charge_minutes`, `max_power_kw`, `classification` |
+| `route_trip_summary` | Totales REVE: duración, carga, kWh, coste, SOC destino |
+| `planned_stops[]` | Paradas: km, tramo, `leg_energy_kwh`, SOC, `recommended_charge_from/to`, `charge_minutes`, kW, coste, `classification` |
 | `projected_soc_at_destination_with_plan` | SOC estimado al destino **con** el plan multi-parada |
 | `soc_at_destination_pct` | SOC al destino **sin** paradas en ruta |
 | `destination_stay` | Objetivo recomendado, gap, cargadores cercanos al destino |
@@ -98,16 +112,15 @@ No inventes SOC, distancias ni estaciones que no aparezcan en trip_context_json.
 No recalcules autonomía ni paradas: redacta sobre plan_snapshot y agent_summary.
 
 Objetivos:
-1. Explica la ruta activa (route_preference) vs referencias corta/rápida/convencionales
-   y geodesic_distance_km cuando route_variants_approximate es false.
-2. Si hay planned_stops[], describe cada parada en orden: km, SOC llegada/salida,
-   charge_minutes, potencia y classification. Usa projected_soc_at_destination_with_plan
-   para el margen en destino con el plan.
-3. Garantía en destino: recommended_soc_at_arrival_pct y nearest_chargers.
-4. Si cultural_poi_enabled y hay poi_hints, propón ruta cultural o gastronómica
-   compatible con tiempos de carga (AC lento = más tiempo para visitas).
-5. Indica dónde comer cerca del cargador o del destino cuando sea razonable.
-6. Menciona alternativas del corredor (stops[]) solo si aportan contexto; no sustituyas planned_stops.
+1. Si hay consumption_note / consumption_profile, explica el consumo histórico usado
+   (kWh/100 km, bin, confianza). Consejo si el histórico sugiere más/menos agresividad;
+   NUNCA alteres planned_stops ni SOC.
+2. Explica la ruta activa (route_preference) vs referencias corta/rápida/convencionales.
+3. Si hay planned_stops[], describe cada parada: km, leg_energy_kwh, SOC, recarga X→Y %,
+   charge_minutes, potencia y coste. Usa route_trip_summary y
+   projected_soc_at_destination_with_plan.
+4. Garantía en destino: recommended_soc_at_arrival_pct y nearest_chargers.
+5. Si cultural_poi_enabled y hay poi_hints, propón visitas compatibles con tiempos de carga.
 
 trip_context_json:
 {{trip_context_json}}
@@ -115,9 +128,11 @@ trip_context_json:
 Resumen motor:
 {{agent_summary}}
 
-Responde en español, markdown, secciones: Resumen, Comparativa de rutas (si aplica),
-Paradas planificadas, Llegada al destino, Mientras cargas / visitas, Consejos.
+Responde en español, markdown: Resumen, Consumo del vehículo (si hay datos),
+Comparativa de rutas, Paradas planificadas, Llegada al destino, Mientras cargas, Consejos.
 ```
+
+El prompt operativo vive en el puente Cursor (`cursor-cli-bridge/bridge.py`); Dify solo reenvía el JSON.
 
 ### Nodos HTTP opcionales en Dify
 
@@ -129,12 +144,11 @@ Para recalcular sin telemetría del coche:
 
 Auth: `Authorization: Bearer PRIVATE_API_TOKEN` o header `X-Private-Token`.
 
-## Knowledge base Grafana (opcional)
+## Consumo histórico Grafana (#6092)
 
-Si en Dify tienes dataset con histórico de consumo / cargas (export Grafana → markdown):
+El perfil ya viaja en `trip_context_json` (`consumption_profile` + nota efectiva). No hace falta RAG Grafana para narrar el consumo del plan; ver [`CONSUMPTION_PROFILE.md`](CONSUMPTION_PROFILE.md).
 
-- Conecta knowledge retrieval al nodo LLM.
-- Instrucción: usar solo para matices de consumo real vs nominal; **nunca** sustituir SOC del JSON en vivo.
+Knowledge base Grafana sigue siendo opcional para matices fuera del plan; **nunca** sustituir SOC del JSON.
 
 ## UI
 

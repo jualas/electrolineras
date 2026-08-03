@@ -96,6 +96,9 @@ def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     assert payload["destination_stay"]["bands"]["total"] >= 0
     assert payload["route_trip_summary"] is not None
     assert payload["route_trip_summary"]["total_energy_kwh"] > 0
+    assert payload["route_variant_plans"] is not None
+    assert set(payload["route_variant_plans"]) >= {"shortest", "fastest", "conventional"}
+    assert payload["route_variant_plans"]["fastest"]["planned_stops"] is not None
 
 
 @patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)

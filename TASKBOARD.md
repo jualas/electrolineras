@@ -1,14 +1,14 @@
 <!-- taskboard-export: generated file; safe to edit for notes -->
 <!-- taskboard-project-id: 7 -->
-<!-- taskboard-exported-at: 2026-07-31T19:07:19Z -->
+<!-- taskboard-exported-at: 2026-08-03T17:52:21Z -->
 
 # TaskBoard — Electrolineras
 
 **Proyecto:** Electrolineras (`id=7`)  
 **Estado del proyecto:** `development`  
 **Workspace:** `/mnt/datos/Proyectos/Electrolineras`  
-**Exportado:** 2026-07-31 19:07 UTC  
-**Git:** `develop` @ `dfe84848`  
+**Exportado:** 2026-08-03 17:52 UTC  
+**Git:** `develop` @ `e33d5442`  
 
 > Fuente de verdad operativa: TaskBoard. Este archivo es espejo para IDE/CLI.
 
@@ -22,9 +22,9 @@ donde se publica la informacion de los puntos de carga )
 
 | Estado | Tareas |
 |--------|--------|
-| En progreso (`in_progress`) | 2 |
-| Pendiente (`pending`) | 42 |
-| Completada (`completed`) | 63 |
+| En progreso (`in_progress`) | 1 |
+| Pendiente (`pending`) | 39 |
+| Completada (`completed`) | 67 |
 
 ---
 
@@ -61,29 +61,6 @@ Extender `ChargingPlanResponse` / `planned_stops[]` con salida comparable a REVE
 
 Actualizar `agent_trip_guide` snapshot y narrativa Dify con nuevos campos.
 Depende de motor optimización REVE.
-
----
-
-<a id="task-6126"></a>
-### [#6126] Routing — alinear ruta rápida con Google Maps (tráfico / motor)
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6126` |
-| Estado | `in_progress` |
-| Complejidad | compleja |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-31 19:06 UTC |
-
-Hallazgo de test usuario (2026-07-31): en ciertos viajes la ruta «rápida» OSRM no coincide con Google Maps y las diferencias de tiempo son altas.
-
-**Fase 1 hecha (2026-07-31):** `OSRM_FASTEST_ALTERNATIVES_COUNT=3`, tolerancia desempate **8 %**, avisos UI (sin tráfico / Google recalcula), docs + tests (Plasencia / Garrote Gordo / Zaragoza). Motor con tráfico queda en **#6067**.
-
-Causa raíz:
-- OSRM self-host sin tráfico; Google usa tráfico + históricos.
-- «Abrir en Google Maps» recalcula el corredor (no fuerza la polilínea OSRM).
-
-Casos calibración: Cartagena→Plasencia, Cartagena→Camping Garrote Gordo (a veces poca diferencia; Garrote = 1 sola alt OSRM).
 
 ---
 
@@ -267,118 +244,26 @@ Depende de métricas API REVE.
 
 ---
 
-<a id="task-6090"></a>
-### [#6090] Telemetría Grafana — perfil consumo histórico por tipo de ruta
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6090` |
-| Estado | `pending` |
-| Complejidad | compleja |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:32 UTC |
-
-Integrar consumo histórico del vehículo (TeslaMate → Grafana) en el planificador.
-
-**Fuentes:** TeslaMate DB/API, dashboards Grafana existentes con consumo por viaje (Wh/km, kWh/100km, elevación, velocidad media).
-
-**Entregables:**
-1. Servicio `consumption_profile_service.py`: agregar viajes históricos (últimos N meses) por bins: autopista, convencional, sierra, urbano
-2. Endpoint privado `GET /api/v1/private/consumption-profile` (auth TOTP)
-3. Ajuste automático `consumption_wh_per_km` / factor terreno según tipo ruta OSRM (perfil fastest vs conventional)
-4. Campos en plan: `consumption_source: preset|telemetry|hybrid`, `confidence`
-
-**No sustituye** el motor determinista: aporta Wh/km más realista que el preset genérico.
-
-Documentar queries Grafana reutilizables y mapeo a bins.
-Depende de stack privado #6059.
-
----
-
-<a id="task-6091"></a>
-### [#6091] Telemetría — consumo y SOC instantáneos en planificador
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6091` |
-| Estado | `pending` |
-| Complejidad | media |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:33 UTC |
-
-Usar datos instantáneos del Tesla (TeslaMate MQTT/API) al planificar.
-
-**Entradas en vivo:** SOC actual, rated_range_km, optional power draw, outside_temp, elevation trend.
-
-**Comportamiento:**
-- Origen plan = posición GPS/TeslaMate (no manual si asistente conectado)
-- SOC plan = live SOC por defecto; simulación 100% solo bajo demanda explícita
-- Recálculo en ruta: si desviación consumo >15% vs plan, alerta y sugerencia replanificar
-
-Extender `vehicle_energy_from_telemetry` y `AssistantPanel` para mostrar qué dato usa el motor (live vs simulado).
-
-Relacionado #6071 (TeslaMate en planificador).
-
----
-
-<a id="task-6092"></a>
-### [#6092] IA Dify — contexto consumo histórico + plan REVE en workflow
-
-| Campo | Valor |
-|-------|-------|
-| ID | `6092` |
-| Estado | `pending` |
-| Complejidad | compleja |
-| Posición Kanban | 999.0 |
-| Actualizado | 2026-07-08 18:33 UTC |
-
-Enriquecer workflow Dify con consumo histórico + plan REVE validado.
-
-**Contexto JSON ampliado (`trip_context_json`):**
-- `consumption_profile` (bins históricos Grafana)
-- `route_trip_summary` estilo REVE
-- `planned_stops[]` con recommended_charge_from/to, kWh tramo, coste
-- `benchmark_note` si desviación vs media histórica del vehículo
-
-**Reglas LLM (prompt):**
-- NO recalcular SOC ni inventar estaciones
-- Explicar por qué cada parada (tiempo, operador, precio, SOC)
-- Si consumo histórico sugiere más/menos paradas que el motor, mencionarlo como consejo (no alterar JSON)
-- Adaptar narrativa a preferencias usuario (peajes, operadores)
-
-Actualizar: `agent_trip_guide.py`, `DIFY_TRIP_GUIDE.md`, workflow Dify, tools HTTP.
-
-**Fase 2 (opcional):** dataset export Grafana → markdown para RAG Dify (entrenamiento continuo).
-
-Depende de métricas REVE API + perfil consumo Grafana.
-
----
-
 <a id="task-6127"></a>
-### [#6127] Navegación — mejorar envío de rutas a app Tesla
+### [#6127] Navegación — Google Maps móvil + BT + preacond (Asistente usable)
 
 | Campo | Valor |
 |-------|-------|
 | ID | `6127` |
-| Estado | `pending` |
+| Estado | `completed` |
 | Complejidad | media |
 | Posición Kanban | 999.0 |
-| Actualizado | 2026-07-31 18:04 UTC |
+| Actualizado | 2026-08-03 18:20 UTC |
 
-Hallazgo de test usuario (2026-07-31): no puede enviar las rutas a la app Tesla de forma fiable.
+Redefinido: no app Android ni Fleet API ahora. Flujo: Electrolineras → Google Maps en el móvil → Bluetooth (audio). Sin promesa de «Enviar a Tesla» multi-parada.
 
-Estado actual:
-- Botón «Enviar a app Tesla» = Web Share API (navigator.share) solo en móvil; en escritorio/navegador Tesla a menudo no aparece o falla.
-- Comparte URL de Google Maps; Tesla suele aceptar un destino, no la ruta multi-parada completa.
-- No hay Tesla Fleet API (navigation_gps_request / waypoints). Ver docs/NAVIGATION.md.
+Hecho:
+- CTA primario «Abrir en Google Maps»; «Siguiente parada (preacondicionar)»; compartir enlace; QR desktop.
+- Copy honesto: Maps/BT; ~30–40 min antes, nav Tesla para preacondicionar.
+- Asistente móvil: panel casi fullscreen, mapa colapsado («Ver mapa»), ajustes/guía en details.
+- Docs: `docs/NAVIGATION.md`.
 
-Mejoras posibles:
-1) Clarificar UX: en desktop indicar flujo Google Maps → Compartir → Tesla; no etiquetar como envío directo si no hay share.
-2) Botón «1.ª parada → Tesla» más visible / por defecto en móvil.
-3) Fase B: OAuth Tesla Fleet API → enviar siguiente parada al coche (precondicionamiento).
-4) QR / deep link para abrir destino en móvil desde el coche.
-
-Prioridad: media (secundaria respecto al desajuste de ruta rápida).
+Futuro (fuera de esta entrega): Fleet API parada a parada.
 
 ---
 
@@ -1751,6 +1636,93 @@ Depende de parámetros REVE.
 
 ---
 
+<a id="task-6090"></a>
+### [#6090] Telemetría Grafana — perfil consumo histórico por tipo de ruta
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6090` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-31 19:35 UTC |
+
+Integrar consumo histórico del vehículo (TeslaMate → Grafana) en el planificador.
+
+**Fuentes:** TeslaMate DB/API, dashboards Grafana existentes con consumo por viaje (Wh/km, kWh/100km, elevación, velocidad media).
+
+**Entregables:**
+1. Servicio `consumption_profile_service.py`: agregar viajes históricos (últimos N meses) por bins: autopista, convencional, sierra, urbano
+2. Endpoint privado `GET /api/v1/private/consumption-profile` (auth TOTP)
+3. Ajuste automático `consumption_wh_per_km` / factor terreno según tipo ruta OSRM (perfil fastest vs conventional)
+4. Campos en plan: `consumption_source: preset|telemetry|hybrid`, `confidence`
+
+**No sustituye** el motor determinista: aporta Wh/km más realista que el preset genérico.
+
+Documentar queries Grafana reutilizables y mapeo a bins.
+Depende de stack privado #6059.
+
+---
+
+<a id="task-6091"></a>
+### [#6091] Telemetría — consumo y SOC instantáneos en planificador
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6091` |
+| Estado | `completed` |
+| Complejidad | media |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-08-03 17:51 UTC |
+
+Usar datos instantáneos del Tesla (TeslaMate MQTT/API) al planificar.
+
+**Entradas en vivo:** SOC actual, rated_range_km, optional power draw, outside_temp, elevation trend.
+
+**Comportamiento:**
+- Origen plan = posición GPS/TeslaMate (no manual si asistente conectado)
+- SOC plan = live SOC por defecto; simulación 100% solo bajo demanda explícita
+- Recálculo en ruta: si desviación consumo >15% vs plan, alerta y sugerencia replanificar
+
+Extender `vehicle_energy_from_telemetry` y `AssistantPanel` para mostrar qué dato usa el motor (live vs simulado).
+
+Relacionado #6071 (TeslaMate en planificador).
+
+---
+
+<a id="task-6092"></a>
+### [#6092] IA Dify — contexto consumo histórico + plan REVE en workflow
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6092` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-31 20:05 UTC |
+
+Enriquecer workflow Dify con consumo histórico + plan REVE validado.
+
+**Contexto JSON ampliado (`trip_context_json`):**
+- `consumption_profile` (bins históricos Grafana)
+- `route_trip_summary` estilo REVE
+- `planned_stops[]` con recommended_charge_from/to, kWh tramo, coste
+- `benchmark_note` si desviación vs media histórica del vehículo
+
+**Reglas LLM (prompt):**
+- NO recalcular SOC ni inventar estaciones
+- Explicar por qué cada parada (tiempo, operador, precio, SOC)
+- Si consumo histórico sugiere más/menos paradas que el motor, mencionarlo como consejo (no alterar JSON)
+- Adaptar narrativa a preferencias usuario (peajes, operadores)
+
+Actualizar: `agent_trip_guide.py`, `DIFY_TRIP_GUIDE.md`, workflow Dify, tools HTTP.
+
+**Fase 2 (opcional):** dataset export Grafana → markdown para RAG Dify (entrenamiento continuo).
+
+Depende de métricas REVE API + perfil consumo Grafana.
+
+---
+
 <a id="task-6093"></a>
 ### [#6093] Benchmark CI — Cartagena→Irun vs planificador REVE
 
@@ -1886,6 +1858,36 @@ Benchmark CI / regresión:
 - Referencia Tesla jul-2026: Atalaya, Rivas, Aranda; destino ~15%.
 
 Criterio éxito: plan ≤4 paradas, sin micro-parada <15 min con arr>40%, tiempo total competitivo con Tesla (margen +30 min).
+
+---
+
+<a id="task-6126"></a>
+### [#6126] Routing — alinear ruta rápida con Google Maps (tráfico / motor)
+
+| Campo | Valor |
+|-------|-------|
+| ID | `6126` |
+| Estado | `completed` |
+| Complejidad | compleja |
+| Posición Kanban | 999.0 |
+| Actualizado | 2026-07-31 19:11 UTC |
+
+Hallazgo de test usuario (2026-07-31): en ciertos viajes la ruta «rápida» OSRM no coincide con Google Maps y las diferencias de tiempo son altas.
+
+Causa raíz probable:
+- Motor actual: OSRM self-host (perfil car), sin tráfico en tiempo real.
+- Google usa tráfico + velocidades históricas; elige otro corredor cuando hay empates o congestión habitual.
+- «Abrir en Google Maps» recalcula la ruta en Google (solo origen/waypoints/destino); no fuerza la polilínea OSRM. El plan de carga se calcula sobre el corredor OSRM → riesgo de paradas fuera de la ruta que el usuario acaba conduciendo.
+
+Ya existe #6067 (evaluación tráfico) y #6069 (tolerancia desempate 5%).
+
+Entregables sugeridos:
+1) Recoger 3–5 pares origen/destino reales donde falle.
+2) Comparar OSRM vs Google (km, min, corredor) y decidir si ampliar OSRM_FASTEST_ALTERNATIVE_TOLERANCE, mejorar heurística, o integrar API con tráfico (Google Routes / TomTom / GraphHopper).
+3) UX: avisar si la exportación a Google puede cambiar el corredor; opcionalmente planificar paradas sobre la geometría que el usuario usará.
+4) Documentar limitación en UI (OSRM sin tráfico).
+
+Prioridad: alta (preocupación principal del usuario).
 
 ---
 

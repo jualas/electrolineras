@@ -133,6 +133,7 @@ export type AlongRouteResponse = {
   avoid_highways?: boolean
   results: AlongRouteStationResult[]
   candidates_in_bbox: number
+  route_variant_results?: Partial<Record<RoutePreference, RouteVariantAlongRouteSnapshot>> | null
 }
 
 export type NearbyStationResult = {
@@ -261,6 +262,35 @@ export type ChargingPlanResponse = {
   warnings: string[]
   candidates_in_bbox: number
   destination_stay?: DestinationStayAdviceResult | null
+  route_variant_plans?: Partial<Record<RoutePreference, RouteVariantChargingPlanSnapshot>> | null
+  consumption_source?: 'historical' | 'telemetry' | 'preset' | 'hybrid' | null
+  consumption_kwh_per_100km?: number | null
+  consumption_confidence?: 'low' | 'medium' | 'high' | null
+  consumption_note?: string | null
+  consumption_bin?: 'highway' | 'mixed' | 'conventional' | 'mountain' | null
+}
+
+export type RouteVariantChargingPlanSnapshot = {
+  route_distance_km: number
+  route_duration_minutes: number
+  soc_at_destination_pct: number | null
+  reachable_without_stop: boolean
+  stops: ChargingPlanStopResult[]
+  origin_stops: ChargingPlanStopResult[]
+  planned_stops?: PlannedRouteStopResult[]
+  projected_soc_at_destination_with_plan?: number | null
+  route_trip_summary?: RouteTripSummaryResult | null
+  strategies: ChargingPlanStrategyResult[]
+  warnings: string[]
+  destination_stay?: DestinationStayAdviceResult | null
+  candidates_in_bbox: number
+}
+
+export type RouteVariantAlongRouteSnapshot = {
+  route_distance_km: number
+  route_duration_minutes: number
+  results: AlongRouteStationResult[]
+  candidates_in_bbox: number
 }
 
 export type DestinationStayAdviceResult = {
@@ -307,6 +337,12 @@ export type TripGuideContext = {
   charging_while_visiting_hint?: string | null
   vehicle_snapshot: Record<string, unknown>
   plan_snapshot: Record<string, unknown>
+  consumption_profile?: ConsumptionProfileResponse | null
+  consumption_source?: 'historical' | 'telemetry' | 'preset' | 'hybrid' | null
+  consumption_kwh_per_100km?: number | null
+  consumption_confidence?: 'low' | 'medium' | 'high' | null
+  consumption_note?: string | null
+  consumption_bin?: 'highway' | 'mixed' | 'conventional' | 'mountain' | null
 }
 
 export type VehicleTelemetryResult = {
@@ -331,6 +367,25 @@ export type VehicleTelemetryResult = {
   source?: string
 }
 
+export type ConsumptionBinResult = {
+  bin: 'highway' | 'mixed' | 'conventional' | 'mountain'
+  wh_per_km?: number | null
+  kwh_per_100km?: number | null
+  sample_count: number
+  total_distance_km: number
+}
+
+export type ConsumptionProfileResponse = {
+  available: boolean
+  source: 'historical' | 'telemetry' | 'preset' | 'hybrid'
+  lookback_days: number
+  min_distance_km?: number
+  drive_count?: number
+  car_id?: number | null
+  note?: string | null
+  bins: Record<string, ConsumptionBinResult>
+}
+
 export type TripAdviceResponse = {
   plan: ChargingPlanResponse
   agent_summary: string
@@ -338,6 +393,16 @@ export type TripAdviceResponse = {
   vehicle?: VehicleTelemetryResult | null
   live_soc_percent?: number | null
   departure_soc_percent?: number | null
+  soc_source?: 'live' | 'simulated' | null
+  consumption_source?: 'historical' | 'telemetry' | 'preset' | 'hybrid' | null
+  consumption_kwh_per_100km?: number | null
+  consumption_confidence?: 'low' | 'medium' | 'high' | null
+  consumption_note?: string | null
+  consumption_bin?: 'highway' | 'mixed' | 'conventional' | 'mountain' | null
+  consumption_profile?: ConsumptionProfileResponse | null
+  live_consumption_kwh_per_100km?: number | null
+  consumption_divergence_pct?: number | null
+  consumption_divergence_alert?: boolean
 }
 
 export type TripGuideResponse = TripAdviceResponse & {

@@ -12,6 +12,10 @@ from api.integrations.dify_client import (
 from api.integrations.poi_hints import fetch_destination_poi_hints
 from api.schemas import (
     ChargingPlanResponse,
+    ConsumptionBinName,
+    ConsumptionConfidence,
+    ConsumptionProfileResponse,
+    ConsumptionSource,
     PlannedRouteStopResult,
     TripGuideContext,
     TripGuideResponse,
@@ -40,10 +44,11 @@ def _planned_stop_snapshot(stop: PlannedRouteStopResult) -> dict:
         "order": stop.order,
         "station_id": stop.station.id,
         "label": stop.station.site_name or stop.station.location.address,
-        "operator": stop.station.operator,
+        "operator": stop.operator or stop.station.operator,
         "max_power_kw": stop.station.max_power_kw,
         "route_distance_km": stop.route_distance_km,
         "leg_distance_km": stop.leg_distance_km,
+        "leg_driving_minutes": stop.leg_driving_minutes,
         "distance_from_origin_km": stop.distance_from_origin_km,
         "deviation_km": stop.deviation_km,
         "extra_minutes": stop.extra_minutes,
@@ -51,6 +56,11 @@ def _planned_stop_snapshot(stop: PlannedRouteStopResult) -> dict:
         "soc_departure_pct": stop.soc_departure_pct,
         "charge_minutes": stop.charge_minutes,
         "classification": stop.classification,
+        "leg_energy_kwh": stop.leg_energy_kwh,
+        "recommended_charge_from_pct": stop.recommended_charge_from_pct,
+        "recommended_charge_to_pct": stop.recommended_charge_to_pct,
+        "effective_charge_power_kw": stop.effective_charge_power_kw,
+        "estimated_charge_cost_eur": stop.estimated_charge_cost_eur,
     }
 
 
@@ -93,7 +103,14 @@ def _plan_snapshot(plan: ChargingPlanResponse) -> dict:
             }
             for strategy in plan.strategies
         ],
+        "consumption_source": plan.consumption_source,
+        "consumption_kwh_per_100km": plan.consumption_kwh_per_100km,
+        "consumption_confidence": plan.consumption_confidence,
+        "consumption_note": plan.consumption_note,
+        "consumption_bin": plan.consumption_bin,
     }
+    if plan.route_trip_summary is not None:
+        snapshot["route_trip_summary"] = plan.route_trip_summary.model_dump()
     if plan.destination_stay:
         snapshot["destination_stay"] = {
             "recommended_soc_at_arrival_pct": plan.destination_stay.recommended_soc_at_arrival_pct,
@@ -131,6 +148,12 @@ def build_trip_guide_context(
     destination_label: str | None = None,
     cultural_poi_enabled: bool = False,
     user_note: str | None = None,
+    consumption_profile: ConsumptionProfileResponse | None = None,
+    consumption_source: ConsumptionSource | None = None,
+    consumption_kwh_per_100km: float | None = None,
+    consumption_confidence: ConsumptionConfidence | None = None,
+    consumption_note: str | None = None,
+    consumption_bin: ConsumptionBinName | None = None,
 ) -> TripGuideContext:
     poi_hints: list[str] = []
     if cultural_poi_enabled and plan.destination:
@@ -151,6 +174,20 @@ def build_trip_guide_context(
         charging_while_visiting_hint=_charging_while_visiting_hint(plan),
         vehicle_snapshot=_vehicle_snapshot(vehicle),
         plan_snapshot=_plan_snapshot(plan),
+        consumption_profile=consumption_profile,
+        consumption_source=consumption_source if consumption_source is not None else plan.consumption_source,
+        consumption_kwh_per_100km=(
+            consumption_kwh_per_100km
+            if consumption_kwh_per_100km is not None
+            else plan.consumption_kwh_per_100km
+        ),
+        consumption_confidence=(
+            consumption_confidence
+            if consumption_confidence is not None
+            else plan.consumption_confidence
+        ),
+        consumption_note=consumption_note if consumption_note is not None else plan.consumption_note,
+        consumption_bin=consumption_bin if consumption_bin is not None else plan.consumption_bin,
     )
 
 
@@ -180,9 +217,46 @@ def format_deterministic_guide(
             lines.append("- _Variantes de referencia aproximadas (OSRM no disponible)._")
         lines.append("")
 
+    if context.consumption_note or context.consumption_kwh_per_100km is not None:
+        lines.append("### Consumo del plan")
+        if context.consumption_note:
+            lines.append(f"- {context.consumption_note}")
+        elif context.consumption_kwh_per_100km is not None:
+            lines.append(f"- Consumo efectivo: **{context.consumption_kwh_per_100km:.1f} kWh/100 km**")
+        if context.consumption_source:
+            lines.append(f"- Fuente: `{context.consumption_source}`")
+        if context.consumption_confidence:
+            lines.append(f"- Confianza: `{context.consumption_confidence}`")
+        profile = context.consumption_profile
+        if profile and profile.available and profile.bins:
+            bin_bits = []
+            for key in ("highway", "mixed", "conventional", "mountain"):
+                stats = profile.bins.get(key)
+                if stats and stats.kwh_per_100km is not None and stats.sample_count > 0:
+                    bin_bits.append(f"{key} {stats.kwh_per_100km:.1f} ({stats.sample_count})")
+            if bin_bits:
+                lines.append(f"- Bins históricos (≥{profile.min_distance_km:.0f} km): " + "; ".join(bin_bits))
+        lines.append("")
+
     if bullets:
         lines.append("### Plan de carga")
         lines.extend(f"- {bullet}" for bullet in bullets)
+        lines.append("")
+
+    trip_summary = snapshot.get("route_trip_summary")
+    if trip_summary:
+        lines.append("### Resumen REVE")
+        lines.append(
+            f"- Tiempo total ~{trip_summary.get('total_duration_minutes', 0):.0f} min "
+            f"(conducción ~{trip_summary.get('driving_duration_minutes', 0):.0f} min, "
+            f"carga ~{trip_summary.get('total_charge_minutes', 0):.0f} min)"
+        )
+        lines.append(
+            f"- Energía ~{trip_summary.get('total_energy_kwh', 0):.0f} kWh · "
+            f"{trip_summary.get('stop_count', 0)} parada(s)"
+        )
+        if trip_summary.get("estimated_charge_cost_eur") is not None:
+            lines.append(f"- Coste carga est. ~{trip_summary['estimated_charge_cost_eur']:.2f} €")
         lines.append("")
 
     planned_stops = snapshot.get("planned_stops") or []
@@ -194,11 +268,31 @@ def format_deterministic_guide(
                 if stop.get("charge_minutes", 0) > 0
                 else f" · salida ~{stop['soc_departure_pct']:.0f} %"
             )
+            energy = (
+                f" · {stop['leg_energy_kwh']:.1f} kWh"
+                if stop.get("leg_energy_kwh") is not None
+                else ""
+            )
+            charge_band = ""
+            if (
+                stop.get("recommended_charge_from_pct") is not None
+                and stop.get("recommended_charge_to_pct") is not None
+            ):
+                charge_band = (
+                    f" · recarga {stop['recommended_charge_from_pct']:.0f}→"
+                    f"{stop['recommended_charge_to_pct']:.0f} %"
+                )
+            cost = (
+                f" · ~{stop['estimated_charge_cost_eur']:.2f} €"
+                if stop.get("estimated_charge_cost_eur") is not None
+                else ""
+            )
             lines.append(
                 f"- **{stop['order']}.** {stop['label']} "
-                f"(km {stop['route_distance_km']:.0f}, tramo {stop['leg_distance_km']:.0f} km) · "
-                f"llegada ~{stop['soc_arrival_pct']:.0f} %{charge_text} · "
-                f"{stop['max_power_kw']:.0f} kW · {stop['classification']}"
+                f"(km {stop['route_distance_km']:.0f}, tramo {stop['leg_distance_km']:.0f} km"
+                f"{energy}) · "
+                f"llegada ~{stop['soc_arrival_pct']:.0f} %{charge_text}{charge_band} · "
+                f"{stop['max_power_kw']:.0f} kW · {stop['classification']}{cost}"
             )
         projected = snapshot.get("projected_soc_at_destination_with_plan")
         if projected is not None:
@@ -258,6 +352,12 @@ def build_trip_guide_response(
     cultural_poi_enabled: bool = False,
     user_note: str | None = None,
     invoke_dify: bool = True,
+    consumption_profile: ConsumptionProfileResponse | None = None,
+    consumption_source: ConsumptionSource | None = None,
+    consumption_kwh_per_100km: float | None = None,
+    consumption_confidence: ConsumptionConfidence | None = None,
+    consumption_note: str | None = None,
+    consumption_bin: ConsumptionBinName | None = None,
 ) -> TripGuideResponse:
     summary, bullets = build_agent_narration(plan)
     context = build_trip_guide_context(
@@ -266,6 +366,12 @@ def build_trip_guide_response(
         destination_label=destination_label,
         cultural_poi_enabled=cultural_poi_enabled,
         user_note=user_note,
+        consumption_profile=consumption_profile,
+        consumption_source=consumption_source,
+        consumption_kwh_per_100km=consumption_kwh_per_100km,
+        consumption_confidence=consumption_confidence,
+        consumption_note=consumption_note,
+        consumption_bin=consumption_bin,
     )
 
     guide_source: Literal["deterministic", "dify"] = "deterministic"

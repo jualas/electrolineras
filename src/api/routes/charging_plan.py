@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
-from api.charging_plan_service import ChargingPlanBuildResult, build_charging_plan
+from api.charging_plan_service import ChargingPlanBuildResult, RouteVariantPlanBuild, build_charging_plan
 from api.config import settings
 from api.dependencies import get_repository
 from api.routing.charging_plan import VehicleEnergyProfile
@@ -19,6 +19,7 @@ from api.schemas import (
     PlannedRouteStopResult,
     RouteEndpoint,
     RoutePreference,
+    RouteVariantChargingPlanSnapshot,
     VehicleEnergyInput,
 )
 from db.repository import StationRepository
@@ -57,6 +58,73 @@ def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanRes
         destination_stay=built.destination_stay,
         preferred_operators=built.preferred_operators,
         max_price_eur_kwh=built.max_price_eur_kwh,
+        variant_plans=built.variant_plans,
+    )
+
+
+def _variant_plan_to_snapshot(
+    variant: RouteVariantPlanBuild,
+    *,
+    vehicle: VehicleEnergyProfile,
+) -> RouteVariantChargingPlanSnapshot:
+    computation = variant.computation
+    return RouteVariantChargingPlanSnapshot(
+        route_distance_km=variant.route_distance_km,
+        route_duration_minutes=variant.route_duration_minutes,
+        soc_at_destination_pct=computation.soc_at_destination_pct,
+        reachable_without_stop=computation.reachable_without_stop,
+        stops=[
+            ChargingPlanStopResult(
+                station=stop.station,
+                deviation_km=stop.deviation_km,
+                route_distance_km=stop.route_distance_km,
+                extra_minutes=stop.extra_minutes,
+                wrong_side=stop.wrong_side,
+                distance_from_origin_km=stop.distance_from_origin_km,
+                soc_arrival_pct=stop.soc_arrival_pct,
+                classification=stop.classification,
+            )
+            for stop in computation.stops
+        ],
+        origin_stops=[
+            ChargingPlanStopResult(
+                station=stop.station,
+                deviation_km=stop.deviation_km,
+                route_distance_km=stop.route_distance_km,
+                extra_minutes=stop.extra_minutes,
+                wrong_side=stop.wrong_side,
+                distance_from_origin_km=stop.distance_from_origin_km,
+                soc_arrival_pct=stop.soc_arrival_pct,
+                classification=stop.classification,
+            )
+            for stop in computation.origin_stops
+        ],
+        planned_stops=[
+            planned_stop_to_result(stop, profile=vehicle)
+            for stop in computation.planned_stops
+        ],
+        projected_soc_at_destination_with_plan=computation.projected_soc_at_destination_with_plan,
+        route_trip_summary=build_route_trip_summary(
+            profile=vehicle,
+            planned_stops=computation.planned_stops,
+            route_distance_km=variant.route_distance_km,
+            route_duration_minutes=variant.route_duration_minutes,
+            projected_destination_soc_pct=computation.projected_soc_at_destination_with_plan,
+        ),
+        strategies=[
+            ChargingPlanStrategyResult(
+                id=strategy.id,
+                label=strategy.label,
+                station_id=strategy.station_id,
+                soc_arrival_pct=strategy.soc_arrival_pct,
+                classification=strategy.classification,
+                summary=strategy.summary,
+            )
+            for strategy in computation.strategies
+        ],
+        warnings=computation.warnings,
+        destination_stay=variant.destination_stay,
+        candidates_in_bbox=variant.candidates_in_bbox,
     )
 
 
@@ -91,6 +159,7 @@ def _to_response(
     destination_stay: DestinationStayAdviceResult | None = None,
     preferred_operators: tuple[str, ...] = (),
     max_price_eur_kwh: float | None = None,
+    variant_plans: dict[RoutePreference, RouteVariantPlanBuild] | None = None,
 ) -> ChargingPlanResponse:
     vehicle_input = VehicleEnergyInput(
         soc_percent=vehicle.soc_percent,
@@ -108,6 +177,13 @@ def _to_response(
     destination = None
     if destination_lat is not None and destination_lon is not None:
         destination = RouteEndpoint(lat=destination_lat, lon=destination_lon)
+
+    route_variant_plans = None
+    if variant_plans:
+        route_variant_plans = {
+            preference: _variant_plan_to_snapshot(plan, vehicle=vehicle)
+            for preference, plan in variant_plans.items()
+        }
 
     return ChargingPlanResponse(
         mode=mode,
@@ -190,6 +266,7 @@ def _to_response(
         warnings=computation.warnings,
         candidates_in_bbox=candidates_in_bbox,
         destination_stay=destination_stay,
+        route_variant_plans=route_variant_plans,
     )
 
 

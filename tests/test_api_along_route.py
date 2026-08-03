@@ -76,6 +76,8 @@ def test_along_route_returns_ranked_results(mock_fetch, api_client: TestClient) 
     assert len(payload["results"]) == 1
     assert payload["results"][0]["station"]["id"] == "ahead"
     assert payload["results"][0]["deviation_km"] >= 0
+    assert payload["route_variant_results"] is not None
+    assert set(payload["route_variant_results"]) >= {"shortest", "fastest", "conventional"}
     mock_fetch.assert_called_once()
 
 

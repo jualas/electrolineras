@@ -20,11 +20,13 @@ from api.routing.charging_plan import (
 from api.routing.corridor import RoutePolyline, rank_stations_along_route, rank_stations_along_route_for_planning
 from api.routing.destination_stay import analyze_destination_stay, append_destination_strategy
 from api.routing.osrm import (
+    OsrmRoute,
     RoutePreference,
     RoutingError,
     fetch_osrm_route,
     fetch_osrm_route_with_alternatives,
 )
+from api.routing.route_variants import union_route_search_bbox
 from api.schemas import DestinationStayAdviceResult
 from db.repository import StationRepository
 from db.spatial import haversine_m
@@ -62,6 +64,117 @@ class ChargingPlanBuildResult:
     preferred_operators: tuple[str, ...] = ()
     max_price_eur_kwh: float | None = None
     exclude_slow_chargers: bool = False
+    variant_plans: dict[RoutePreference, "RouteVariantPlanBuild"] | None = None
+
+
+@dataclass(frozen=True)
+class RouteVariantPlanBuild:
+    route_distance_km: float
+    route_duration_minutes: float
+    computation: object
+    destination_stay: DestinationStayAdviceResult | None
+    candidates_in_bbox: int
+
+
+def _union_route_search_bbox(
+    variant_routes: dict[RoutePreference, OsrmRoute],
+    corridor_km: float,
+) -> tuple[float, float, float, float]:
+    return union_route_search_bbox(variant_routes, corridor_km)
+
+
+def _compute_route_variant_plan(
+    repo: StationRepository,
+    *,
+    osrm_route: OsrmRoute,
+    candidates: list[Station],
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+    vehicle: VehicleEnergyProfile,
+    corridor_km: float,
+    behind_margin_km: float,
+    limit: int,
+    safe_margin_pct: float,
+    adjusted_min_pct: float,
+    charging_preferences: ChargingPreferences,
+    origin_stops: list,
+    destination_radius_km: float,
+    local_mobility_km: float,
+    countries: list[str] | None,
+    osrm_warnings: list[str],
+) -> RouteVariantPlanBuild:
+    polyline = RoutePolyline(osrm_route.coordinates)
+    wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
+    route_distance_km = osrm_route.distance_m / 1000.0
+    planning_matches = rank_stations_along_route_for_planning(
+        polyline,
+        candidates,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        corridor_m=corridor_km * 1000,
+        behind_margin_m=behind_margin_km * 1000,
+        wrong_side_penalty_m=wrong_side_penalty_m,
+        average_speed_mps=osrm_route.average_speed_mps,
+        route_distance_km=route_distance_km,
+    )
+    matches = rank_stations_along_route(
+        polyline,
+        candidates,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        corridor_m=corridor_km * 1000,
+        behind_margin_m=behind_margin_km * 1000,
+        wrong_side_penalty_m=wrong_side_penalty_m,
+        average_speed_mps=osrm_route.average_speed_mps,
+        limit=limit * 3,
+    )
+
+    origin_projection = polyline.project_point(origin_lat, origin_lon)
+    origin_position_km = origin_projection.route_position_m / 1000.0
+    destination_distance_km = polyline.length_m / 1000.0
+
+    computation = build_route_charging_plan(
+        planning_matches,
+        origin_position_km=origin_position_km,
+        destination_distance_km=destination_distance_km,
+        profile=vehicle,
+        origin_stops=origin_stops,
+        safe_margin_pct=safe_margin_pct,
+        adjusted_min_pct=adjusted_min_pct,
+        limit=limit,
+        preferences=charging_preferences,
+        route_distance_km=route_distance_km,
+        route_duration_minutes=osrm_route.duration_s / 60.0,
+        corridor_stops=matches,
+    )
+
+    computation, destination_stay = _enrich_with_destination_stay(
+        repo,
+        dest_lat=dest_lat,
+        dest_lon=dest_lon,
+        vehicle=vehicle,
+        destination_radius_km=destination_radius_km,
+        local_mobility_km=local_mobility_km,
+        countries=countries,
+        computation=computation,
+        projected_soc_at_arrival_pct=computation.soc_at_destination_pct,
+    )
+
+    if osrm_warnings:
+        computation = replace(
+            computation,
+            warnings=[*computation.warnings, *osrm_warnings],
+        )
+
+    return RouteVariantPlanBuild(
+        route_distance_km=round(osrm_route.distance_m / 1000.0, 2),
+        route_duration_minutes=round(osrm_route.duration_s / 60.0, 1),
+        computation=computation,
+        destination_stay=destination_stay,
+        candidates_in_bbox=len(candidates),
+    )
 
 
 def charging_preferences_from_inputs(
@@ -362,7 +475,7 @@ def build_charging_plan(
         ) from exc
 
     polyline = RoutePolyline(osrm_route.coordinates)
-    west, south, east, north = polyline.bbox_expanded(corridor_km * 1000)
+    west, south, east, north = _union_route_search_bbox(variant_routes, corridor_km)
     candidates = repo.search(
         west=west,
         south=south,
@@ -374,35 +487,6 @@ def build_charging_plan(
         limit=10_000,
         offset=0,
     )
-
-    wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
-    route_distance_km = osrm_route.distance_m / 1000.0
-    planning_matches = rank_stations_along_route_for_planning(
-        polyline,
-        candidates,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-        corridor_m=corridor_km * 1000,
-        behind_margin_m=behind_margin_km * 1000,
-        wrong_side_penalty_m=wrong_side_penalty_m,
-        average_speed_mps=osrm_route.average_speed_mps,
-        route_distance_km=route_distance_km,
-    )
-    matches = rank_stations_along_route(
-        polyline,
-        candidates,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-        corridor_m=corridor_km * 1000,
-        behind_margin_m=behind_margin_km * 1000,
-        wrong_side_penalty_m=wrong_side_penalty_m,
-        average_speed_mps=osrm_route.average_speed_mps,
-        limit=limit * 3,
-    )
-
-    origin_projection = polyline.project_point(origin_lat, origin_lon)
-    origin_position_km = origin_projection.route_position_m / 1000.0
-    destination_distance_km = polyline.length_m / 1000.0
 
     range_km = estimate_range_km(vehicle)
     charging_reach_km = estimate_charging_reach_km(vehicle)
@@ -428,38 +512,57 @@ def build_charging_plan(
         )
         origin_stops = origin_computation.stops
 
-    computation = build_route_charging_plan(
-        planning_matches,
-        origin_position_km=origin_position_km,
-        destination_distance_km=destination_distance_km,
-        profile=vehicle,
-        origin_stops=origin_stops,
-        safe_margin_pct=safe_margin_pct,
-        adjusted_min_pct=adjusted_min_pct,
-        limit=limit,
-        preferences=charging_preferences,
-        route_distance_km=route_distance_km,
-        route_duration_minutes=osrm_route.duration_s / 60.0,
-        corridor_stops=matches,
-    )
-
-    computation, destination_stay = _enrich_with_destination_stay(
-        repo,
-        dest_lat=dest_lat,
-        dest_lon=dest_lon,
-        vehicle=vehicle,
-        destination_radius_km=destination_radius_km,
-        local_mobility_km=local_mobility_km,
-        countries=countries,
-        computation=computation,
-        projected_soc_at_arrival_pct=computation.soc_at_destination_pct,
-    )
-
-    if osrm_warnings:
-        computation = replace(
-            computation,
-            warnings=[*computation.warnings, *osrm_warnings],
+    variant_plans: dict[RoutePreference, RouteVariantPlanBuild] = {}
+    for preference, variant_route in variant_routes.items():
+        variant_plans[preference] = _compute_route_variant_plan(
+            repo,
+            osrm_route=variant_route,
+            candidates=candidates,
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            dest_lat=dest_lat,
+            dest_lon=dest_lon,
+            vehicle=vehicle,
+            corridor_km=corridor_km,
+            behind_margin_km=behind_margin_km,
+            limit=limit,
+            safe_margin_pct=safe_margin_pct,
+            adjusted_min_pct=adjusted_min_pct,
+            charging_preferences=charging_preferences,
+            origin_stops=origin_stops,
+            destination_radius_km=destination_radius_km,
+            local_mobility_km=local_mobility_km,
+            countries=countries,
+            osrm_warnings=osrm_warnings,
         )
+
+    active_plan = variant_plans.get(route_preference)
+    if active_plan is None:
+        active_plan = _compute_route_variant_plan(
+            repo,
+            osrm_route=osrm_route,
+            candidates=candidates,
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            dest_lat=dest_lat,
+            dest_lon=dest_lon,
+            vehicle=vehicle,
+            corridor_km=corridor_km,
+            behind_margin_km=behind_margin_km,
+            limit=limit,
+            safe_margin_pct=safe_margin_pct,
+            adjusted_min_pct=adjusted_min_pct,
+            charging_preferences=charging_preferences,
+            origin_stops=origin_stops,
+            destination_radius_km=destination_radius_km,
+            local_mobility_km=local_mobility_km,
+            countries=countries,
+            osrm_warnings=osrm_warnings,
+        )
+        variant_plans[route_preference] = active_plan
+
+    computation = active_plan.computation
+    destination_stay = active_plan.destination_stay
 
     return ChargingPlanBuildResult(
         mode="route",
@@ -469,8 +572,8 @@ def build_charging_plan(
         destination_lat=dest_lat,
         destination_lon=dest_lon,
         corridor_km=corridor_km,
-        route_distance_km=round(osrm_route.distance_m / 1000.0, 2),
-        route_duration_minutes=round(osrm_route.duration_s / 60.0, 1),
+        route_distance_km=active_plan.route_distance_km,
+        route_duration_minutes=active_plan.route_duration_minutes,
         route_shortest_distance_km=route_alternatives.shortest_distance_km,
         route_fastest_distance_km=route_alternatives.fastest_distance_km,
         geodesic_distance_km=route_alternatives.geodesic_distance_km,
@@ -499,8 +602,9 @@ def build_charging_plan(
         avoid_highways=avoid_highways,
         exclude_slow_chargers=exclude_slow_chargers,
         computation=computation,
-        candidates_in_bbox=len(candidates),
+        candidates_in_bbox=active_plan.candidates_in_bbox,
         destination_stay=destination_stay,
         preferred_operators=charging_preferences.preferred_operators,
         max_price_eur_kwh=charging_preferences.max_price_eur_kwh,
+        variant_plans=variant_plans,
     )

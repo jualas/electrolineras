@@ -136,7 +136,8 @@ type RouteAlternativesKm = {
   route_variants_approximate?: boolean
 }
 
-function formatDurationMinutes(minutes: number | null | undefined): string {
+/** Formatea minutos de ruta/viaje como «7 h 14 min» (o solo minutos si < 1 h). */
+export function formatDurationMinutes(minutes: number | null | undefined): string {
   if (minutes == null || minutes <= 0) {
     return ''
   }
@@ -164,7 +165,11 @@ export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
       plan.shortest_excess_km != null && plan.shortest_excess_km > 0
         ? ` (+${plan.shortest_excess_km.toFixed(0)} km)`
         : ''
-    parts.push(`Directa: ${shortest.toFixed(0)} km${excess}`)
+    const duration =
+      plan.route_preference === 'shortest'
+        ? formatDurationMinutes(plan.route_duration_minutes)
+        : ''
+    parts.push(`Directa: ${shortest.toFixed(0)} km${excess}${duration ? ` · ${duration}` : ''}`)
   }
   if (fastest != null) {
     const duration =

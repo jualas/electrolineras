@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.config import settings
 from api.dependencies import get_repository
 from api.query_params import parse_country_list
-from api.routing.corridor import RoutePolyline, rank_stations_along_route
 from api.routing.osrm import RoutingError, fetch_osrm_route_with_alternatives
+from api.routing.route_variants import rank_stations_for_route_variant, union_route_search_bbox
 from api.schemas import (
     MAX_CORRIDOR_KM,
     MAX_ROUTE_RESULTS_LIMIT,
@@ -16,6 +16,7 @@ from api.schemas import (
     AlongRouteStationResult,
     RouteEndpoint,
     RoutePreference,
+    RouteVariantAlongRouteSnapshot,
 )
 from db.repository import StationRepository
 
@@ -85,8 +86,7 @@ def stations_along_route(
             detail=f"No se pudo calcular la ruta: {exc}",
         ) from exc
 
-    polyline = RoutePolyline(osrm_route.coordinates)
-    west, south, east, north = polyline.bbox_expanded(corridor_km * 1000)
+    west, south, east, north = union_route_search_bbox(variant_routes, corridor_km)
     candidates = repo.search(
         west=west,
         south=south,
@@ -100,28 +100,64 @@ def stations_along_route(
     )
 
     wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
-    matches = rank_stations_along_route(
-        polyline,
-        candidates,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-        corridor_m=corridor_km * 1000,
-        behind_margin_m=behind_margin_km * 1000,
-        wrong_side_penalty_m=wrong_side_penalty_m,
-        average_speed_mps=osrm_route.average_speed_mps,
-        limit=limit,
-    )
-
-    results = [
-        AlongRouteStationResult(
-            station=match.station,
-            deviation_km=round(match.deviation_m / 1000.0, 2),
-            route_distance_km=round(match.route_position_m / 1000.0, 2),
-            extra_minutes=round(match.extra_minutes, 1),
-            wrong_side=match.wrong_side,
+    route_variant_results: dict[str, RouteVariantAlongRouteSnapshot] = {}
+    for preference, variant_route in variant_routes.items():
+        matches = rank_stations_for_route_variant(
+            variant_route,
+            candidates,
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            corridor_km=corridor_km,
+            behind_margin_km=behind_margin_km,
+            wrong_side_penalty_m=wrong_side_penalty_m,
+            limit=limit,
         )
-        for match in matches
-    ]
+        route_variant_results[preference] = RouteVariantAlongRouteSnapshot(
+            route_distance_km=round(variant_route.distance_m / 1000.0, 2),
+            route_duration_minutes=round(variant_route.duration_s / 60.0, 1),
+            results=[
+                AlongRouteStationResult(
+                    station=match.station,
+                    deviation_km=round(match.deviation_m / 1000.0, 2),
+                    route_distance_km=round(match.route_position_m / 1000.0, 2),
+                    extra_minutes=round(match.extra_minutes, 1),
+                    wrong_side=match.wrong_side,
+                )
+                for match in matches
+            ],
+            candidates_in_bbox=len(candidates),
+        )
+
+    active_variant = route_variant_results.get(route_preference)
+    if active_variant is None:
+        matches = rank_stations_for_route_variant(
+            osrm_route,
+            candidates,
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            corridor_km=corridor_km,
+            behind_margin_km=behind_margin_km,
+            wrong_side_penalty_m=wrong_side_penalty_m,
+            limit=limit,
+        )
+        active_variant = RouteVariantAlongRouteSnapshot(
+            route_distance_km=round(osrm_route.distance_m / 1000.0, 2),
+            route_duration_minutes=round(osrm_route.duration_s / 60.0, 1),
+            results=[
+                AlongRouteStationResult(
+                    station=match.station,
+                    deviation_km=round(match.deviation_m / 1000.0, 2),
+                    route_distance_km=round(match.route_position_m / 1000.0, 2),
+                    extra_minutes=round(match.extra_minutes, 1),
+                    wrong_side=match.wrong_side,
+                )
+                for match in matches
+            ],
+            candidates_in_bbox=len(candidates),
+        )
+        route_variant_results[route_preference] = active_variant
+
+    results = active_variant.results
 
     return AlongRouteResponse(
         origin=RouteEndpoint(lat=origin_lat, lon=origin_lon),
@@ -129,8 +165,8 @@ def stations_along_route(
         corridor_km=corridor_km,
         behind_margin_km=behind_margin_km,
         geodesic_distance_km=route_alternatives.geodesic_distance_km,
-        route_distance_km=round(osrm_route.distance_m / 1000.0, 2),
-        route_duration_minutes=round(osrm_route.duration_s / 60.0, 1),
+        route_distance_km=active_variant.route_distance_km,
+        route_duration_minutes=active_variant.route_duration_minutes,
         route_shortest_distance_km=route_alternatives.shortest_distance_km,
         route_fastest_distance_km=route_alternatives.fastest_distance_km,
         route_conventional_distance_km=route_alternatives.conventional_distance_km,
@@ -156,5 +192,6 @@ def stations_along_route(
         route_preference=route_preference,
         avoid_highways=avoid_highways,
         results=results,
-        candidates_in_bbox=len(candidates),
+        candidates_in_bbox=active_variant.candidates_in_bbox,
+        route_variant_results=route_variant_results,
     )

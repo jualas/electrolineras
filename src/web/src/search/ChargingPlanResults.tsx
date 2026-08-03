@@ -5,7 +5,11 @@ import {
   formatClassificationLabel,
 } from '../charging/classificationDisplay'
 import { routeExportSpecFromChargingPlan, routeChargingStops, isChargingPlanComplete } from '../charging/planRouteStops'
-import { avoidTollsLabel, formatRouteAlternativesKm } from './RoutePreferenceFields'
+import {
+  avoidTollsLabel,
+  formatDurationMinutes,
+  formatRouteAlternativesKm,
+} from './RoutePreferenceFields'
 import { ChargingStopList } from './ChargingStopList'
 
 type ChargingPlanResultsProps = {
@@ -21,7 +25,7 @@ const ORIGIN_NOISE_STRATEGY_IDS = new Set(['charge_at_origin'])
 function plannedStopDistanceLabel(stop: PlannedRouteStopResult): string {
   const drive =
     stop.leg_driving_minutes != null && stop.leg_driving_minutes > 0
-      ? ` · ~${stop.leg_driving_minutes.toFixed(0)} min conducción`
+      ? ` · ~${formatDurationMinutes(stop.leg_driving_minutes)} conducción`
       : ''
   const energy =
     stop.leg_energy_kwh != null && stop.leg_energy_kwh > 0
@@ -44,13 +48,13 @@ function TripSummaryBox({ summary }: { summary: NonNullable<ChargingPlanResponse
       <p className="reve-trip-summary__title">Resumen del viaje</p>
       <ul className="reve-trip-summary__stats">
         <li>
-          <strong>{summary.total_duration_minutes.toFixed(0)} min</strong> total
+          <strong>{formatDurationMinutes(summary.total_duration_minutes)}</strong> total
         </li>
         <li>
-          <strong>{summary.driving_duration_minutes.toFixed(0)} min</strong> conducción
+          <strong>{formatDurationMinutes(summary.driving_duration_minutes)}</strong> conducción
         </li>
         <li>
-          <strong>{summary.total_charge_minutes.toFixed(0)} min</strong> recarga
+          <strong>{formatDurationMinutes(summary.total_charge_minutes)}</strong> recarga
         </li>
         <li>
           <strong>{summary.stop_count}</strong> parada{summary.stop_count === 1 ? '' : 's'}
@@ -200,7 +204,10 @@ export function ChargingPlanResults({
               {plannedStops.length > 0 && (
                 <>
                   {' · '}
-                  ~{plannedStops.reduce((sum, stop) => sum + stop.charge_minutes, 0).toFixed(0)} min carga total
+                  ~{formatDurationMinutes(
+                    plannedStops.reduce((sum, stop) => sum + stop.charge_minutes, 0),
+                  )}{' '}
+                  carga total
                 </>
               )}
             </>

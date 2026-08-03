@@ -13,7 +13,12 @@ import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
 import { ChargingPlanResults } from './ChargingPlanResults'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
-import { formatRouteAlternativesKm, RoutePreferenceFields } from './RoutePreferenceFields'
+import {
+  formatDurationMinutes,
+  formatRouteAlternativesKm,
+  RoutePreferenceFields,
+} from './RoutePreferenceFields'
+import { alongRouteWithPreference, chargingPlanWithPreference } from '../routing/routeVariantSelection'
 import type { RoutePreference } from '../api/types'
 
 export type RouteEndpointInput = {
@@ -64,8 +69,10 @@ export function RouteSearchPanel({
   const [chargePlan, setChargePlan] = useState<ChargingPlanResponse | null>(null)
   const [gpsLoading, setGpsLoading] = useState(false)
   const lastEndpointsRef = useRef<{ origin: RouteEndpointInput; dest: RouteEndpointInput } | null>(null)
+  const cachedRouteRef = useRef<AlongRouteResponse | null>(null)
+  const cachedChargePlanRef = useRef<ChargingPlanResponse | null>(null)
   const hasSuccessfulSearchRef = useRef(false)
-  const recalcOnPreferenceRef = useRef(false)
+  const recalcOnRouteSettingsRef = useRef(false)
 
   useEffect(() => {
     onSearchStateChange?.(status)
@@ -74,6 +81,8 @@ export function RouteSearchPanel({
   const invalidateCachedSearch = useCallback(() => {
     lastEndpointsRef.current = null
     hasSuccessfulSearchRef.current = false
+    cachedRouteRef.current = null
+    cachedChargePlanRef.current = null
   }, [])
 
   const resolveEndpoint = useCallback(
@@ -147,8 +156,12 @@ export function RouteSearchPanel({
         }
 
         setLastResponse(response)
-        setChargePlan(plan)
-        onChargePlanResults?.(plan)
+        cachedRouteRef.current = response
+        cachedChargePlanRef.current = plan
+        const displayedRoute = alongRouteWithPreference(response, routePreference) ?? response
+        const displayedPlan = plan ? chargingPlanWithPreference(plan, routePreference) ?? plan : null
+        setChargePlan(displayedPlan)
+        onChargePlanResults?.(displayedPlan)
         setOriginText(origin.label)
         setDestText(destination.label)
         setOriginPoint(origin)
@@ -156,13 +169,15 @@ export function RouteSearchPanel({
         lastEndpointsRef.current = { origin, dest: destination }
         hasSuccessfulSearchRef.current = true
         setStatus('ready')
-        onResults(response)
+        onResults(displayedRoute)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error en la búsqueda'
         setError(message)
         setStatus('error')
         setLastResponse(null)
         setChargePlan(null)
+        cachedRouteRef.current = null
+        cachedChargePlanRef.current = null
         onChargePlanResults?.(null)
         onResults(null)
       }
@@ -194,10 +209,37 @@ export function RouteSearchPanel({
     void runSearch(endpoints.origin.label, endpoints.dest.label, endpoints.origin, endpoints.dest)
     // Solo re-buscar al cambiar filtros/corredor tras una búsqueda previa en modo conducción.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minKw, maxKw, corridorKm, routePreference, avoidTolls, simulationMode])
+  }, [minKw, maxKw, corridorKm, avoidTolls, simulationMode])
+
+  const applyCachedRoutePreference = useCallback(
+    (preference: RoutePreference) => {
+      const cachedRoute = cachedRouteRef.current
+      if (!cachedRoute) {
+        return false
+      }
+      const displayedRoute = alongRouteWithPreference(cachedRoute, preference)
+      if (!displayedRoute) {
+        return false
+      }
+      setLastResponse(displayedRoute)
+      onResults(displayedRoute)
+      onSelectStation?.(null)
+      const cachedPlan = cachedChargePlanRef.current
+      if (cachedPlan) {
+        const displayedPlan = chargingPlanWithPreference(cachedPlan, preference) ?? cachedPlan
+        setChargePlan(displayedPlan)
+        onChargePlanResults?.(displayedPlan)
+      } else {
+        setChargePlan(null)
+        onChargePlanResults?.(null)
+      }
+      return true
+    },
+    [onChargePlanResults, onResults, onSelectStation],
+  )
 
   useEffect(() => {
-    if (!recalcOnPreferenceRef.current) {
+    if (!recalcOnRouteSettingsRef.current) {
       return
     }
     if (status === 'loading') {
@@ -205,12 +247,12 @@ export function RouteSearchPanel({
     }
     const endpoints = lastEndpointsRef.current
     if (!endpoints || endpoints.origin.lat == null || endpoints.dest.lat == null) {
-      recalcOnPreferenceRef.current = false
+      recalcOnRouteSettingsRef.current = false
       return
     }
-    recalcOnPreferenceRef.current = false
+    recalcOnRouteSettingsRef.current = false
     void runSearch(endpoints.origin.label, endpoints.dest.label, endpoints.origin, endpoints.dest)
-  }, [routePreference, avoidTolls, runSearch, status])
+  }, [avoidTolls, runSearch, status])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -356,8 +398,10 @@ export function RouteSearchPanel({
           avoidTolls={avoidTolls}
           onRoutePreferenceChange={(value) => {
             setRoutePreference(value)
-            if (status === 'ready' && lastResponse) {
-              recalcOnPreferenceRef.current = true
+            if (status === 'ready' && cachedRouteRef.current) {
+              if (!applyCachedRoutePreference(value)) {
+                recalcOnRouteSettingsRef.current = true
+              }
             } else {
               invalidateCachedSearch()
             }
@@ -365,7 +409,7 @@ export function RouteSearchPanel({
           onAvoidTollsChange={(value) => {
             setAvoidTolls(value)
             if (status === 'ready' && lastResponse) {
-              recalcOnPreferenceRef.current = true
+              recalcOnRouteSettingsRef.current = true
             } else {
               invalidateCachedSearch()
             }
@@ -400,7 +444,8 @@ export function RouteSearchPanel({
         <div className="route-summary">
           <p className="route-summary__meta">
             {formatRouteAlternativesKm(lastResponse)} · ~
-            {lastResponse.route_duration_minutes.toFixed(0)} min · {lastResponse.results.length} cargadores
+            {formatDurationMinutes(lastResponse.route_duration_minutes)} ·{' '}
+            {lastResponse.results.length} cargadores
           </p>
         </div>
       )}

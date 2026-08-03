@@ -89,12 +89,12 @@ Panel resumen viaje + tabla paradas como mapareve; ajustes colapsables.
 
 ### Fase 5 — Telemetría Grafana (#6090–#6091)
 
-- Perfil consumo histórico por bins (autopista / convencional / sierra)
-- SOC y consumo instantáneos Tesla en motor
+- **#6090 (hecho):** perfil histórico vía Grafana API → Postgres TeslaMate; bins `highway` / `mixed` / `conventional` / `mountain`; endpoint `GET /api/v1/private/consumption-profile`; plan Asistente elige Wh/km según `route_preference`; UI oculta consumo/terreno y muestra nota transparente. Detalle: [`CONSUMPTION_PROFILE.md`](CONSUMPTION_PROFILE.md). MCP local: `tools/mcp_grafana/`.
+- **#6091 (hecho):** consumo instantáneo desde `est_battery_range_km` solo para alerta; si `|live−plan|/plan ≥ 15 %` → banner + recalcular desde posición/SOC vivos; Asistente con `ActiveTrip` + `ReplanOnRouteBar`. Umbral: `CONSUMPTION_DIVERGENCE_ALERT_PCT`.
 
-### Fase 6 — Dify (#6092)
+### Fase 6 — Dify (#6092) ✅
 
-Contexto enriquecido: consumo histórico + `route_trip_summary` REVE.
+`TripGuideContext` incluye `consumption_profile`, consumo efectivo y `route_trip_summary` en `plan_snapshot`. Prompt del puente Cursor actualizado; docs en `DIFY_TRIP_GUIDE.md`.
 
 ### Fase 7 — Benchmark CI (#6093)
 
@@ -113,6 +113,9 @@ Contexto enriquecido: consumo histórico + `route_trip_summary` REVE.
 | UI plan | `src/web/src/search/ChargingPlanPanel.tsx` |
 | UI asistente | `src/web/src/auth/AssistantPanel.tsx` |
 | Ajustes REVE UI | `src/web/src/search/RevePlanningFields.tsx` |
+| Perfil consumo | `src/api/integrations/consumption_profile_service.py` |
+| Cliente Grafana | `src/api/integrations/grafana_client.py` |
+| MCP Grafana | `tools/mcp_grafana/server.py` |
 
 ---
 
@@ -127,5 +130,6 @@ Ver [`docker/osrm/README.md`](../docker/osrm/README.md) y [`ROUTE_CORRIDOR_SEARC
 ## Enlaces
 
 - [EV_RANGE_PLAN.md](EV_RANGE_PLAN.md) — visión plan de carga
+- [CONSUMPTION_PROFILE.md](CONSUMPTION_PROFILE.md) — histórico Grafana / bins
 - [DIFY_TRIP_GUIDE.md](DIFY_TRIP_GUIDE.md) — agente IA
 - [TASKBOARD.md](../TASKBOARD.md#task-6085) — tareas #6085–#6093

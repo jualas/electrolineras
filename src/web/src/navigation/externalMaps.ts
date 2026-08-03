@@ -125,7 +125,7 @@ export async function shareMapLocation(
   }
 }
 
-/** Compartir ruta (Web Share → app Tesla en móvil, u otra app de navegación). */
+/** Compartir ruta vía Web Share (Google Maps URL); el usuario elige destino (Maps, mensajería, etc.). */
 export async function shareRoute(
   spec: RouteExportSpec,
   mode: 'full' | 'next_stop' = 'full',
