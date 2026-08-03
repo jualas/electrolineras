@@ -105,6 +105,16 @@ class ParsedItinerary:
     return_home: bool
 
 
+def short_place_label(label: str) -> str:
+    """Acorta etiquetas Nominatim largas: «Camping X, calle, pueblo…» → «Camping X»."""
+    first = label.split(",")[0].strip()
+    if not first:
+        return label.strip()
+    if len(first) > 80:
+        return first[:77] + "…"
+    return first
+
+
 def extract_departure_soc(text: str) -> float | None:
     match = _SOC_RE.search(text)
     if not match:
@@ -325,16 +335,16 @@ def parse_and_geocode_itinerary(
         except GeocodingError as exc:
             warnings.append(str(exc))
             continue
-        overnight = hint.overnight or (overnight_default and return_home)
+        overnight = bool(hint.overnight or (overnight_default and return_home))
         stops.append(
             GeocodedItineraryStop(
                 order=len(stops) + 1,
                 raw=hint.raw,
-                label=label,
+                label=short_place_label(label),
                 lat=lat,
                 lon=lon,
                 overnight=overnight,
-                nights=hint.nights or (1 if overnight else None),
+                nights=(hint.nights or 1) if overnight else None,
                 is_home=False,
                 confidence=confidence,
             )

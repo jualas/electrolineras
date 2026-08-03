@@ -115,15 +115,26 @@ export function TripSimulationPanel({
     onPlanForMap(null)
     try {
       const parsed = await parseItineraryFromCar({ text })
-      setStops(parsed.stops)
+      const nonHomeCount = parsed.stops.filter((stop) => !stop.is_home).length
+      // Ida-vuelta con un solo destino: pernocta por defecto si el backend no la marcó.
+      const normalized = parsed.stops.map((stop) => {
+        if (stop.is_home) {
+          return { ...stop, label: 'Casa', is_home: true, overnight: false }
+        }
+        if (parsed.return_home && nonHomeCount === 1 && !stop.overnight) {
+          return { ...stop, overnight: true, nights: stop.nights ?? 1 }
+        }
+        return stop
+      })
+      setStops(normalized)
       setParseWarnings(parsed.warnings)
       setParsedSoc(parsed.departure_soc_percent ?? null)
       if (parsed.departure_soc_percent != null && parsed.departure_soc_percent >= 95) {
         setSimulate100(true)
       }
-      if (parsed.stops.length === 0) {
+      if (normalized.length === 0) {
         setError(parsed.warnings[0] ?? 'No se interpretó ningún destino.')
-      } else if (!parsed.stops.some((stop) => !stop.is_home)) {
+      } else if (!normalized.some((stop) => !stop.is_home)) {
         setError('Falta el destino del viaje (solo se detectó casa). Reformula el texto.')
       }
     } catch (err) {
@@ -288,24 +299,25 @@ export function TripSimulationPanel({
         <ol className="trip-simulation__stops">
           {stops.map((stop) => (
             <li key={`${stop.order}-${stop.label}`}>
-              <strong>
-                {stop.order}. {stop.label}
-              </strong>
-              {stop.is_home ? ' · casa' : null}
-              {!stop.is_home ? (
-                <button
-                  type="button"
-                  className="btn btn--ghost"
-                  style={{ marginLeft: '0.35rem' }}
-                  disabled={busy}
-                  onClick={() => toggleOvernight(stop.order)}
-                >
-                  {stop.overnight
-                    ? `Pernocta${stop.nights ? ` ${stop.nights}n` : ''}`
-                    : 'Marcar pernocta'}
-                </button>
-              ) : null}
-              <span className="muted small"> · {stop.confidence}</span>
+              <div className="trip-simulation__stop-row">
+                <strong>
+                  {stop.order}. {stop.is_home ? 'Casa' : stop.label}
+                </strong>
+                {stop.is_home ? (
+                  <span className="muted small"> (origen / regreso)</span>
+                ) : (
+                  <button
+                    type="button"
+                    className={`btn btn--ghost trip-simulation__overnight ${stop.overnight ? 'is-on' : ''}`}
+                    disabled={busy}
+                    onClick={() => toggleOvernight(stop.order)}
+                  >
+                    {stop.overnight
+                      ? `Pernocta${stop.nights ? ` · ${stop.nights} noche${stop.nights === 1 ? '' : 's'}` : ''}`
+                      : 'Sin pernocta (pulsar para marcar)'}
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ol>

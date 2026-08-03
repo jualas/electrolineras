@@ -303,7 +303,8 @@ def private_parse_itinerary(
         raise HTTPException(status_code=503, detail="Asistente de viaje desactivado")
 
     telemetry = _get_vehicle_telemetry(car_id=car_id)
-    home_label = body.home_label or telemetry.display_name or "Casa"
+    # Etiqueta fija «Casa» (el display_name del Tesla confunde: p. ej. «The Ship»).
+    home_label = (body.home_label or "Casa").strip() or "Casa"
     parsed = parse_and_geocode_itinerary(
         body.text,
         home_lat=telemetry.lat,
