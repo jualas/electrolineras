@@ -120,10 +120,14 @@ export function TripSimulationPanel({
   const [busyGuide, setBusyGuide] = useState(false)
 
   const setBusy = (value: boolean) => onBusyChange?.(value)
-  const busy = busyParse || busyPlan || busyGuide || disabled
+  // No incluir `disabled` del padre aquí: el padre usa loadingPlan que este panel
+  // enciende vía onBusyChange → deadlock y «Recalcular» queda siempre bloqueado.
+  const locallyBusy = busyParse || busyPlan || busyGuide
+  const busy = locallyBusy || disabled
 
   const exportSpec = useMemo(() => (result ? multiLegExportSpec(result) : null), [result])
   const totalChargeStops = result?.aggregate.all_planned_stops.length ?? 0
+  const canRecalculate = Boolean(stops?.length) && !locallyBusy
 
   const toggleOvernight = (order: number) => {
     setStops((prev) =>
@@ -321,7 +325,7 @@ export function TripSimulationPanel({
         <button
           type="button"
           className="assistant-ai-actions__ia auth-form__submit"
-          disabled={busy || text.trim().length < 5}
+          disabled={locallyBusy || disabled || text.trim().length < 5}
           onClick={() => void runParseAndPlan()}
         >
           {busyParse || busyPlan ? 'Trabajando…' : 'Interpretar y calcular'}
@@ -329,7 +333,7 @@ export function TripSimulationPanel({
         <button
           type="button"
           className="assistant-ai-actions__map"
-          disabled={busy || !stops?.length}
+          disabled={!canRecalculate}
           onClick={() => void runPlanOnly()}
         >
           {busyPlan ? 'Calculando…' : 'Recalcular plan'}

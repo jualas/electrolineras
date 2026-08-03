@@ -528,7 +528,7 @@ export function AssistantPanel({
             routePreference={routePreference}
             avoidTolls={avoidTolls}
             revePlanning={revePlanning}
-            disabled={busy}
+            disabled={!vehicle || Boolean(vehicleError)}
             onPlanForMap={(plan) => {
               if (plan) {
                 publishPlan(plan)
