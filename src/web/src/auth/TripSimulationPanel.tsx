@@ -26,7 +26,7 @@ type Props = {
 }
 
 const PLACEHOLDER =
-  'Ej.: Salgo de casa al 100 %. Viernes a Santillana del Mar (2 noches). Sábado a Comillas. Domingo vuelta a casa.'
+  'Ej.: Vamos el sábado a Camping Garrote Gordo y volvemos a casa el domingo (salimos al 100 %).'
 
 function multiLegExportSpec(result: MultiLegChargingPlanResponse): RouteExportSpec | null {
   const { origin, final_destination, all_planned_stops } = result.aggregate
@@ -35,15 +35,14 @@ function multiLegExportSpec(result: MultiLegChargingPlanResponse): RouteExportSp
     lat: stop.station.location.lat,
     lon: stop.station.location.lon,
   }))
-  // Include intermediate place destinations (non-charging) as soft waypoints if few charge stops
-  const placeWaypoints = result.legs.slice(0, -1).map((leg) => ({
-    lat: leg.plan.destination?.lat ?? 0,
-    lon: leg.plan.destination?.lon ?? 0,
-  })).filter((p) => p.lat !== 0)
-  const merged =
-    waypoints.length > 0
-      ? waypoints
-      : placeWaypoints
+  const placeWaypoints = result.legs
+    .slice(0, -1)
+    .map((leg) => ({
+      lat: leg.plan.destination?.lat ?? 0,
+      lon: leg.plan.destination?.lon ?? 0,
+    }))
+    .filter((p) => p.lat !== 0)
+  const merged = waypoints.length > 0 ? waypoints : placeWaypoints
   return {
     origin,
     destination: final_destination,
@@ -64,6 +63,41 @@ function mapPlanFromMulti(result: MultiLegChargingPlanResponse) {
   }
 }
 
+function isTruthyFlag(value: unknown): boolean {
+  return value === true || value === 1 || value === 'true' || value === 'True'
+}
+
+/** Normaliza hitos: Casa + pernocta en ida-vuelta con un destino. */
+function normalizeStops(parsed: {
+  stops: ItineraryPlaceResult[]
+  return_home: boolean
+}): ItineraryPlaceResult[] {
+  const nonHome = parsed.stops.filter((s) => !isTruthyFlag(s.is_home))
+  const roundTrip =
+    isTruthyFlag(parsed.return_home) ||
+    (parsed.stops.length >= 2 && isTruthyFlag(parsed.stops[parsed.stops.length - 1]?.is_home))
+
+  return parsed.stops.map((stop) => {
+    if (isTruthyFlag(stop.is_home)) {
+      return {
+        ...stop,
+        label: 'Casa',
+        is_home: true,
+        overnight: false,
+        nights: null,
+      }
+    }
+    const wantOvernight =
+      isTruthyFlag(stop.overnight) || (roundTrip && nonHome.length === 1) || roundTrip
+    return {
+      ...stop,
+      is_home: false,
+      overnight: wantOvernight,
+      nights: wantOvernight ? (stop.nights ?? 1) : null,
+    }
+  })
+}
+
 export function TripSimulationPanel({
   routePreference,
   avoidTolls,
@@ -80,13 +114,16 @@ export function TripSimulationPanel({
   const [result, setResult] = useState<MultiLegChargingPlanResponse | null>(null)
   const [guide, setGuide] = useState<TripGuideResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
   const [busyParse, setBusyParse] = useState(false)
   const [busyPlan, setBusyPlan] = useState(false)
   const [busyGuide, setBusyGuide] = useState(false)
 
   const setBusy = (value: boolean) => onBusyChange?.(value)
+  const busy = busyParse || busyPlan || busyGuide || disabled
 
   const exportSpec = useMemo(() => (result ? multiLegExportSpec(result) : null), [result])
+  const totalChargeStops = result?.aggregate.all_planned_stops.length ?? 0
 
   const toggleOvernight = (order: number) => {
     setStops((prev) =>
@@ -96,7 +133,7 @@ export function TripSimulationPanel({
               ? {
                   ...stop,
                   overnight: !stop.overnight,
-                  nights: !stop.overnight ? stop.nights ?? 1 : null,
+                  nights: !stop.overnight ? (stop.nights ?? 1) : null,
                 }
               : stop,
           )
@@ -106,49 +143,8 @@ export function TripSimulationPanel({
     setGuide(null)
   }
 
-  const runParse = async () => {
-    setError(null)
-    setBusyParse(true)
-    setBusy(true)
-    setResult(null)
-    setGuide(null)
-    onPlanForMap(null)
-    try {
-      const parsed = await parseItineraryFromCar({ text })
-      const nonHomeCount = parsed.stops.filter((stop) => !stop.is_home).length
-      // Ida-vuelta con un solo destino: pernocta por defecto si el backend no la marcó.
-      const normalized = parsed.stops.map((stop) => {
-        if (stop.is_home) {
-          return { ...stop, label: 'Casa', is_home: true, overnight: false }
-        }
-        if (parsed.return_home && nonHomeCount === 1 && !stop.overnight) {
-          return { ...stop, overnight: true, nights: stop.nights ?? 1 }
-        }
-        return stop
-      })
-      setStops(normalized)
-      setParseWarnings(parsed.warnings)
-      setParsedSoc(parsed.departure_soc_percent ?? null)
-      if (parsed.departure_soc_percent != null && parsed.departure_soc_percent >= 95) {
-        setSimulate100(true)
-      }
-      if (normalized.length === 0) {
-        setError(parsed.warnings[0] ?? 'No se interpretó ningún destino.')
-      } else if (!normalized.some((stop) => !stop.is_home)) {
-        setError('Falta el destino del viaje (solo se detectó casa). Reformula el texto.')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo interpretar el viaje.')
-      setStops(null)
-    } finally {
-      setBusyParse(false)
-      setBusy(false)
-    }
-  }
-
-  const runPlan = async () => {
-    if (!stops?.length) return
-    const destinations = stops.filter((stop) => !stop.is_home)
+  const calculatePlan = async (planStops: ItineraryPlaceResult[], departureFromParse: number | null) => {
+    const destinations = planStops.filter((stop) => !stop.is_home)
     if (destinations.length === 0) {
       setError('Falta un destino distinto de casa para calcular el plan.')
       return
@@ -157,14 +153,15 @@ export function TripSimulationPanel({
     setBusyPlan(true)
     setBusy(true)
     setGuide(null)
+    setStatus('Calculando paradas de carga por tramo (puede tardar 30–90 s)…')
     try {
-      const departureSoc = simulate100 ? 100 : parsedSoc ?? undefined
+      const departureSoc = simulate100 ? 100 : departureFromParse ?? undefined
       const multi = await fetchMultiLegChargingPlan({
-        stops: stops.map((stop) => ({
+        stops: planStops.map((stop) => ({
           lat: stop.lat,
           lon: stop.lon,
           label: stop.label,
-          overnight: stop.overnight && !stop.is_home,
+          overnight: Boolean(stop.overnight) && !stop.is_home,
           nights: stop.nights,
         })),
         departureSocPercent: departureSoc,
@@ -179,14 +176,67 @@ export function TripSimulationPanel({
       })
       setResult(multi)
       onPlanForMap(mapPlanFromMulti(multi))
+      const n = multi.aggregate.all_planned_stops.length
+      setStatus(
+        n > 0
+          ? `Plan listo: ${n} parada${n === 1 ? '' : 's'} de carga en ${multi.legs.length} tramo${multi.legs.length === 1 ? '' : 's'}.`
+          : 'Plan calculado, pero sin paradas de carga (revisa avisos de cada tramo).',
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo calcular el plan multi-tramo.')
       setResult(null)
       onPlanForMap(null)
+      setStatus(null)
     } finally {
       setBusyPlan(false)
       setBusy(false)
     }
+  }
+
+  const runParseAndPlan = async () => {
+    setError(null)
+    setStatus(null)
+    setBusyParse(true)
+    setBusy(true)
+    setResult(null)
+    setGuide(null)
+    onPlanForMap(null)
+    try {
+      setStatus('Interpretando itinerario…')
+      const parsed = await parseItineraryFromCar({ text })
+      const normalized = normalizeStops(parsed)
+      setStops(normalized)
+      setParseWarnings(parsed.warnings)
+      const soc = parsed.departure_soc_percent ?? null
+      setParsedSoc(soc)
+      if (soc != null && soc >= 95) {
+        setSimulate100(true)
+      }
+      if (normalized.length === 0) {
+        setError(parsed.warnings[0] ?? 'No se interpretó ningún destino.')
+        setStatus(null)
+        return
+      }
+      if (!normalized.some((stop) => !stop.is_home)) {
+        setError('Falta el destino del viaje (solo se detectó casa). Reformula el texto.')
+        setStatus(null)
+        return
+      }
+      setBusyParse(false)
+      await calculatePlan(normalized, soc)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo interpretar el viaje.')
+      setStops(null)
+      setStatus(null)
+    } finally {
+      setBusyParse(false)
+      setBusy(false)
+    }
+  }
+
+  const runPlanOnly = async () => {
+    if (!stops?.length) return
+    await calculatePlan(stops, parsedSoc)
   }
 
   const runGuide = async () => {
@@ -231,13 +281,11 @@ export function TripSimulationPanel({
     }
   }
 
-  const busy = busyParse || busyPlan || busyGuide || disabled
-
   return (
     <div className="trip-simulation">
       <p className="muted small" style={{ marginTop: 0 }}>
-        Describe el viaje en lenguaje natural. Ejemplo: «Vamos el sábado a Camping Garrote Gordo y volvemos a
-        casa el domingo (salimos al 100 %)». Luego: Interpretar → revisar hitos → Calcular plan.
+        Describe el viaje y pulsa <strong>Interpretar y calcular</strong>. Primero se detectan los hitos; luego el
+        motor calcula las paradas de carga de cada tramo.
       </p>
       <label className="field" htmlFor="trip-sim-text">
         <span className="field__label">Itinerario</span>
@@ -253,6 +301,7 @@ export function TripSimulationPanel({
             setStops(null)
             setResult(null)
             setGuide(null)
+            setStatus(null)
           }}
         />
       </label>
@@ -271,21 +320,27 @@ export function TripSimulationPanel({
       <div className="assistant-ai-actions">
         <button
           type="button"
-          className="assistant-ai-actions__map"
+          className="assistant-ai-actions__ia auth-form__submit"
           disabled={busy || text.trim().length < 5}
-          onClick={() => void runParse()}
+          onClick={() => void runParseAndPlan()}
         >
-          {busyParse ? 'Interpretando…' : 'Interpretar viaje'}
+          {busyParse || busyPlan ? 'Trabajando…' : 'Interpretar y calcular'}
         </button>
         <button
           type="button"
-          className="assistant-ai-actions__ia auth-form__submit"
+          className="assistant-ai-actions__map"
           disabled={busy || !stops?.length}
-          onClick={() => void runPlan()}
+          onClick={() => void runPlanOnly()}
         >
-          {busyPlan ? 'Calculando…' : 'Calcular plan'}
+          {busyPlan ? 'Calculando…' : 'Recalcular plan'}
         </button>
       </div>
+
+      {status ? (
+        <p className="panel-hint" role="status">
+          {status}
+        </p>
+      ) : null}
 
       {parseWarnings.length > 0 && (
         <ul className="trip-simulation__warnings">
@@ -313,7 +368,7 @@ export function TripSimulationPanel({
                     onClick={() => toggleOvernight(stop.order)}
                   >
                     {stop.overnight
-                      ? `Pernocta${stop.nights ? ` · ${stop.nights} noche${stop.nights === 1 ? '' : 's'}` : ''}`
+                      ? `Pernocta · ${stop.nights ?? 1} noche${(stop.nights ?? 1) === 1 ? '' : 's'}`
                       : 'Sin pernocta (pulsar para marcar)'}
                   </button>
                 )}
@@ -328,6 +383,12 @@ export function TripSimulationPanel({
       {result && (
         <div className="trip-simulation__results">
           <p className="assistant-advice__summary">{result.agent_summary}</p>
+          <p className="panel-hint">
+            Paradas de carga totales: <strong>{totalChargeStops}</strong>
+            {result.aggregate.total_route_km > 0
+              ? ` · ~${result.aggregate.total_route_km.toFixed(0)} km · ~${result.aggregate.total_driving_minutes.toFixed(0)} min`
+              : null}
+          </p>
           <ul className="assistant-advice__bullets">
             {result.agent_bullets.map((line) => (
               <li key={line}>{line}</li>
@@ -360,16 +421,26 @@ export function TripSimulationPanel({
               <pre className="assistant-guide__text">{guide.guide_text}</pre>
             </details>
           ) : null}
-          {result.legs.map((leg) => (
-            <details key={leg.order} className="assistant-collapsible" open={leg.order === 1}>
-              <summary>
-                Tramo {leg.order}: {leg.from_label} → {leg.to_label}
-                {leg.overnight ? ' · pernocta' : ''} · {leg.departure_soc_pct.toFixed(0)}%→
-                {leg.arrival_soc_pct.toFixed(0)}%
-              </summary>
-              <ChargingPlanResults plan={leg.plan} variant="assistant" />
-            </details>
-          ))}
+          {result.legs.map((leg) => {
+            const stopCount = leg.plan.planned_stops?.length ?? 0
+            return (
+              <details key={leg.order} className="assistant-collapsible" open={leg.order === 1}>
+                <summary>
+                  Tramo {leg.order}: {leg.from_label} → {leg.to_label}
+                  {leg.overnight ? ' · pernocta' : ''} · {leg.departure_soc_pct.toFixed(0)}%→
+                  {leg.arrival_soc_pct.toFixed(0)}% · {stopCount} parada{stopCount === 1 ? '' : 's'}
+                </summary>
+                {stopCount === 0 ? (
+                  <p className="muted small">
+                    Este tramo no tiene paradas planificadas
+                    {leg.plan.reachable_without_stop ? ' (llegas sin cargar).' : '.'}{' '}
+                    {leg.plan.warnings[0] ?? ''}
+                  </p>
+                ) : null}
+                <ChargingPlanResults plan={leg.plan} variant="assistant" />
+              </details>
+            )
+          })}
         </div>
       )}
     </div>
