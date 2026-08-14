@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 import httpx
@@ -10,6 +11,9 @@ from api.config import settings
 from db.spatial import haversine_m
 
 RoutePreference = Literal["fastest", "shortest", "conventional"]
+
+_OSRM_WAKE_FILENAME = "osrm_wake.request"
+_OSRM_LAST_USED_FILENAME = "osrm_last_used"
 
 
 class RoutingError(Exception):
@@ -268,6 +272,69 @@ def _osrm_http_error_detail(response: httpx.Response) -> str:
     return response.text[:200] or "sin detalle"
 
 
+def _normalize_osrm_base(url: str) -> str:
+    return url.strip().rstrip("/").lower()
+
+
+def _osrm_lifecycle_dir() -> Path:
+    return Path(settings.osrm_lifecycle_dir)
+
+
+def _touch_osrm_lifecycle_file(filename: str) -> None:
+    try:
+        directory = _osrm_lifecycle_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / filename
+        path.touch()
+        path.write_text(f"{path.stat().st_mtime_ns}\n", encoding="utf-8")
+    except OSError:
+        return
+
+
+def signal_osrm_wake() -> None:
+    """Pide al host que arranque OSRM local (cron/lifecycle)."""
+    if not settings.osrm_wake_on_failure:
+        return
+    _touch_osrm_lifecycle_file(_OSRM_WAKE_FILENAME)
+
+
+def mark_osrm_last_used() -> None:
+    _touch_osrm_lifecycle_file(_OSRM_LAST_USED_FILENAME)
+
+
+def resolve_osrm_public_fallback_url(primary_url: str) -> str | None:
+    explicit = settings.osrm_fallback_base_url.strip()
+    if explicit:
+        candidate = explicit
+    elif settings.osrm_public_emergency_fallback:
+        candidate = settings.osrm_public_fallback_url.strip()
+    else:
+        return None
+    if not candidate:
+        return None
+    if _normalize_osrm_base(candidate) == _normalize_osrm_base(primary_url):
+        return None
+    return candidate.rstrip("/")
+
+
+def should_try_osrm_public_fallback(error: RoutingError, primary_url: str) -> bool:
+    if resolve_osrm_public_fallback_url(primary_url) is None:
+        return False
+    if error.status_code is None:
+        return True
+    return error.status_code in {408, 500, 502, 503, 504}
+
+
+def _osrm_get(request_url: str, params: dict[str, str], timeout_s: float) -> httpx.Response:
+    try:
+        with httpx.Client(timeout=timeout_s) as client:
+            return client.get(request_url, params=params)
+    except httpx.TimeoutException as exc:
+        raise RoutingError("OSRM no respondió a tiempo", status_code=408) from exc
+    except httpx.HTTPError as exc:
+        raise RoutingError(f"Error de red con OSRM: {exc}") from exc
+
+
 def _osrm_alternatives_param(enabled: bool, *, count: int | None = None) -> str:
     if not enabled:
         return "false"
@@ -302,8 +369,7 @@ def _request_osrm_profile_route(
     if exclude:
         params["exclude"] = exclude
 
-    with httpx.Client(timeout=timeout_s) as client:
-        response = client.get(request_url, params=params)
+    response = _osrm_get(request_url, params, timeout_s)
 
     if response.status_code != 200:
         detail = _osrm_http_error_detail(response)
@@ -349,8 +415,7 @@ def _request_osrm_routes(
     if exclude:
         params["exclude"] = exclude
 
-    with httpx.Client(timeout=timeout_s) as client:
-        response = client.get(request_url, params=params)
+    response = _osrm_get(request_url, params, timeout_s)
 
     if response.status_code == 200 and exclude:
         exclude_applied = True
@@ -365,8 +430,7 @@ def _request_osrm_routes(
                 routing_warnings.append(warning)
             params.pop("exclude", None)
             exclude_applied = False
-            with httpx.Client(timeout=timeout_s) as client:
-                response = client.get(request_url, params=params)
+            response = _osrm_get(request_url, params, timeout_s)
         elif route_preference == "conventional":
             raise RoutingError(
                 "No se encontró ruta solo por carreteras convencionales.",
@@ -374,8 +438,7 @@ def _request_osrm_routes(
             )
         else:
             params.pop("exclude", None)
-            with httpx.Client(timeout=timeout_s) as client:
-                response = client.get(request_url, params=params)
+            response = _osrm_get(request_url, params, timeout_s)
 
     if response.status_code != 200:
         detail = _osrm_http_error_detail(response)
@@ -558,64 +621,14 @@ def _fetch_fallback_variants(
     return variants, warnings, exclude_applied
 
 
-def fetch_osrm_route_with_alternatives(
-    origin_lat: float,
-    origin_lon: float,
-    dest_lat: float,
-    dest_lon: float,
+def _assemble_osrm_result(
+    variants: dict[RoutePreference, _RoutePayload],
     *,
-    base_url: str | None = None,
-    timeout_s: float | None = None,
-    route_preference: RoutePreference = "fastest",
-    avoid_highways: bool = False,
+    geodesic_km: float,
+    route_preference: RoutePreference,
+    avoid_highways: bool,
+    warnings: list[str],
 ) -> tuple[OsrmRoute, RouteAlternativesSummary, list[str], dict[RoutePreference, OsrmRoute]]:
-    resolved_base = base_url or settings.osrm_base_url
-    resolved_timeout = timeout_s or settings.osrm_timeout_seconds
-    geodesic_km = geodesic_distance_km(origin_lat, origin_lon, dest_lat, dest_lon)
-    warnings: list[str] = []
-
-    if settings.osrm_use_multi_profile:
-        try:
-            variants, profile_warnings = _fetch_multi_profile_variants(
-                origin_lat,
-                origin_lon,
-                dest_lat,
-                dest_lon,
-                base_url=resolved_base,
-                timeout_s=resolved_timeout,
-                avoid_highways=avoid_highways,
-            )
-            warnings.extend(profile_warnings)
-        except RoutingError:
-            variants, fallback_warnings, _exclude_applied = _fetch_fallback_variants(
-                origin_lat,
-                origin_lon,
-                dest_lat,
-                dest_lon,
-                base_url=resolved_base,
-                timeout_s=resolved_timeout,
-                profile=settings.osrm_profile_fastest,
-                avoid_highways=avoid_highways,
-                geodesic_km=geodesic_km,
-            )
-            warnings.extend(fallback_warnings)
-            warnings.append(
-                "OSRM multi-perfil no disponible; convencionales con petición aparte (exclude=motorway)."
-            )
-    else:
-        variants, fallback_warnings, _exclude_applied = _fetch_fallback_variants(
-            origin_lat,
-            origin_lon,
-            dest_lat,
-            dest_lon,
-            base_url=resolved_base,
-            timeout_s=resolved_timeout,
-            profile=settings.osrm_profile_fastest,
-            avoid_highways=avoid_highways,
-            geodesic_km=geodesic_km,
-        )
-        warnings.extend(fallback_warnings)
-
     summary = summarize_route_variants(variants, geodesic_km=geodesic_km)
     variant_routes: dict[RoutePreference, OsrmRoute] = {}
     for preference, payload in variants.items():
@@ -634,6 +647,135 @@ def fetch_osrm_route_with_alternatives(
         avoid_highways=avoid_highways,
     )
     return route, summary, warnings, variant_routes
+
+
+def _fetch_osrm_variants_on_base(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+    *,
+    base_url: str,
+    timeout_s: float,
+    geodesic_km: float,
+    avoid_highways: bool,
+    use_multi_profile: bool,
+    profile_fastest: str,
+) -> tuple[dict[RoutePreference, _RoutePayload], list[str]]:
+    warnings: list[str] = []
+    if use_multi_profile:
+        try:
+            variants, profile_warnings = _fetch_multi_profile_variants(
+                origin_lat,
+                origin_lon,
+                dest_lat,
+                dest_lon,
+                base_url=base_url,
+                timeout_s=timeout_s,
+                avoid_highways=avoid_highways,
+            )
+            warnings.extend(profile_warnings)
+            return variants, warnings
+        except RoutingError:
+            variants, fallback_warnings, _exclude_applied = _fetch_fallback_variants(
+                origin_lat,
+                origin_lon,
+                dest_lat,
+                dest_lon,
+                base_url=base_url,
+                timeout_s=timeout_s,
+                profile=profile_fastest,
+                avoid_highways=avoid_highways,
+                geodesic_km=geodesic_km,
+            )
+            warnings.extend(fallback_warnings)
+            warnings.append(
+                "OSRM multi-perfil no disponible; convencionales con petición aparte (exclude=motorway)."
+            )
+            return variants, warnings
+
+    variants, fallback_warnings, _exclude_applied = _fetch_fallback_variants(
+        origin_lat,
+        origin_lon,
+        dest_lat,
+        dest_lon,
+        base_url=base_url,
+        timeout_s=timeout_s,
+        profile=profile_fastest,
+        avoid_highways=avoid_highways,
+        geodesic_km=geodesic_km,
+    )
+    warnings.extend(fallback_warnings)
+    return variants, warnings
+
+
+def fetch_osrm_route_with_alternatives(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+    *,
+    base_url: str | None = None,
+    timeout_s: float | None = None,
+    route_preference: RoutePreference = "fastest",
+    avoid_highways: bool = False,
+) -> tuple[OsrmRoute, RouteAlternativesSummary, list[str], dict[RoutePreference, OsrmRoute]]:
+    resolved_base = base_url or settings.osrm_base_url
+    resolved_timeout = timeout_s or settings.osrm_timeout_seconds
+    geodesic_km = geodesic_distance_km(origin_lat, origin_lon, dest_lat, dest_lon)
+
+    try:
+        variants, warnings = _fetch_osrm_variants_on_base(
+            origin_lat,
+            origin_lon,
+            dest_lat,
+            dest_lon,
+            base_url=resolved_base,
+            timeout_s=resolved_timeout,
+            geodesic_km=geodesic_km,
+            avoid_highways=avoid_highways,
+            use_multi_profile=settings.osrm_use_multi_profile,
+            profile_fastest=settings.osrm_profile_fastest,
+        )
+        mark_osrm_last_used()
+        return _assemble_osrm_result(
+            variants,
+            geodesic_km=geodesic_km,
+            route_preference=route_preference,
+            avoid_highways=avoid_highways,
+            warnings=warnings,
+        )
+    except RoutingError as primary_error:
+        # Solo degradar cuando se usa la URL de settings (no un override explícito de tests).
+        if base_url is not None or not should_try_osrm_public_fallback(primary_error, resolved_base):
+            raise
+        signal_osrm_wake()
+        public_url = resolve_osrm_public_fallback_url(resolved_base)
+        if public_url is None:
+            raise
+        variants, warnings = _fetch_osrm_variants_on_base(
+            origin_lat,
+            origin_lon,
+            dest_lat,
+            dest_lon,
+            base_url=public_url,
+            timeout_s=resolved_timeout,
+            geodesic_km=geodesic_km,
+            avoid_highways=avoid_highways,
+            use_multi_profile=False,
+            profile_fastest=settings.osrm_public_profile,
+        )
+        warnings.append(
+            "OSRM local no disponible; usando router público (modo degradado). "
+            "Se ha solicitado el arranque del OSRM self-hosted."
+        )
+        return _assemble_osrm_result(
+            variants,
+            geodesic_km=geodesic_km,
+            route_preference=route_preference,
+            avoid_highways=avoid_highways,
+            warnings=warnings,
+        )
 
 
 def fetch_osrm_route(

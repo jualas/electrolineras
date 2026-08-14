@@ -51,6 +51,8 @@ def test_parse_empty_warns():
 def test_parse_natural_weekend_camping(monkeypatch):
     def fake_geocode(query: str, **_kwargs):
         assert "garrote" in query.lower() or "camping" in query.lower()
+        assert "viernes" not in query.lower()
+        assert "tarde" not in query.lower()
         return 38.218, -2.617, "Camping Garrote Gordo"
 
     monkeypatch.setattr("api.routing.itinerary_parse.geocode_address", fake_geocode)
@@ -67,5 +69,40 @@ def test_parse_natural_weekend_camping(monkeypatch):
     assert parsed.departure_soc_percent == 100.0
     assert len(parsed.stops) == 2
     assert "Garrote" in parsed.stops[0].label
+    assert parsed.stops[0].overnight
+    assert parsed.stops[1].is_home
+
+
+def test_parse_day_after_place_and_instruction_tail(monkeypatch):
+    """«vamos a X viernes tarde y volvemos…, genera un plan…» no debe geocodificar el día."""
+    from api.routing.itinerary_parse import _place_query_from_hint, split_itinerary_segments
+
+    text = (
+        "vamos a camping garrote gordo viernes tarde y volvemos a casa domingo, "
+        "genera un plan de carga fiable para poder volver a casa"
+    )
+    place = _place_query_from_hint("camping garrote gordo viernes tarde")
+    assert place.lower() == "camping garrote gordo"
+
+    hints = split_itinerary_segments(text)
+    non_home = [h for h in hints if not h.is_home]
+    assert len(non_home) == 1
+    assert "garrote" in non_home[0].raw.lower()
+    assert "viernes" not in non_home[0].raw.lower()
+    assert "tarde" not in non_home[0].raw.lower()
+    assert any(h.is_home for h in hints)
+
+    def fake_geocode(query: str, **_kwargs):
+        assert query.lower().strip() == "camping garrote gordo"
+        return 38.218, -2.617, "Camping Garrote Gordo"
+
+    monkeypatch.setattr("api.routing.itinerary_parse.geocode_address", fake_geocode)
+    parsed = parse_and_geocode_itinerary(
+        text,
+        home_lat=37.625,
+        home_lon=-0.996,
+        home_label="Casa",
+    )
+    assert len(parsed.stops) == 2
     assert parsed.stops[0].overnight
     assert parsed.stops[1].is_home

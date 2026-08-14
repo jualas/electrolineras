@@ -40,11 +40,12 @@ def _format_planned_stop_bullet(stop: PlannedRouteStopResult) -> str:
         if stop.charge_minutes > 0
         else f" · salida ~{stop.soc_departure_pct:.0f} %"
     )
-    drive_text = (
-        f" · ~{stop.leg_driving_minutes:.0f} min conducción"
-        if stop.leg_driving_minutes > 0
-        else ""
-    )
+    drive_text = ""
+    if stop.leg_driving_minutes > 0:
+        from api.routing.trip_metrics import format_duration_minutes
+
+        drive_fmt = format_duration_minutes(stop.leg_driving_minutes)
+        drive_text = f" · ~{drive_fmt} conducción" if drive_fmt else ""
     return (
         f"Parada {stop.order}: {_planned_stop_label(stop)} "
         f"(km {stop.route_distance_km:.0f}, tramo {stop.leg_distance_km:.0f} km{drive_text}) · "

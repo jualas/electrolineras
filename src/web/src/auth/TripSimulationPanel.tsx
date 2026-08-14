@@ -14,6 +14,7 @@ import type {
 import { RouteExportActions } from '../components/navigation/RouteExportActions'
 import type { RouteExportSpec } from '../navigation/externalMaps'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
+import { formatDurationMinutes } from '../search/RoutePreferenceFields'
 import type { RevePlanningOptions } from '../search/RevePlanningFields'
 
 type Props = {
@@ -159,13 +160,15 @@ export function TripSimulationPanel({
     setGuide(null)
     setStatus('Calculando paradas de carga por tramo (puede tardar 30–90 s)…')
     try {
+      // Alinear min_kw con el Asistente: con «excluir lentos» el suelo es 50 kW (no 100).
+      const planningMinKw = revePlanning.excludeSlowChargers ? 50 : 100
       const departureSoc = simulate100 ? 100 : departureFromParse ?? undefined
       const multi = await fetchMultiLegChargingPlan({
         stops: planStops.map((stop) => ({
           lat: stop.lat,
           lon: stop.lon,
-          label: stop.label,
-          overnight: Boolean(stop.overnight) && !stop.is_home,
+          label: stop.is_home ? 'Casa' : stop.label,
+          overnight: Boolean(stop.overnight) && !Boolean(stop.is_home),
           nights: stop.nights,
         })),
         departureSocPercent: departureSoc,
@@ -173,6 +176,7 @@ export function TripSimulationPanel({
         routePreference,
         avoidHighways: avoidTolls,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
+        minKw: planningMinKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
         maxChargeSocPct: revePlanning.maxChargeSocPct,
@@ -181,10 +185,11 @@ export function TripSimulationPanel({
       setResult(multi)
       onPlanForMap(mapPlanFromMulti(multi))
       const n = multi.aggregate.all_planned_stops.length
+      const socNote = departureSoc != null ? ` · salida simulada ${departureSoc} %` : ''
       setStatus(
         n > 0
-          ? `Plan listo: ${n} parada${n === 1 ? '' : 's'} de carga en ${multi.legs.length} tramo${multi.legs.length === 1 ? '' : 's'}.`
-          : 'Plan calculado, pero sin paradas de carga (revisa avisos de cada tramo).',
+          ? `Plan listo: ${n} parada${n === 1 ? '' : 's'} de carga en ${multi.legs.length} tramo${multi.legs.length === 1 ? '' : 's'}.${socNote}`
+          : `Plan calculado, pero sin paradas de carga (revisa avisos de cada tramo).${socNote}`,
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo calcular el plan multi-tramo.')
@@ -390,23 +395,40 @@ export function TripSimulationPanel({
         <div className="trip-simulation__results">
           <p className="assistant-advice__summary">{result.agent_summary}</p>
           <p className="panel-hint">
-            Paradas de carga totales: <strong>{totalChargeStops}</strong>
-            {result.aggregate.total_route_km > 0
-              ? ` · ~${result.aggregate.total_route_km.toFixed(0)} km · ~${result.aggregate.total_driving_minutes.toFixed(0)} min`
+            {totalChargeStops} parada{totalChargeStops === 1 ? '' : 's'} en ruta
+            {result.aggregate.total_charge_minutes > 0
+              ? ` (~${formatDurationMinutes(result.aggregate.total_charge_minutes)} carga)`
               : null}
           </p>
-          <ul className="assistant-advice__bullets">
-            {result.agent_bullets.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
+          <ul className="assistant-advice__bullets trip-simulation__leg-times">
+            {result.legs.map((leg) => {
+              const drive = formatDurationMinutes(leg.plan.route_duration_minutes)
+              const km = leg.plan.route_distance_km
+              const stopsN = leg.plan.planned_stops?.length ?? 0
+              return (
+                <li key={`leg-time-${leg.order}`}>
+                  <strong>
+                    {leg.from_label} → {leg.to_label}
+                  </strong>
+                  {km != null ? ` · ${km.toFixed(0)} km` : null}
+                  {drive ? ` · ${drive}` : null}
+                  {` · ${leg.departure_soc_pct.toFixed(0)}%→${leg.arrival_soc_pct.toFixed(0)}%`}
+                  {stopsN > 0 ? ` · ${stopsN} parada${stopsN === 1 ? '' : 's'}` : null}
+                  {leg.overnight ? ' · pernocta' : null}
+                </li>
+              )
+            })}
           </ul>
-          {result.warnings.length > 0 && (
-            <ul className="trip-simulation__warnings">
-              {result.warnings.slice(0, 12).map((w) => (
-                <li key={w}>{w}</li>
-              ))}
-            </ul>
-          )}
+          {result.warnings.length > 0 ? (
+            <details className="assistant-collapsible trip-simulation__warnings-box">
+              <summary>Avisos ({result.warnings.length})</summary>
+              <ul className="trip-simulation__warnings">
+                {result.warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
           {exportSpec ? <RouteExportActions route={exportSpec} variant="assistant" /> : null}
           <button
             type="button"
@@ -417,7 +439,7 @@ export function TripSimulationPanel({
             {busyGuide ? 'Analizando con IA…' : 'Analizar con IA'}
           </button>
           {guide?.guide_text ? (
-            <details className="assistant-guide assistant-collapsible" open>
+            <details className="assistant-guide assistant-collapsible">
               <summary className="assistant-guide__header">
                 <span className="assistant-guide__title">Análisis IA</span>
                 <span className="assistant-guide__badge">
@@ -430,19 +452,11 @@ export function TripSimulationPanel({
           {result.legs.map((leg) => {
             const stopCount = leg.plan.planned_stops?.length ?? 0
             return (
-              <details key={leg.order} className="assistant-collapsible" open={leg.order === 1}>
+              <details key={leg.order} className="assistant-collapsible">
                 <summary>
-                  Tramo {leg.order}: {leg.from_label} → {leg.to_label}
-                  {leg.overnight ? ' · pernocta' : ''} · {leg.departure_soc_pct.toFixed(0)}%→
-                  {leg.arrival_soc_pct.toFixed(0)}% · {stopCount} parada{stopCount === 1 ? '' : 's'}
+                  Detalle tramo {leg.order}: {leg.from_label} → {leg.to_label}
+                  {stopCount > 0 ? ` · ${stopCount} parada${stopCount === 1 ? '' : 's'}` : ''}
                 </summary>
-                {stopCount === 0 ? (
-                  <p className="muted small">
-                    Este tramo no tiene paradas planificadas
-                    {leg.plan.reachable_without_stop ? ' (llegas sin cargar).' : '.'}{' '}
-                    {leg.plan.warnings[0] ?? ''}
-                  </p>
-                ) : null}
                 <ChargingPlanResults plan={leg.plan} variant="assistant" />
               </details>
             )

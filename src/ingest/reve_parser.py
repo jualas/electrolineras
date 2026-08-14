@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import re
 from typing import Any
 
 from models.station import Connector, Station, StationLocation
@@ -27,6 +28,9 @@ _STATUS_PRIORITY = {
     "REMOVED": 8,
 }
 
+# Para el estado del emplazamiento, priorizar EVSE DC (≥ semi-rápido).
+_DC_STATUS_MIN_KW = 43.0
+
 
 def _parse_float(value: Any) -> float | None:
     if value is None:
@@ -43,11 +47,34 @@ def _connector_type(standard: str | None) -> str:
     return _CONNECTOR_STANDARD.get(standard, standard)
 
 
+def _connector_format(raw: Any) -> str | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    normalized = raw.strip().upper()
+    if normalized in {"CABLE", "SOCKET"}:
+        return normalized
+    return normalized
+
+
 def _energy_price_eur_kwh(connector: dict[str, Any]) -> float | None:
+    """Precio ENERGY publicado por REVE/OCPI (misma cifra que muestra mapareve).
+
+    No se descuenta el IVA: el campo ``price`` + etiqueta humana de REVE coinciden
+    con lo que ve el usuario (p. ej. 0.44 EUR/kWh).
+    """
     prices: list[float] = []
     for tariff_wrap in connector.get("tariffs") or []:
         if not isinstance(tariff_wrap, dict):
             continue
+        # Preferir etiqueta humana cuando exista ("0.44 EUR/kWh").
+        for human in tariff_wrap.get("human") or []:
+            if not isinstance(human, str):
+                continue
+            match = re.search(r"(\d+(?:[.,]\d+)?)\s*EUR", human, flags=re.IGNORECASE)
+            if match:
+                human_price = _parse_float(match.group(1).replace(",", "."))
+                if human_price is not None:
+                    prices.append(human_price)
         tariff = tariff_wrap.get("tariff")
         if not isinstance(tariff, dict):
             continue
@@ -61,24 +88,41 @@ def _energy_price_eur_kwh(connector: dict[str, Any]) -> float | None:
                     continue
                 price = _parse_float(component.get("price"))
                 if price is not None:
-                    vat = _parse_float(component.get("vat"))
-                    if vat is not None and vat > 0:
-                        price = price / (1.0 + vat / 100.0)
                     prices.append(price)
     if not prices:
         return None
     return min(prices)
 
 
+def _evse_max_power_kw(evse: dict[str, Any]) -> float:
+    powers: list[float] = []
+    for connector in evse.get("connectors") or []:
+        if not isinstance(connector, dict):
+            continue
+        power_w = _parse_float(connector.get("max_electric_power"))
+        if power_w is not None:
+            powers.append(power_w / 1000.0)
+    return max(powers) if powers else 0.0
+
+
 def _aggregate_status(evses: list[dict[str, Any]]) -> str | None:
-    statuses: list[str] = []
+    """Estado del sitio alineado con carga útil (DC), no con un AC libre residual."""
+    statuses: list[tuple[float, str]] = []
     for evse in evses:
         status = evse.get("status")
         if isinstance(status, str) and status:
-            statuses.append(status.upper())
+            statuses.append((_evse_max_power_kw(evse), status.upper()))
     if not statuses:
         return None
-    return min(statuses, key=lambda item: _STATUS_PRIORITY.get(item, 99))
+    max_kw = max(power_kw for power_kw, _ in statuses)
+    relevant = (
+        [status for power_kw, status in statuses if power_kw >= _DC_STATUS_MIN_KW]
+        if max_kw >= _DC_STATUS_MIN_KW
+        else [status for _, status in statuses]
+    )
+    if not relevant:
+        relevant = [status for _, status in statuses]
+    return min(relevant, key=lambda item: _STATUS_PRIORITY.get(item, 99))
 
 
 def _parse_updated_at(evses: list[dict[str, Any]]) -> datetime | None:
@@ -130,10 +174,18 @@ def location_to_station(location: dict[str, Any], *, fetched_at: datetime | None
 
     evses = location.get("evses") or []
     connectors: list[Connector] = []
-    prices: list[float] = []
+    prices_by_power: list[tuple[float, float]] = []
     for evse in evses:
         if not isinstance(evse, dict):
             continue
+        evse_status = evse.get("status")
+        status = evse_status.upper() if isinstance(evse_status, str) and evse_status else None
+        evse_id = evse.get("evse_id") if isinstance(evse.get("evse_id"), str) else None
+        physical_reference = (
+            evse.get("physical_reference")
+            if isinstance(evse.get("physical_reference"), str)
+            else None
+        )
         for connector in evse.get("connectors") or []:
             if not isinstance(connector, dict):
                 continue
@@ -144,15 +196,26 @@ def location_to_station(location: dict[str, Any], *, fetched_at: datetime | None
                     connector_type=_connector_type(connector.get("standard")),
                     power_kw=power_kw,
                     charging_mode="mode4DC" if power_kw >= 43 else "mode3AC3p",
+                    connector_format=_connector_format(connector.get("format")),
+                    status=status,
+                    evse_id=evse_id,
+                    physical_reference=physical_reference,
                 )
             )
             price = _energy_price_eur_kwh(connector)
             if price is not None:
-                prices.append(price)
+                prices_by_power.append((power_kw, price))
 
     max_power_kw = max((connector.power_kw for connector in connectors), default=0.0)
     dynamic_status = _aggregate_status(evses)
-    dynamic_price = min(prices) if prices else None
+    # Precio del emplazamiento: el de los conectores DC/rápidos (como muestra REVE al mirar CCS),
+    # no el mínimo del AC lento del mismo parking.
+    if any(power_kw >= _DC_STATUS_MIN_KW for power_kw, _ in prices_by_power):
+        dynamic_price = min(
+            price for power_kw, price in prices_by_power if power_kw >= _DC_STATUS_MIN_KW
+        )
+    else:
+        dynamic_price = min((price for _, price in prices_by_power), default=None)
     dynamic_updated_at = _parse_updated_at(evses)
 
     opening = location.get("opening_times") or {}

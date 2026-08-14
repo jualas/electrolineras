@@ -92,11 +92,16 @@ def stations_nearby(
     country: Annotated[str | None, Query(description="Países ISO (ES,PT)")] = None,
     public_open_only: Annotated[
         bool,
-        Query(description="Solo acceso público abierto (excluye CC e interior)"),
+        Query(
+            description=(
+                "Compatibilidad: no excluye puntos del inventario oficial NAP/REVE. "
+                "Usa exclude_commercial para ocultar supermercados/CC."
+            ),
+        ),
     ] = False,
     exclude_commercial: Annotated[
         bool,
-        Query(description="Excluir centros comerciales (heurística)"),
+        Query(description="Excluir centros comerciales / supermercados (heurística)"),
     ] = False,
     ad_hoc_only: Annotated[
         bool,

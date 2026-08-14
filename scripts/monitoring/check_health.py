@@ -152,14 +152,31 @@ def run_checks() -> list[tuple[str, str]]:
     )
     disk_warn = _env_int("MONITOR_DISK_WARN_PCT", 85)
 
+    osrm_optional = os.environ.get("MONITOR_OSRM_OPTIONAL", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    err = check_http("api", api_url, timeout)
+    if err:
+        failures.append(("api", err))
+
     for check_id, url in (
-        ("api", api_url),
         ("osrm_car", osrm_car),
         ("osrm_shortest", osrm_shortest),
     ):
         err = check_http(check_id, url, timeout)
-        if err:
-            failures.append((check_id, err))
+        if not err:
+            continue
+        if osrm_optional:
+            # On-demand: parado o arrancando no es fallo de producción.
+            # Solo alerta si el proceso responde mal (HTTP distinto de unreachable).
+            unreachable = "no responde" in err
+            if unreachable:
+                continue
+        failures.append((check_id, err))
 
     if nominatim_url:
         err = check_http("nominatim", nominatim_url, timeout)

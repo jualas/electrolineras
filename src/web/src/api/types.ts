@@ -6,6 +6,16 @@ export type ExternalUserComment = {
   checkin_label?: string | null
 }
 
+export type ChargingPointInfo = {
+  label: string
+  evse_id?: string | null
+  status?: string | null
+  connector_format?: string | null
+  cable_note?: string | null
+  summary: string
+  connectors: { connector_type: string; power_kw: number; connector_format?: string | null }[]
+}
+
 export type StationFeatureProperties = {
   id: string
   source: string
@@ -16,6 +26,8 @@ export type StationFeatureProperties = {
   access: string | null
   connector_count: number
   connector_summary?: string | null
+  charging_point_count?: number | null
+  charging_points?: string | ChargingPointInfo[] | null
   address: string | null
   dynamic_status?: string | null
   dynamic_price_eur_kwh?: number | null
@@ -85,7 +97,14 @@ export type Station = {
   site_name: string | null
   operator: string | null
   location: LatLon & { address?: string | null }
-  connectors: { connector_type: string; power_kw: number }[]
+  connectors: {
+    connector_type: string
+    power_kw: number
+    connector_format?: string | null
+    status?: string | null
+    evse_id?: string | null
+    physical_reference?: string | null
+  }[]
   max_power_kw: number
   access: string | null
   raw_ref: string

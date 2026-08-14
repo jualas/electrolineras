@@ -232,6 +232,7 @@ export function AppShell() {
     assistantMode ? 'app-shell--assistant' : '',
     assistantMode && !assistantMapExpanded ? 'app-shell--assistant-map-collapsed' : '',
     assistantMode && assistantMapExpanded ? 'app-shell--assistant-map-expanded' : '',
+    panelOpen ? 'app-shell--panel-open' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -244,7 +245,7 @@ export function AppShell() {
         loadStations={mode === 'map'}
         minKw={mode === 'map' ? apiQuery.minKw : apiQuery.minKw}
         maxKw={mode === 'map' ? apiQuery.maxKw : apiQuery.maxKw}
-        publicOpenOnly={mode === 'map'}
+        publicOpenOnly={false}
         adHocOnly={mode === 'map' ? mapStationFilters.adHocOnly : false}
         availableOnly={mode === 'map' ? mapStationFilters.availableOnly : false}
         maxPriceEurKwh={mode === 'map' ? mapStationFilters.maxPriceEurKwh : null}

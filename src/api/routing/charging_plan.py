@@ -428,6 +428,11 @@ HIGH_SOC_SKIP_ORIGIN_FRACTION = 0.75
 # Por debajo de este SOC se permite cargar junto al punto de salida antes de iniciar el viaje.
 ORIGIN_CHARGE_SOC_THRESHOLD_PCT = 10.0
 MIN_ORIGIN_SKIP_ABSOLUTE_KM = 40.0
+# Si no hay cargadores en la ventana ~2 h, reintentar con exclusión más permisiva.
+EMERGENCY_ORIGIN_EXCLUSION_KM = MIN_ORIGIN_SKIP_ABSOLUTE_KM
+# HPC / Supercharger: se permite antes del tramo ideal ~2 h (ahorro grande de tiempo de carga).
+HPC_EARLY_STOP_MIN_KW = 150.0
+HPC_ORIGIN_EXCLUSION_FRACTION = 0.55
 
 
 def allows_origin_zone_charging(trip_start_soc_pct: float) -> bool:
@@ -449,6 +454,47 @@ def origin_exclusion_radius_km(
         max_exclusion = max(0.0, charging_reach_km - 30.0)
         exclusion = min(exclusion, max_exclusion)
     return exclusion
+
+
+def origin_exclusion_fallback_levels_km(preferred_exclusion_km: float) -> list[tuple[float, str | None]]:
+    """Niveles de exclusión: preferido → emergencia → mínimo progreso hacia delante."""
+    levels: list[tuple[float, str | None]] = [(max(0.0, preferred_exclusion_km), None)]
+    if preferred_exclusion_km > EMERGENCY_ORIGIN_EXCLUSION_KM + 1e-6:
+        levels.append(
+            (
+                EMERGENCY_ORIGIN_EXCLUSION_KM,
+                "Parada antes de lo ideal (~2 h): no hay cargadores en el tramo preferido; "
+                "se usa el mejor alcanzable para no agotar la batería.",
+            )
+        )
+    if preferred_exclusion_km > MIN_FORWARD_PROGRESS_KM + 1e-6:
+        levels.append(
+            (
+                MIN_FORWARD_PROGRESS_KM,
+                "Parada temprana de emergencia: sin cargadores más adelante en el corredor "
+                "con los filtros actuales.",
+            )
+        )
+    # Deduplicar por km (mantener el primer mensaje).
+    seen: set[float] = set()
+    unique: list[tuple[float, str | None]] = []
+    for km, note in levels:
+        key = round(km, 3)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((km, note))
+    return unique
+
+
+def station_origin_exclusion_km(base_exclusion_km: float, max_power_kw: float) -> float:
+    """Exclusión desde salida: HPC/Supercharger puede adelantarse al tramo ideal ~2 h."""
+    if base_exclusion_km <= 0:
+        return 0.0
+    if max_power_kw >= HPC_EARLY_STOP_MIN_KW:
+        relaxed = base_exclusion_km * HPC_ORIGIN_EXCLUSION_FRACTION
+        return max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, min(base_exclusion_km, relaxed))
+    return base_exclusion_km
 
 
 def resolve_avg_speed_kmh(
@@ -587,17 +633,23 @@ def _filter_segment_matches(
     trip_start_route_km: float,
     origin_exclusion_km: float,
 ) -> list[CorridorMatch]:
-    return [
-        match
-        for match in matches
-        if match.station.id not in used_station_ids
-        and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
-        and (match.route_position_m / 1000.0) >= segment_min_km - 1e-6
-        and (
-            origin_exclusion_km <= 0
-            or (match.route_position_m / 1000.0) - trip_start_route_km >= origin_exclusion_km - 1e-6
-        )
-    ]
+    selected: list[CorridorMatch] = []
+    for match in matches:
+        if match.station.id in used_station_ids:
+            continue
+        pos_km = match.route_position_m / 1000.0
+        if not (current_route_km < pos_km <= segment_end_km + 1e-6):
+            continue
+        eff_exclusion = station_origin_exclusion_km(origin_exclusion_km, match.station.max_power_kw)
+        # HPC: no exigir el min del tramo ~2 h si ya supera su exclusión relajada.
+        if match.station.max_power_kw >= HPC_EARLY_STOP_MIN_KW:
+            min_pos = trip_start_route_km + eff_exclusion
+        else:
+            min_pos = max(segment_min_km, trip_start_route_km + eff_exclusion)
+        if pos_km + 1e-6 < min_pos:
+            continue
+        selected.append(match)
+    return selected
 
 
 def _profile_at_soc(profile: VehicleEnergyProfile, soc_percent: float) -> VehicleEnergyProfile:
@@ -657,12 +709,20 @@ def _is_final_driving_hop(
     profile: VehicleEnergyProfile,
     avg_speed_kmh: float,
 ) -> bool:
-    full_range = estimate_range_km(_profile_at_soc(profile, 100.0))
-    max_leg_km = min(
-        full_range,
-        leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES),
-    )
-    return remaining_km <= max_leg_km + 1e-6
+    """True si una sola carga basta energéticamente para llegar al destino.
+
+    No usa el tope de confort (~3 h): si no hay más cargadores en el corredor,
+    hay que cargar lo necesario aunque el último tramo supere 3 h.
+    """
+    _ = avg_speed_kmh
+    for soc in (
+        profile.max_charge_soc_pct,
+        OPTIMAL_CHARGE_CEILING_SOC_PCT,
+        100.0,
+    ):
+        if remaining_km <= estimate_range_km(_profile_at_soc(profile, min(100.0, soc))) + 1e-6:
+            return True
+    return False
 
 
 def _intermediate_charge_ceiling_pct(profile: VehicleEnergyProfile) -> float:
@@ -798,6 +858,7 @@ def build_planned_route_stops_greedy(
     preferences: ChargingPreferences | None = None,
     route_distance_km: float | None = None,
     route_duration_minutes: float | None = None,
+    origin_exclusion_km: float | None = None,
 ) -> tuple[list[PlannedRouteStop], list[str], float | None]:
     _ = charge_target_soc_pct  # legacy param; optimal SOC replaces fixed 80 % target
     resolved_destination_soc = (
@@ -821,11 +882,12 @@ def build_planned_route_stops_greedy(
 
     max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
     target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
-    origin_exclusion_km = origin_exclusion_radius_km(
-        target_leg_km,
-        trip_start_soc,
-        charging_reach_km=estimate_charging_reach_km(profile),
-    )
+    if origin_exclusion_km is None:
+        origin_exclusion_km = origin_exclusion_radius_km(
+            target_leg_km,
+            trip_start_soc,
+            charging_reach_km=estimate_charging_reach_km(profile),
+        )
     allow_origin_zone = allows_origin_zone_charging(trip_start_soc)
 
     for _attempt in range(max_stops):
@@ -892,6 +954,31 @@ def build_planned_route_stops_greedy(
                     "Parada más lejana: no hay cargadores en el tramo ideal ~2–3 h; "
                     "revisa corredor o filtros kW."
                 )
+        if not segment_matches and origin_exclusion_km > MIN_FORWARD_PROGRESS_KM + 1e-6:
+            # Preferencia DGT ~2 h vacía el tramo: aflojar exclusión antes de rendirse.
+            emergency_end_km = current_route_km + min(charging_reach_km, remaining_km)
+            for emergency_exclusion, note in origin_exclusion_fallback_levels_km(origin_exclusion_km)[1:]:
+                emergency_min_km = max(
+                    current_route_km + MIN_FORWARD_PROGRESS_KM,
+                    trip_start_route_km + emergency_exclusion,
+                )
+                segment_matches = _filter_segment_matches(
+                    matches,
+                    segment_min_km=emergency_min_km,
+                    segment_end_km=emergency_end_km,
+                    used_station_ids=used_station_ids,
+                    current_route_km=current_route_km,
+                    trip_start_route_km=trip_start_route_km,
+                    origin_exclusion_km=emergency_exclusion,
+                )
+                if segment_matches:
+                    segment_min_km = emergency_min_km
+                    segment_end_km = emergency_end_km
+                    origin_exclusion_km = emergency_exclusion
+                    min_leg_km = max(0.0, segment_min_km - current_route_km)
+                    if note:
+                        warnings.append(note)
+                    break
         if not segment_matches:
             warnings.append(
                 f"No hay cargador alcanzable en el tramo ~{current_route_km:.0f}–{segment_end_km:.0f} km "
@@ -917,12 +1004,19 @@ def build_planned_route_stops_greedy(
             )
             break
 
-        forward_viable = [
-            stop
-            for stop in viable
-            if stop.route_distance_km > current_route_km + MIN_FORWARD_PROGRESS_KM - 1e-6
-            and stop.route_distance_km >= segment_min_km - 1e-6
-        ]
+        forward_viable = []
+        for stop in viable:
+            if stop.route_distance_km <= current_route_km + MIN_FORWARD_PROGRESS_KM - 1e-6:
+                continue
+            eff_excl = station_origin_exclusion_km(origin_exclusion_km, stop.station.max_power_kw)
+            min_pos = (
+                trip_start_route_km + eff_excl
+                if stop.station.max_power_kw >= HPC_EARLY_STOP_MIN_KW
+                else max(segment_min_km, trip_start_route_km + eff_excl)
+            )
+            if stop.route_distance_km + 1e-6 < min_pos:
+                continue
+            forward_viable.append(stop)
         if forward_viable:
             viable = forward_viable
         elif viable:
@@ -957,7 +1051,9 @@ def build_planned_route_stops_greedy(
             min_leg_km=min_leg_km,
             stop_route_km=stop_route_km,
             trip_start_route_km=trip_start_route_km,
-            origin_exclusion_km=origin_exclusion_km,
+            origin_exclusion_km=station_origin_exclusion_km(
+                origin_exclusion_km, chosen.station.max_power_kw
+            ),
             trip_start_soc_pct=trip_start_soc,
             avg_speed_kmh=avg_speed_kmh,
         ):
@@ -1028,22 +1124,59 @@ def build_planned_route_stops(
     """Plan multi-parada: optimizador global (#6087) con fallback greedy."""
     from api.routing.route_stop_optimizer import optimize_planned_route_stops
 
-    optimized = optimize_planned_route_stops(
-        matches,
-        origin_position_km=origin_position_km,
-        destination_distance_km=destination_distance_km,
-        profile=profile,
-        safe_margin_pct=safe_margin_pct,
-        adjusted_min_pct=adjusted_min_pct,
-        destination_target_soc_pct=destination_target_soc_pct,
-        max_stops=max_stops,
-        preferences=preferences,
-        route_distance_km=route_distance_km,
-        route_duration_minutes=route_duration_minutes,
-        trip_start_route_km=origin_position_km,
+    avg_speed_kmh = resolve_avg_speed_kmh(route_distance_km, route_duration_minutes)
+    target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
+    preferred_exclusion = origin_exclusion_radius_km(
+        target_leg_km,
+        profile.soc_percent,
+        charging_reach_km=estimate_charging_reach_km(profile),
     )
-    if optimized is not None:
-        return optimized
+
+    for exclusion_km, fallback_note in origin_exclusion_fallback_levels_km(preferred_exclusion):
+        optimized = optimize_planned_route_stops(
+            matches,
+            origin_position_km=origin_position_km,
+            destination_distance_km=destination_distance_km,
+            profile=profile,
+            safe_margin_pct=safe_margin_pct,
+            adjusted_min_pct=adjusted_min_pct,
+            destination_target_soc_pct=destination_target_soc_pct,
+            max_stops=max_stops,
+            preferences=preferences,
+            route_distance_km=route_distance_km,
+            route_duration_minutes=route_duration_minutes,
+            trip_start_route_km=origin_position_km,
+            origin_exclusion_km=exclusion_km,
+        )
+        if optimized is not None:
+            planned, warnings, projected = optimized
+            if planned or projected is not None:
+                if fallback_note and planned:
+                    warnings = [fallback_note, *warnings]
+                return planned, warnings, projected
+
+        planned, warnings, projected = build_planned_route_stops_greedy(
+            matches,
+            origin_position_km=origin_position_km,
+            destination_distance_km=destination_distance_km,
+            profile=profile,
+            safe_margin_pct=safe_margin_pct,
+            adjusted_min_pct=adjusted_min_pct,
+            destination_target_soc_pct=destination_target_soc_pct,
+            charge_target_soc_pct=charge_target_soc_pct,
+            max_stops=max_stops,
+            preferences=preferences,
+            route_distance_km=route_distance_km,
+            route_duration_minutes=route_duration_minutes,
+            origin_exclusion_km=exclusion_km,
+        )
+        if planned:
+            if fallback_note:
+                warnings = [fallback_note, *warnings]
+            return planned, warnings, projected
+        # Si ya es alcanzable sin paradas, no seguir aflojando exclusión.
+        if projected is not None and not warnings:
+            return planned, warnings, projected
 
     return build_planned_route_stops_greedy(
         matches,
@@ -1058,6 +1191,7 @@ def build_planned_route_stops(
         preferences=preferences,
         route_distance_km=route_distance_km,
         route_duration_minutes=route_duration_minutes,
+        origin_exclusion_km=preferred_exclusion,
     )
 
 

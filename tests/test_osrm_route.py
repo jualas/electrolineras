@@ -293,3 +293,84 @@ def test_fallback_variants_use_separate_osrm_requests() -> None:
     assert variants["conventional"].approximate is False
     assert exclude_applied is True
     assert not warnings
+
+
+def test_public_fallback_when_local_osrm_unreachable(tmp_path) -> None:
+    from api.config import settings
+    from api.routing.osrm import RoutingError, fetch_osrm_route_with_alternatives
+
+    highway_routes = [
+        {"distance": 500_000, "duration": 18_000, "geometry": {"coordinates": [[0, 40], [1, 41]]}},
+    ]
+    conventional_routes = [
+        {"distance": 680_000, "duration": 28_000, "geometry": {"coordinates": [[0, 40], [0.8, 40.5]]}},
+    ]
+
+    originals = {
+        "osrm_base_url": settings.osrm_base_url,
+        "osrm_use_multi_profile": settings.osrm_use_multi_profile,
+        "osrm_public_emergency_fallback": settings.osrm_public_emergency_fallback,
+        "osrm_public_fallback_url": settings.osrm_public_fallback_url,
+        "osrm_public_profile": settings.osrm_public_profile,
+        "osrm_wake_on_failure": settings.osrm_wake_on_failure,
+        "osrm_lifecycle_dir": settings.osrm_lifecycle_dir,
+        "osrm_profile_fastest": settings.osrm_profile_fastest,
+    }
+    settings.osrm_base_url = "http://osrm-local.test:5000"
+    settings.osrm_use_multi_profile = False
+    settings.osrm_public_emergency_fallback = True
+    settings.osrm_public_fallback_url = "https://router.project-osrm.org"
+    settings.osrm_public_profile = "driving"
+    settings.osrm_wake_on_failure = True
+    settings.osrm_lifecycle_dir = str(tmp_path)
+    settings.osrm_profile_fastest = "car"
+
+    call_bases: list[str] = []
+
+    def fake_variants(*_args, **kwargs):
+        base = kwargs["base_url"]
+        call_bases.append(base)
+        if "osrm-local" in base:
+            raise RoutingError("Error de red con OSRM: connection refused")
+        return (
+            {
+                "fastest": type("P", (), {"route": highway_routes[0], "preference": "fastest", "approximate": False})(),
+            },
+            [],
+        )
+
+    try:
+        with patch(
+            "api.routing.osrm._fetch_osrm_variants_on_base",
+            side_effect=[
+                RoutingError("Error de red con OSRM: connection refused"),
+                (
+                    {
+                        "fastest": __import__(
+                            "api.routing.osrm", fromlist=["_RoutePayload"]
+                        )._RoutePayload("fastest", highway_routes[0], approximate=True),
+                        "shortest": __import__(
+                            "api.routing.osrm", fromlist=["_RoutePayload"]
+                        )._RoutePayload("shortest", highway_routes[0], approximate=True),
+                        "conventional": __import__(
+                            "api.routing.osrm", fromlist=["_RoutePayload"]
+                        )._RoutePayload("conventional", conventional_routes[0], approximate=False),
+                    },
+                    [],
+                ),
+            ],
+        ):
+            route, _summary, warnings, _variants = fetch_osrm_route_with_alternatives(
+                40.0,
+                0.0,
+                41.0,
+                1.0,
+                route_preference="fastest",
+            )
+    finally:
+        for key, value in originals.items():
+            setattr(settings, key, value)
+
+    assert route.distance_m == 500_000
+    assert any("router público" in w for w in warnings)
+    assert (tmp_path / "osrm_wake.request").exists()

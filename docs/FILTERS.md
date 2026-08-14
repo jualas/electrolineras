@@ -218,8 +218,8 @@ Checkboxes / toggles:
 
 | Filtro | Default viaje | Default ciudad | Efecto |
 |--------|---------------|----------------|--------|
-| **Solo acceso público abierto** | Off | On | Oculta `commercial_parking`, `indoor` dudoso |
-| **Excluir centros comerciales** | Off | On | Oculta `commercial_parking` |
+| **Solo acceso público abierto** | Off | Off | Compatibilidad API: no oculta inventario oficial NAP/REVE (tiendas/CC incluidas) |
+| **Excluir centros comerciales** | Off | Off | Oculta todo `commercial_parking` (también HPC en super/CC) |
 | **Excluir parking con barrera** | Off | On | Heurística + futuro campo explícito |
 | **Pago ad-hoc** (tarjeta/NFC sin solo-app) | On | On | Filtra métodos de pago |
 | **Mostrar advertencias** | On | On | Badge en ficha aunque no se excluya |

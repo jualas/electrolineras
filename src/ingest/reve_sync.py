@@ -50,6 +50,7 @@ def sync_reve_locations(
         else settings.reve_sync_per_page
     )
     radius_m = match_radius_m if match_radius_m is not None else settings.reve_match_radius_m
+    name_radius_m = settings.reve_match_name_radius_m
     fetched_at = datetime.now(UTC)
     run_id = repo.start_ingest_run(REVE_SOURCE)
     source_version = "reve-external-api" if reve.uses_authenticated_api else "reve-public-api"
@@ -86,15 +87,25 @@ def sync_reve_locations(
                     result.errors.append(str(exc))
                     continue
 
-                existing_id = repo.find_nearby_station_id(
+                existing_id = repo.find_nap_match_for_reve(
                     station.location.lat,
                     station.location.lon,
+                    site_name=station.site_name,
                     radius_m=radius_m,
+                    name_radius_m=name_radius_m,
                     country="ES",
                 )
                 if existing_id:
                     repo.enrich_from_reve(existing_id, station)
                     result.enriched += 1
+                    orphan_id = repo.find_reve_duplicate(
+                        site_name=station.site_name,
+                        lat=station.location.lat,
+                        lon=station.location.lon,
+                        radius_m=name_radius_m,
+                    )
+                    if orphan_id:
+                        repo.delete_station(orphan_id)
                 else:
                     repo.upsert_stations([station])
                     result.inserted += 1

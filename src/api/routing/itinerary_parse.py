@@ -74,6 +74,38 @@ _DAY_ONLY_RE = re.compile(
     r"^(?:el\s+|la\s+)?(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)$",
     re.IGNORECASE,
 )
+# «viernes tarde», «el sábado por la mañana», «domingo noche»
+_TRAILING_WHEN_RE = re.compile(
+    r"\s+(?:el\s+|la\s+|los\s+|las\s+)?"
+    r"(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)"
+    r"(?:\s+por\s+la)?"
+    r"(?:\s*(?:mañana|tarde|noche))?"
+    r"\s*$",
+    re.IGNORECASE,
+)
+_TRAILING_TOD_RE = re.compile(
+    r"\s+(?:por\s+la\s+)?(?:mañana|tarde|noche)\s*$",
+    re.IGNORECASE,
+)
+# Colas de instrucción al asistente / IA (no son lugares)
+_INSTRUCTION_TAIL_RE = re.compile(
+    r"[,.]?\s*(?:"
+    r"genera(?:\s+\w+){0,3}\s+plan|"
+    r"haz(?:me)?(?:\s+\w+){0,3}\s+plan|"
+    r"crea(?:\s+\w+){0,3}\s+plan|"
+    r"calcula(?:\s+\w+){0,3}\s+plan|"
+    r"prepara(?:\s+\w+){0,3}\s+plan|"
+    r"necesito(?:\s+\w+){0,3}\s+plan|"
+    r"quiero(?:\s+\w+){0,3}\s+plan|"
+    r"dame(?:\s+\w+){0,3}\s+plan|"
+    r"planifica(?:\s+\w+){0,3}\s+plan|"
+    r"plan\s+de\s+carga|"
+    r"un\s+plan\s+(?:de\s+carga\s+)?fiable|"
+    r"para\s+(?:poder\s+)?volver(?:\s+a\s+casa)?|"
+    r"para\s+regresar(?:\s+a\s+casa)?"
+    r").*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -137,21 +169,40 @@ def _clean_segment(segment: str) -> str:
     return cleaned
 
 
+def _strip_trailing_when(place: str) -> str:
+    """Quita día/hora al final: «… viernes tarde», «… el sábado por la mañana»."""
+    cleaned = place
+    for _ in range(3):
+        nxt = _TRAILING_WHEN_RE.sub("", cleaned)
+        nxt = _TRAILING_TOD_RE.sub("", nxt)
+        nxt = nxt.strip(" .,-")
+        if nxt == cleaned:
+            break
+        cleaned = nxt
+    return cleaned
+
+
+def _strip_instruction_tails(text: str) -> str:
+    """Quita colas tipo «genera un plan de carga fiable…»."""
+    cleaned = text.strip()
+    for _ in range(3):
+        nxt = _INSTRUCTION_TAIL_RE.sub("", cleaned).strip(" .,-")
+        if nxt == cleaned:
+            break
+        cleaned = nxt
+    return cleaned
+
+
 def _place_query_from_hint(raw: str) -> str:
     place = _PAREN_RE.sub(" ", raw)
+    place = _INSTRUCTION_TAIL_RE.sub(" ", place)
     place = _RETURN_HOME_TAIL_RE.sub(" ", place)
     place = _NIGHTS_RE.sub(" ", place)
     place = _HOME_RE.sub(" ", place)
     place = _SOC_RE.sub(" ", place)
     place = _FILLER_RE.sub(" ", place)
     place = _STRIP_PREFIX_RE.sub("", place.strip())
-    # Quitar días sueltos al final ("el domingo")
-    place = re.sub(
-        r"\s+(?:el\s+|la\s+)?(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\s*$",
-        "",
-        place,
-        flags=re.IGNORECASE,
-    )
+    place = _strip_trailing_when(place)
     return re.sub(r"\s+", " ", place).strip(" .,-")
 
 
@@ -189,11 +240,13 @@ def _is_non_place_segment(text: str) -> bool:
 def _extract_go_to_destinations(text: str, *, overnight_default: bool) -> list[ParsedPlaceHint]:
     """Extrae destinos de frases tipo «vamos el sábado a X y volvemos a casa»."""
     working = _PAREN_RE.sub(" ", text)
+    working = _strip_instruction_tails(working)
     working = _SOC_RE.sub(" ", working)
     working = re.sub(r"\s+", " ", working).strip()
 
     return_home = bool(_HOME_RE.search(working) or _RETURN_HOME_TAIL_RE.search(working))
     before_return = _RETURN_HOME_TAIL_RE.sub("", working).strip()
+    before_return = _strip_instruction_tails(before_return)
 
     hints: list[ParsedPlaceHint] = []
 
@@ -238,7 +291,7 @@ def _extract_go_to_destinations(text: str, *, overnight_default: bool) -> list[P
 
 
 def split_itinerary_segments(text: str) -> list[ParsedPlaceHint]:
-    trimmed = text.strip()
+    trimmed = _strip_instruction_tails(text.strip())
     if not trimmed:
         return []
 

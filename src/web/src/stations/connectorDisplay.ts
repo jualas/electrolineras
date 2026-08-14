@@ -25,5 +25,5 @@ export function formatPriceEurKwh(priceEurKwh: number): string {
 }
 
 export function formatLivePriceLabel(priceEurKwh: number): string {
-  return `${formatPriceEurKwh(priceEurKwh)} sin IVA`
+  return formatPriceEurKwh(priceEurKwh)
 }

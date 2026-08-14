@@ -105,7 +105,8 @@ class StationRepository:
         placeholders = ",".join("?" for _ in station_ids)
         rows = self.connection.execute(
             f"""
-            SELECT station_id, connector_type, power_kw, voltage_v, current_a, charging_mode
+            SELECT station_id, connector_type, power_kw, voltage_v, current_a, charging_mode,
+                   connector_format, status, evse_id, physical_reference
             FROM connector
             WHERE station_id IN ({placeholders})
             ORDER BY station_id, id
@@ -121,10 +122,31 @@ class StationRepository:
                     voltage_v=row["voltage_v"],
                     current_a=row["current_a"],
                     charging_mode=row["charging_mode"],
+                    connector_format=row["connector_format"],
+                    status=row["status"],
+                    evse_id=row["evse_id"],
+                    physical_reference=row["physical_reference"],
                 )
             )
         return grouped
 
+    @staticmethod
+    def _connector_insert_rows(station_id: str, connectors: list[Connector]) -> list[tuple]:
+        return [
+            (
+                station_id,
+                connector.connector_type,
+                connector.power_kw,
+                connector.voltage_v,
+                connector.current_a,
+                connector.charging_mode,
+                connector.connector_format,
+                connector.status,
+                connector.evse_id,
+                connector.physical_reference,
+            )
+            for connector in connectors
+        ]
     def upsert_stations(self, stations: list[Station]) -> int:
         if not stations:
             return 0
@@ -238,20 +260,11 @@ class StationRepository:
                 self.connection.executemany(
                     """
                     INSERT INTO connector (
-                        station_id, connector_type, power_kw, voltage_v, current_a, charging_mode
-                    ) VALUES (?, ?, ?, ?, ?, ?)
+                        station_id, connector_type, power_kw, voltage_v, current_a, charging_mode,
+                        connector_format, status, evse_id, physical_reference
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    [
-                        (
-                            station.id,
-                            connector.connector_type,
-                            connector.power_kw,
-                            connector.voltage_v,
-                            connector.current_a,
-                            connector.charging_mode,
-                        )
-                        for connector in station.connectors
-                    ],
+                    self._connector_insert_rows(station.id, station.connectors),
                 )
                 upserted += 1
         return upserted
@@ -281,6 +294,89 @@ class StationRepository:
                 best_distance = distance
                 best_id = row["id"]
         return best_id
+
+    def find_nap_match_for_reve(
+        self,
+        lat: float,
+        lon: float,
+        *,
+        site_name: str | None,
+        country: str = "ES",
+        radius_m: float = 350.0,
+        name_radius_m: float = 500.0,
+    ) -> str | None:
+        """Empareja un emplazamiento REVE con un NAP cercano (no con otro es-reve-*).
+
+        Prioridad: NAP a ≤ radius_m; si no, mismo ``site_name`` a ≤ name_radius_m.
+        """
+        search_radius = max(radius_m, name_radius_m)
+        south, north, west, east = bbox_sql(lat, lon, search_radius)
+        rows = self.connection.execute(
+            """
+            SELECT id, site_name, lat, lon
+            FROM station
+            WHERE country = ?
+              AND source = 'es-nap-dgt'
+              AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+            """,
+            (country, south, north, west, east),
+        ).fetchall()
+        name_norm = (site_name or "").strip().lower()
+        best: tuple[int, float, str] | None = None
+        for row in rows:
+            distance = haversine_m(lat, lon, row["lat"], row["lon"])
+            same_name = bool(name_norm) and (row["site_name"] or "").strip().lower() == name_norm
+            if distance <= radius_m:
+                priority = 0
+            elif same_name and distance <= name_radius_m:
+                priority = 1
+            else:
+                continue
+            candidate = (priority, distance, row["id"])
+            if best is None or candidate < best:
+                best = candidate
+        return best[2] if best else None
+
+    def find_reve_duplicate(
+        self,
+        *,
+        site_name: str | None,
+        lat: float,
+        lon: float,
+        radius_m: float = 500.0,
+        exclude_station_id: str | None = None,
+    ) -> str | None:
+        """Localiza un duplicado es-reve-* del mismo nombre cerca de un NAP ya enriquecido."""
+        name_norm = (site_name or "").strip().lower()
+        if not name_norm:
+            return None
+        south, north, west, east = bbox_sql(lat, lon, radius_m)
+        rows = self.connection.execute(
+            """
+            SELECT id, site_name, lat, lon
+            FROM station
+            WHERE source = 'es-reve-public'
+              AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
+            """,
+            (south, north, west, east),
+        ).fetchall()
+        best_id: str | None = None
+        best_distance = radius_m
+        for row in rows:
+            if exclude_station_id and row["id"] == exclude_station_id:
+                continue
+            if (row["site_name"] or "").strip().lower() != name_norm:
+                continue
+            distance = haversine_m(lat, lon, row["lat"], row["lon"])
+            if distance <= radius_m and distance < best_distance:
+                best_distance = distance
+                best_id = row["id"]
+        return best_id
+
+    def delete_station(self, station_id: str) -> None:
+        with self.connection:
+            self.connection.execute("DELETE FROM connector WHERE station_id = ?", (station_id,))
+            self.connection.execute("DELETE FROM station WHERE id = ?", (station_id,))
 
     def update_dynamic_fields(
         self,
@@ -338,20 +434,11 @@ class StationRepository:
             self.connection.executemany(
                 """
                 INSERT INTO connector (
-                    station_id, connector_type, power_kw, voltage_v, current_a, charging_mode
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    station_id, connector_type, power_kw, voltage_v, current_a, charging_mode,
+                    connector_format, status, evse_id, physical_reference
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                [
-                    (
-                        station_id,
-                        connector.connector_type,
-                        connector.power_kw,
-                        connector.voltage_v,
-                        connector.current_a,
-                        connector.charging_mode,
-                    )
-                    for connector in station.connectors
-                ],
+                self._connector_insert_rows(station_id, station.connectors),
             )
 
     def enrich_from_ocm(

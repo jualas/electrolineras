@@ -2,7 +2,8 @@ services:
   osrm-car:
     image: ghcr.io/project-osrm/osrm-backend:v5.27.1
     container_name: electrolineras-osrm-car
-    restart: unless-stopped
+    # On-demand: el host lifecycle arranca/para; no revivir tras reboot del PC.
+    restart: "no"
     ports:
       - "${OSRM_CAR_PORT:-127.0.0.1:5000:5000}"
     volumes:
@@ -17,12 +18,13 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 15s
+      # Carga del grafo Iberia: unhealthy al inicio es normal
+      start_period: 600s
 
   osrm-shortest:
     image: ghcr.io/project-osrm/osrm-backend:v5.27.1
     container_name: electrolineras-osrm-shortest
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "${OSRM_SHORTEST_PORT:-127.0.0.1:5001:5000}"
     volumes:
@@ -37,4 +39,4 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 15s
+      start_period: 600s

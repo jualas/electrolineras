@@ -69,6 +69,11 @@ Desempate fastest, tipos de ruta y convencionales: [`ROUTE_CORRIDOR_SEARCH.md`](
 | `OSRM_FASTEST_REQUEST_ALTERNATIVES` | `true` | Alternativas OSRM para desempate fastest |
 | `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.05` | ±5 % sobre min tiempo; calibración #6069 |
 | `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza desvío vs geodesic en shortest |
+| `OSRM_PUBLIC_EMERGENCY_FALLBACK` | `true` | Si local falla (red/timeout), usar router público |
+| `OSRM_PUBLIC_FALLBACK_URL` | `https://router.project-osrm.org` | URL del modo degradado |
+| `OSRM_PUBLIC_PROFILE` | `driving` | Perfil en el router público |
+| `OSRM_WAKE_ON_FAILURE` | `true` | Escribe `osrm_wake.request` para que el host arranque OSRM |
+| `OSRM_LIFECYCLE_DIR` | `/app/data/runtime` | Señales wake/last_used (volumen host) |
 
 ### Frontend (build)
 

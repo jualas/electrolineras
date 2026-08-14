@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 MIGRATIONS: dict[int, list[str]] = {
     1: [
@@ -73,6 +73,14 @@ MIGRATIONS: dict[int, list[str]] = {
         "ALTER TABLE station ADD COLUMN external_comments_json TEXT",
         "ALTER TABLE station ADD COLUMN external_rating_updated_at TEXT",
         "ALTER TABLE station ADD COLUMN ocm_poi_id INTEGER",
+    ],
+    4: [
+        "ALTER TABLE connector ADD COLUMN status TEXT",
+        "ALTER TABLE connector ADD COLUMN evse_id TEXT",
+        "ALTER TABLE connector ADD COLUMN physical_reference TEXT",
+    ],
+    5: [
+        "ALTER TABLE connector ADD COLUMN connector_format TEXT",
     ],
 }
 

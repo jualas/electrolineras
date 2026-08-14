@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     osrm_fastest_request_alternatives: bool = True
     osrm_fastest_alternatives_count: int = 3
     osrm_fastest_alternative_tolerance: float = 0.08
+    # Fallback público + señal de wake on-demand (ciclo de vida OSRM en host)
+    osrm_fallback_base_url: str = ""
+    osrm_public_emergency_fallback: bool = True
+    osrm_public_fallback_url: str = "https://router.project-osrm.org"
+    osrm_public_profile: str = "driving"
+    osrm_wake_on_failure: bool = True
+    osrm_lifecycle_dir: str = "/app/data/runtime"
 
     def osrm_shortest_url(self) -> str:
         return self.osrm_shortest_base_url.strip() or self.osrm_base_url

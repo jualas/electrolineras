@@ -34,7 +34,9 @@ class IngestSettings(BaseSettings):
     reve_sync_per_page: int = 25
     reve_external_page_limit: int = 100
     reve_sync_page_delay_seconds: float = 0.75
-    reve_match_radius_m: float = 150.0
+    reve_match_radius_m: float = 350.0
+    # Empareje por mismo nombre si el NAP y REVE difieren más de radius (p. ej. ~250 m).
+    reve_match_name_radius_m: float = 500.0
 
     def resolved_reve_base_url(self) -> str:
         if self.reve_base_url.strip():

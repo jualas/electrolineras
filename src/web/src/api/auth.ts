@@ -176,12 +176,14 @@ export async function fetchMultiLegChargingPlan(params: {
         overnight: stop.overnight ?? false,
         nights: stop.nights ?? null,
       })),
-      departure_soc_percent: params.departureSocPercent,
+      ...(params.departureSocPercent != null
+        ? { departure_soc_percent: params.departureSocPercent }
+        : {}),
       include_route: params.includeRoute ?? true,
       route_preference: params.routePreference ?? 'fastest',
       avoid_highways: params.avoidHighways ?? false,
       max_charge_power_kw: params.maxChargePowerKw,
-      min_kw: params.minKw,
+      ...(params.minKw != null ? { min_kw: params.minKw } : {}),
       min_destination_soc_pct: params.minDestinationSocPct,
       min_stop_arrival_soc_pct: params.minStopArrivalSocPct,
       max_charge_soc_pct: params.maxChargeSocPct,

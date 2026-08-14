@@ -169,6 +169,8 @@ Tests: `tests/test_osrm_route.py` (`test_select_fastest_route_*`).
 | `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza rutas «circulares» en modo shortest. |
 | `OSRM_USE_MULTI_PROFILE` | `true` en prod | Tres perfiles OSRM (`fastest` / `shortest` / `conventional`); convencionales con `exclude=motorway` en perfil propio. |
 | `OSRM_PROFILE_CONVENTIONAL` | `conventional` | Nombre del perfil Lua en OSRM self-hosted (`docker/osrm/`). |
+| `OSRM_PUBLIC_EMERGENCY_FALLBACK` | `true` | Si el OSRM local falla (parado/timeout), usa `router.project-osrm.org` y solicita wake on-demand. |
+| `OSRM_WAKE_ON_FAILURE` | `true` | Escribe `data/runtime/osrm_wake.request` para el cron `scripts/osrm/run_osrm_lifecycle.sh`. |
 
 En la respuesta JSON, `route_variants_approximate=true` indica que alguna variante (típicamente convencional en OSRM público) no aplicó exclusiones estrictas. La UI muestra polilíneas de referencia **directa / rápida / convencional** (#6066).
 

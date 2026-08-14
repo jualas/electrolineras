@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.access_filters import passes_access_filters
-from api.converters import stations_to_geojson
+from api.converters import effective_dynamic_status, stations_to_geojson
 from api.dependencies import get_repository
 from api.query_params import (
     operators_limit_query,
@@ -228,11 +228,16 @@ def list_stations(
     bbox: Annotated[str | None, Query(description="west,south,east,north")] = None,
     public_open_only: Annotated[
         bool,
-        Query(description="Solo acceso público abierto (excluye CC e interior)"),
+        Query(
+            description=(
+                "Compatibilidad: no excluye puntos del inventario oficial NAP/REVE. "
+                "Usa exclude_commercial para ocultar supermercados/CC."
+            ),
+        ),
     ] = False,
     exclude_commercial: Annotated[
         bool,
-        Query(description="Excluir centros comerciales (heurística)"),
+        Query(description="Excluir centros comerciales / supermercados (heurística)"),
     ] = False,
     ad_hoc_only: Annotated[
         bool,
@@ -289,6 +294,8 @@ def list_stations(
             pagination=pagination,
         )
 
+    for station in stations:
+        station.dynamic_status = effective_dynamic_status(station)
     return StationListResponse(stations=stations, pagination=pagination)
 
 
@@ -300,6 +307,7 @@ def get_station(
     station = repo.get_by_id(station_id)
     if station is None:
         raise HTTPException(status_code=404, detail=f"Estación no encontrada: {station_id}")
+    station.dynamic_status = effective_dynamic_status(station)
     return station
 
 

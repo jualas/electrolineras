@@ -423,6 +423,19 @@ button {
   color: var(--color-danger);
 }
 
+/* Dark-mode map: invert base tiles while preserving hue of overlaid data */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .maplibregl-canvas {
+    filter: invert(1) hue-rotate(180deg) saturate(1.1) brightness(0.85);
+    transition: filter 0.25s ease;
+  }
+}
+
+:root[data-theme='dark'] .maplibregl-canvas {
+  filter: invert(1) hue-rotate(180deg) saturate(1.1) brightness(0.85);
+  transition: filter 0.25s ease;
+}
+
 .maplibregl-popup-content {
   padding: 0.65rem 0.75rem;
   border-radius: var(--radius-sm);
@@ -461,6 +474,34 @@ button {
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
+}
+
+.station-popup__points {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.station-popup__point {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--color-text);
+}
+
+.station-popup__point-label {
+  font-weight: 600;
+}
+
+.station-popup__point-status-unknown {
+  color: var(--color-text-muted);
+}
+
+.station-popup__cable {
+  color: var(--color-text-muted);
+  font-weight: 550;
 }
 
 .station-popup__price {
@@ -1851,6 +1892,10 @@ button {
 
   .map-side-panel--open {
     transform: translateY(0);
+  }
+
+  .app-shell--panel-open .map-layer-control {
+    display: none;
   }
 
   .app-shell--assistant .map-assistant-map-toggle {

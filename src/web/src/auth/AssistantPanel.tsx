@@ -114,7 +114,6 @@ export function AssistantPanel({
   )
   const recalcOnRouteSettingsRef = useRef(false)
   const cachedPlanRef = useRef<ChargingPlanResponse | null>(null)
-  const tripRestoredRef = useRef(false)
   const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow } =
     useActiveTrip()
 
@@ -148,21 +147,6 @@ export function AssistantPanel({
     onSocChange: onVehicleSocChange,
     pollIntervalMs: TELEMETRY_POLL_INTERVAL_MS,
   })
-
-  useEffect(() => {
-    if (tripRestoredRef.current || !activeTrip || destination) {
-      return
-    }
-    tripRestoredRef.current = true
-    setDestination({
-      label: activeTrip.destination.label,
-      lat: activeTrip.destination.lat,
-      lon: activeTrip.destination.lon,
-    })
-    setDestinationText(activeTrip.destination.label)
-    setRoutePreference(activeTrip.routePreference)
-    setAvoidTolls(activeTrip.avoidTolls)
-  }, [activeTrip, destination])
 
   useEffect(() => {
     setRevePlanning((prev) => ({
@@ -548,7 +532,32 @@ export function AssistantPanel({
         <>
           {activeTrip && !destination && (
             <p className="panel-hint active-trip-restore" role="status">
-              Viaje activo a {activeTrip.destination.label}. Se restaurará el destino al cargar.
+              Viaje activo anterior: <strong>{activeTrip.destination.label}</strong>.{' '}
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={busy}
+                onClick={() => {
+                  setDestination({
+                    label: activeTrip.destination.label,
+                    lat: activeTrip.destination.lat,
+                    lon: activeTrip.destination.lon,
+                  })
+                  setDestinationText(activeTrip.destination.label)
+                  setRoutePreference(activeTrip.routePreference)
+                  setAvoidTolls(activeTrip.avoidTolls)
+                }}
+              >
+                Usar este destino
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={busy}
+                onClick={() => clearActiveTrip()}
+              >
+                Descartar
+              </button>
             </p>
           )}
 

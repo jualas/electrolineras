@@ -4,6 +4,17 @@ from api.routing.charging_plan import PlannedRouteStop, VehicleEnergyProfile, ef
 from api.schemas import PlannedRouteStopResult, RouteTripSummaryResult
 
 
+def format_duration_minutes(minutes: float | None) -> str:
+    """Formatea minutos como «4 h 40 min» (o solo minutos si < 1 h)."""
+    if minutes is None or minutes <= 0:
+        return ""
+    rounded = int(round(minutes))
+    hours, mins = divmod(rounded, 60)
+    if hours > 0:
+        return f"{hours} h {mins} min" if mins else f"{hours} h"
+    return f"{mins} min"
+
+
 def _leg_energy_kwh(leg_distance_km: float, consumption_wh_per_km: float) -> float:
     if leg_distance_km <= 0:
         return 0.0

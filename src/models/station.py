@@ -19,6 +19,12 @@ class Connector(BaseModel):
     voltage_v: float | None = None
     current_a: float | None = None
     charging_mode: str | None = None
+    # OCPI/REVE: CABLE (cable fijo) o SOCKET (hay que llevar cable).
+    connector_format: str | None = None
+    # OCPI/REVE: estado y referencia del EVSE (punto de recarga físico).
+    status: str | None = None
+    evse_id: str | None = None
+    physical_reference: str | None = None
 
 
 class StationLocation(BaseModel):

@@ -395,12 +395,16 @@ export function stationPopupHtml(
   const operator = properties.operator ? String(properties.operator) : 'Operador desconocido'
   const maxKw = Number(properties.max_power_kw ?? 0)
   const connectors = Number(properties.connector_count ?? 0)
+  const chargingPoints = parseChargingPoints(properties.charging_points)
+  const pointCount = Number(properties.charging_point_count ?? chargingPoints.length ?? 0)
   const connectorSummary =
     properties.connector_summary ? String(properties.connector_summary) : `${maxKw.toFixed(0)} kW`
   const connectorLine =
-    connectors > 0
-      ? `${connectorSummary} · ${connectors} conector${connectors === 1 ? '' : 'es'}`
-      : connectorSummary
+    pointCount > 1
+      ? `${pointCount} puntos · ${connectorSummary}`
+      : connectors > 0
+        ? `${connectorSummary} · ${connectors} conector${connectors === 1 ? '' : 'es'}`
+        : connectorSummary
   const country = properties.country ? String(properties.country) : ''
   const address = properties.address ? String(properties.address) : ''
   const dynamicStatus = properties.dynamic_status ? String(properties.dynamic_status) : ''
@@ -412,7 +416,9 @@ export function stationPopupHtml(
   const chargeMinutes = properties.charge_minutes
 
   const addressLine = address ? `<p class="station-popup__address">${address}</p>` : ''
-  const dynamicLine = formatDynamicLine(dynamicStatus, dynamicPrice)
+  const showAggregateStatus = chargingPoints.length <= 1 || !chargingPoints.some((point) => point.status)
+  const dynamicLine = showAggregateStatus ? formatDynamicLine(dynamicStatus, dynamicPrice) : formatPriceOnlyLine(dynamicPrice)
+  const pointsLine = formatChargingPointsLine(chargingPoints)
   const externalLine = formatExternalReviewsLine(properties)
   const chargeLine = formatChargeLine(chargingClass, socArrival, plannedOrder, socDeparture, chargeMinutes)
   const navLine = coords ? navigationPopupHtml(coords.lat, coords.lon) : ''
@@ -426,6 +432,7 @@ export function stationPopupHtml(
         ${country ? ` · ${escapeHtml(country)}` : ''}
       </p>
       ${dynamicLine}
+      ${pointsLine}
       ${externalLine}
       ${chargeLine}
       ${addressLine}
@@ -504,6 +511,79 @@ function formatExternalReviewsLine(properties: Record<string, unknown>): string 
   return parts.join('')
 }
 
+function parseChargingPoints(raw: unknown): Array<{
+  label: string
+  status?: string | null
+  summary?: string
+  cable_note?: string | null
+  connector_format?: string | null
+}> {
+  if (Array.isArray(raw)) {
+    return raw.filter((item) => item && typeof item === 'object') as Array<{
+      label: string
+      status?: string | null
+      summary?: string
+      cable_note?: string | null
+      connector_format?: string | null
+    }>
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item) => item && typeof item === 'object') as Array<{
+          label: string
+          status?: string | null
+          summary?: string
+          cable_note?: string | null
+          connector_format?: string | null
+        }>
+      }
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+function formatChargingPointsLine(
+  points: Array<{
+    label: string
+    status?: string | null
+    summary?: string
+    cable_note?: string | null
+  }>,
+): string {
+  const hasCableNotes = points.some((point) => Boolean(point.cable_note))
+  if (points.length <= 1 && !hasCableNotes) {
+    return ''
+  }
+  if (points.length === 0) {
+    return ''
+  }
+  const rows = points
+    .map((point) => {
+      const label = escapeHtml(String(point.label || 'Punto'))
+      const summary = point.summary ? escapeHtml(String(point.summary)) : ''
+      const cable = point.cable_note ? escapeHtml(String(point.cable_note)) : ''
+      const status = point.status ? String(point.status) : ''
+      const statusHtml = status
+        ? `<span class="station-popup__status ${dynamicStatusClassName(status, 'station-popup')}">${escapeHtml(formatDynamicStatusLabel(status))}</span>`
+        : '<span class="station-popup__point-status-unknown">Sin estado</span>'
+      const cableHtml = cable ? ` · <span class="station-popup__cable">${cable}</span>` : ''
+      return `<li class="station-popup__point"><span class="station-popup__point-label">${label}</span>${summary ? ` · ${summary}` : ''}${cableHtml} · ${statusHtml}</li>`
+    })
+    .join('')
+  return `<ul class="station-popup__points" aria-label="Puntos de recarga">${rows}</ul>`
+}
+
+function formatPriceOnlyLine(price: unknown): string {
+  if (price === null || price === undefined || Number.isNaN(Number(price))) {
+    return ''
+  }
+  return `<p class="station-popup__dynamic"><span class="station-popup__price">${Number(price).toFixed(2)} €/kWh</span></p>`
+}
+
 function formatDynamicLine(status: string, price: unknown): string {
   if (!status && (price === null || price === undefined || Number.isNaN(Number(price)))) {
     return ''
@@ -515,7 +595,7 @@ function formatDynamicLine(status: string, price: unknown): string {
     )
   }
   if (price !== null && price !== undefined && !Number.isNaN(Number(price))) {
-    parts.push(`<span class="station-popup__price">${Number(price).toFixed(2)} €/kWh sin IVA</span>`)
+    parts.push(`<span class="station-popup__price">${Number(price).toFixed(2)} €/kWh</span>`)
   }
   return `<p class="station-popup__dynamic">${parts.join(' · ')}</p>`
 }

@@ -11,6 +11,10 @@ env/
 !.env.production.example
 scripts/cron/electrolineras.env
 scripts/deploy/deploy.env
+scripts/dify/cursor-bridge.env
+# Ops local (IP/MAC/usuario del host; no versionar)
+scripts/monitoring/check-cucu-ssh-recover.sh
+scripts/monitoring/monitor-mini-pc-openwrt.sh
 dist/
 build/
 *.egg-info/

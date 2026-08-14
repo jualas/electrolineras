@@ -302,6 +302,111 @@ def test_telemetry_capacity_model_3_50() -> None:
     assert resolve_telemetry_capacity_kwh(telemetry=telemetry) == 50.0
 
 
+def test_hpc_preferred_before_ideal_two_hour_window() -> None:
+    """Supercharger/HPC antes del tramo ~2 h debe ganar frente a un 50 kW más adelante."""
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=69,
+        usable_capacity_kwh=50,
+        consumption_wh_per_km=160,
+        reserve_soc_percent=10,
+        vehicle_preset_id="tesla-model3-sr-2023",
+        max_charge_power_kw=250,
+        min_destination_soc_pct=40,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    matches = [
+        CorridorMatch(
+            station=sample_station("hellin-sc", 38.5, -1.64, kw=250.0, operator="Tesla Spain SLU"),
+            deviation_m=220,
+            route_position_m=129_000,
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+        CorridorMatch(
+            station=sample_station("elche", 38.45, -2.04, kw=50.0, operator="REPSOL"),
+            deviation_m=10,
+            route_position_m=176_000,
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+    ]
+    planned, _, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=254.0,
+        profile=profile,
+        route_distance_km=254.0,
+        route_duration_minutes=210.0,
+    )
+    assert planned
+    assert planned[0].station.id == "hellin-sc", [p.station.id for p in planned]
+    assert projected is not None and projected >= 35
+
+
+def test_emergency_origin_exclusion_when_only_early_chargers() -> None:
+    """Si no hay cargadores en la ventana ~2 h, usar uno alcanzable antes (no llegar al 0 %)."""
+    from api.routing.charging_plan import build_planned_route_stops, origin_exclusion_radius_km, resolve_avg_speed_kmh
+
+    profile = VehicleEnergyProfile(
+        soc_percent=52,
+        usable_capacity_kwh=50,
+        consumption_wh_per_km=160,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        vehicle_preset_id="tesla-model3-sr-2023",
+        max_charge_power_kw=170,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    route_km = 226.0
+    route_duration = 280.0
+    avg_speed = resolve_avg_speed_kmh(route_km, route_duration)
+    preferred_exclusion = origin_exclusion_radius_km(
+        avg_speed * 2,
+        52.0,
+        charging_reach_km=estimate_charging_reach_km(profile),
+    )
+    assert preferred_exclusion > 40.0
+
+    matches = [
+        CorridorMatch(
+            station=sample_station("early-47", 38.0, -1.5, kw=150.0),
+            deviation_m=400,
+            route_position_m=47_000,
+            extra_minutes=3.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+        CorridorMatch(
+            station=sample_station("near-home", 37.7, -1.1, kw=150.0),
+            deviation_m=300,
+            route_position_m=1_000,
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+    ]
+    planned, warnings, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=route_km,
+        profile=profile,
+        route_distance_km=route_km,
+        route_duration_minutes=route_duration,
+    )
+    assert planned, f"expected emergency stop, warnings={warnings}"
+    assert planned[0].station.id == "early-47"
+    assert planned[0].route_distance_km < preferred_exclusion
+    assert projected is not None and projected > 0
+    assert any("antes de lo ideal" in w or "emergencia" in w for w in warnings)
+
+
 def test_no_planned_stops_near_origin_when_soc_100() -> None:
     from api.routing.charging_plan import build_planned_route_stops, origin_exclusion_radius_km, resolve_avg_speed_kmh
 

@@ -21,6 +21,21 @@ CC_KEYWORDS = (
     "galeria comercial",
     "parque comercial",
     "retail park",
+    # Supermercados / hipermercados con parking de clientes (p. ej. Consum DC).
+    "supermercado",
+    "hipermercado",
+    "consum ",
+    " aldi",
+    "aldi ",
+    " lidl",
+    "lidl ",
+    "eroski",
+    "alcampo",
+    "hiperdino",
+    "bonpreu",
+    "caprabo",
+    "condis",
+    "auchan",
 )
 
 PARKING_KEYWORDS = (
@@ -31,14 +46,22 @@ PARKING_KEYWORDS = (
 )
 
 # Super/CC con DC ≥ este umbral se mantienen en mapa y plan (carga + compra/comer).
-COMMERCIAL_KEEP_MIN_KW = 60.0
+COMMERCIAL_KEEP_MIN_KW = 50.0
+
+
+def _matches_commercial_keyword(normalized: str) -> bool:
+    if any(keyword in normalized for keyword in CC_KEYWORDS):
+        return True
+    # Nombres tipo "CONSUM VILLAREAL" / "Consum" sin espacio tras la marca.
+    token = normalized.strip()
+    return token == "consum" or token.startswith("consum ")
 
 
 def classify_access(station: Station) -> str:
     text = f"{station.site_name or ''} {station.location.address or ''}".lower()
     normalized = re.sub(r"\s+", " ", text)
 
-    if any(keyword in normalized for keyword in CC_KEYWORDS):
+    if _matches_commercial_keyword(normalized):
         return "commercial_parking"
 
     if station.access == "restricted" or station.access == "inBuilding":
@@ -71,16 +94,21 @@ def passes_access_filters(
     exclude_commercial: bool = False,
     ad_hoc_only: bool = False,
 ) -> bool:
+    """Filtros opcionales de acceso.
+
+    Por defecto (y con ``public_open_only``) se muestran todos los puntos del
+    inventario oficial (NAP DGT / REVE / MOBI.E). DATEX marca muchos
+    supermercados/CC como ``restricted``/interior aunque sean usables; no los
+    ocultamos. ``exclude_commercial`` sí los quita de forma explícita.
+    """
     access_class = classify_access(station)
 
     if exclude_commercial and access_class == "commercial_parking":
         return False
 
-    if public_open_only and access_class == "indoor":
-        return False
-
-    if public_open_only and access_class == "commercial_parking":
-        return station.max_power_kw >= COMMERCIAL_KEEP_MIN_KW
+    # public_open_only queda como no-op de exclusión: el mapa debe alinear con
+    # REVE/NAP. Se conserva el parámetro por compatibilidad de API.
+    _ = public_open_only
 
     if ad_hoc_only and not has_ad_hoc_payment(station):
         return False

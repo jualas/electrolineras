@@ -49,11 +49,38 @@ def test_ad_hoc_only_filter() -> None:
     assert passes_access_filters(card, ad_hoc_only=True) is True
 
 
-def test_public_open_only_keeps_high_power_commercial() -> None:
+def test_public_open_only_keeps_official_inventory() -> None:
+    """Alineado con REVE/NAP: no ocultar tiendas ni interiores del inventario oficial."""
     mercadona_slow = _station(site_name="Mercadona Centro", max_power_kw=22.0)
     cc_fast = _station(site_name="CC Mazarrón Park", max_power_kw=90.0)
-    assert passes_access_filters(mercadona_slow, public_open_only=True) is False
+    indoor = _station(site_name="Parking sotano hotel", access="restricted", max_power_kw=22.0)
+    assert passes_access_filters(mercadona_slow, public_open_only=True) is True
     assert passes_access_filters(cc_fast, public_open_only=True) is True
+    assert passes_access_filters(indoor, public_open_only=True) is True
+
+
+def test_consum_restricted_classified_commercial_and_shown() -> None:
+    """DATEX marca muchos Consum como restricted/inBuilding; siguen en mapa y plan."""
+    consum_dc = _station(
+        site_name="CONSUM VILLAREAL CALVARIO",
+        access="restricted",
+        max_power_kw=80.0,
+    )
+    consum_cartagena = _station(
+        site_name="Supermercado Consum 1084 - Cartagena",
+        access="public",
+        max_power_kw=100.0,
+    )
+    consum_slow = _station(
+        site_name="Consum Parking",
+        access="public",
+        max_power_kw=22.0,
+    )
+    assert classify_access(consum_dc) == "commercial_parking"
+    assert classify_access(consum_cartagena) == "commercial_parking"
+    assert passes_access_filters(consum_dc, public_open_only=True) is True
+    assert passes_access_filters(consum_cartagena, public_open_only=True) is True
+    assert passes_access_filters(consum_slow, public_open_only=True) is True
 
 
 def test_exclude_commercial_still_drops_all_commercial() -> None:
