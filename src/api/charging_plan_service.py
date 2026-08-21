@@ -83,6 +83,21 @@ def _union_route_search_bbox(
     return union_route_search_bbox(variant_routes, corridor_km)
 
 
+_MAX_RANKING_POLYLINE_COORDS = 800
+
+
+def _maybe_simplify_coords(
+    coords: list[tuple[float, float]], *, max_points: int
+) -> list[tuple[float, float]]:
+    n = len(coords)
+    if n <= max_points:
+        return coords
+    step = (n - 1) / (max_points - 1)
+    indices = [int(round(i * step)) for i in range(max_points - 1)]
+    indices.append(n - 1)
+    return [coords[i] for i in indices]
+
+
 def _compute_route_variant_plan(
     repo: StationRepository,
     *,
@@ -105,7 +120,10 @@ def _compute_route_variant_plan(
     countries: list[str] | None,
     osrm_warnings: list[str],
 ) -> RouteVariantPlanBuild:
-    polyline = RoutePolyline(osrm_route.coordinates)
+    ranking_coords = _maybe_simplify_coords(
+        osrm_route.coordinates, max_points=_MAX_RANKING_POLYLINE_COORDS
+    )
+    polyline = RoutePolyline(ranking_coords)
     wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
     route_distance_km = osrm_route.distance_m / 1000.0
     planning_matches = rank_stations_along_route_for_planning(
