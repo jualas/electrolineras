@@ -41,10 +41,10 @@ async function copyText(text: string): Promise<boolean> {
 
 export function RouteExportActions({ route, variant = 'default' }: RouteExportActionsProps) {
   const [msg, setMsg] = useState<string | null>(null)
-  const [showQr, setShowQr] = useState(false)
-  const [busy, setBusy] = useState(false)
   const mobile = isMobileBrowser()
   const assistant = variant === 'assistant'
+  const [showQr, setShowQr] = useState(!mobile && assistant)
+  const [busy, setBusy] = useState(false)
   const hasStops = (route.waypoints?.length ?? 0) > 0
 
   const googleUrl = useMemo(
@@ -63,10 +63,11 @@ export function RouteExportActions({ route, variant = 'default' }: RouteExportAc
     return googleMapsDestinationUrl(stop.lat, stop.lon)
   }, [route.waypoints])
 
+  const qrSize = assistant ? 200 : 180
   const qrSrc = useMemo(
     () =>
-      `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(googleUrl)}`,
-    [googleUrl],
+      `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize}x${qrSize}&data=${encodeURIComponent(googleUrl)}`,
+    [googleUrl, qrSize],
   )
 
   const handleShare = async () => {
@@ -124,8 +125,8 @@ export function RouteExportActions({ route, variant = 'default' }: RouteExportAc
       </div>
       {showQr && !mobile ? (
         <div className="route-export-qr">
-          <img src={qrSrc} alt="Código QR con la ruta en Google Maps" width={180} height={180} />
-          <p className="route-export__hint">Escanea desde el móvil si estás en el ordenador.</p>
+          <img src={qrSrc} alt="Código QR con la ruta en Google Maps" width={qrSize} height={qrSize} />
+          <p className="route-export__hint">Escanea desde el móvil para abrir en Google Maps.</p>
         </div>
       ) : null}
       <p className="route-export__hint">

@@ -31,7 +31,6 @@ import {
 } from './DepartureChargeSimulator'
 import { useAuth } from './AuthContext'
 import { LoginPanel } from './LoginPanel'
-import { TripSimulationPanel } from './TripSimulationPanel'
 import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
 
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
@@ -108,7 +107,6 @@ export function AssistantPanel({
   const [departureSoc, setDepartureSoc] = useState(80)
   const [aiNote, setAiNote] = useState('')
   const [guideError, setGuideError] = useState<string | null>(null)
-  const [tripMode, setTripMode] = useState<'simple' | 'simulation'>('simple')
   const [settingsOpen, setSettingsOpen] = useState(
     () => typeof window === 'undefined' || !window.matchMedia('(max-width: 640px)').matches,
   )
@@ -473,63 +471,7 @@ export function AssistantPanel({
         </div>
       )}
 
-      <div className="chip-row assistant-trip-mode" role="group" aria-label="Modo de viaje">
-        <button
-          type="button"
-          className={`chip ${tripMode === 'simple' ? 'chip--active' : ''}`}
-          onClick={() => {
-            setTripMode('simple')
-          }}
-        >
-          Destino único
-        </button>
-        <button
-          type="button"
-          className={`chip ${tripMode === 'simulation' ? 'chip--active' : ''}`}
-          onClick={() => {
-            setTripMode('simulation')
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
-          }}
-        >
-          Simulación de viaje
-        </button>
-      </div>
-
-      {tripMode === 'simulation' ? (
-        <div className="assistant-panel__block assistant-panel__block--trip">
-          <RoutePreferenceFields
-            routePreference={routePreference}
-            avoidTolls={avoidTolls}
-            variant="assistant"
-            comparisonPlan={null}
-            onRoutePreferenceChange={setRoutePreference}
-            onAvoidTollsChange={setAvoidTolls}
-            disabled={busy}
-          />
-          <TripSimulationPanel
-            routePreference={routePreference}
-            avoidTolls={avoidTolls}
-            revePlanning={revePlanning}
-            disabled={!vehicle || Boolean(vehicleError)}
-            onPlanForMap={(plan) => {
-              if (plan) {
-                publishPlan(plan)
-                onPlanStateChange?.('ready')
-              } else {
-                onPlanResults(null)
-                onPlanStateChange?.('idle')
-              }
-            }}
-            onBusyChange={(isBusy) => {
-              setLoadingPlan(isBusy)
-              onPlanStateChange?.(isBusy ? 'loading' : 'idle')
-            }}
-          />
-        </div>
-      ) : (
-        <>
+      <>
           {activeTrip && !destination && (
             <p className="panel-hint active-trip-restore" role="status">
               Viaje activo anterior: <strong>{activeTrip.destination.label}</strong>.{' '}
@@ -711,8 +653,7 @@ export function AssistantPanel({
               ) : null}
             </div>
           )}
-        </>
-      )}
+      </>
 
       <details
         className="assistant-collapsible assistant-panel__block--settings"
@@ -723,7 +664,7 @@ export function AssistantPanel({
       >
         <summary>Ajustes y detalles</summary>
         <div className="assistant-collapsible__body">
-          {vehicle && nominalKm != null && tripMode === 'simple' && (
+          {vehicle && nominalKm != null && (
             <DepartureChargeSimulator
               liveSocPercent={vehicle.battery_level_pct}
               departureSocPercent={departureSoc}
@@ -811,31 +752,27 @@ export function AssistantPanel({
             }}
           />
 
-          {tripMode === 'simple' ? (
-            <>
-              <label className="assistant-panel__option">
-                <input
-                  type="checkbox"
-                  checked={culturalPoi}
-                  onChange={(e) => setCulturalPoi(e.target.checked)}
-                />
-                Incluir ideas culturales y gastronomía en la guía
-              </label>
+          <label className="assistant-panel__option">
+            <input
+              type="checkbox"
+              checked={culturalPoi}
+              onChange={(e) => setCulturalPoi(e.target.checked)}
+            />
+            Incluir ideas culturales y gastronomía en la guía
+          </label>
 
-              <label className="field" htmlFor="assistant-ai-note">
-                <span className="field__label">Pregunta o nota para la IA (opcional)</span>
-                <textarea
-                  id="assistant-ai-note"
-                  className="assistant-ai-note"
-                  rows={3}
-                  placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
-                  value={aiNote}
-                  onChange={(e) => setAiNote(e.target.value)}
-                  disabled={busy}
-                />
-              </label>
-            </>
-          ) : null}
+          <label className="field" htmlFor="assistant-ai-note">
+            <span className="field__label">Pregunta o nota para la IA (opcional)</span>
+            <textarea
+              id="assistant-ai-note"
+              className="assistant-ai-note"
+              rows={3}
+              placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
+              value={aiNote}
+              onChange={(e) => setAiNote(e.target.value)}
+              disabled={busy}
+            />
+          </label>
         </div>
       </details>
     </section>

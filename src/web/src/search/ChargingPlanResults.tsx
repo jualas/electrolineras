@@ -145,6 +145,7 @@ export function ChargingPlanResults({
           <p className="route-message">No hay paradas en el corredor alcanzables con el SOC actual.</p>
         )}
         {tripSummary && <TripSummaryBox summary={tripSummary} />}
+        {routeExport && <RouteExportActions route={routeExport} variant="assistant" />}
       </>
     )
   }
