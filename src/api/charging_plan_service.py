@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass, replace
 from typing import Literal
 
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 
 from api.config import settings
 from api.query_params import parse_country_list
@@ -487,6 +490,7 @@ def build_charging_plan(
             avoid_highways=avoid_highways,
         )
     except RoutingError as exc:
+        logger.error("RoutingError en charging_plan_service (status=%s): %s", exc.status_code, exc)
         raise HTTPException(
             status_code=502,
             detail=f"No se pudo calcular la ruta: {exc}",

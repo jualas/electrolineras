@@ -322,7 +322,7 @@ def should_try_osrm_public_fallback(error: RoutingError, primary_url: str) -> bo
         return False
     if error.status_code is None:
         return True
-    return error.status_code in {408, 500, 502, 503, 504}
+    return error.status_code in {400, 408, 500, 502, 503, 504}
 
 
 def _osrm_get(request_url: str, params: dict[str, str], timeout_s: float) -> httpx.Response:
@@ -421,24 +421,15 @@ def _request_osrm_routes(
         exclude_applied = True
 
     if response.status_code != 200 and exclude:
-        if osrm_exclude_unsupported(response):
-            warning = routing_warning_exclude_unavailable(
-                route_preference=route_preference,
-                avoid_highways=avoid_highways,
-            )
-            if warning:
-                routing_warnings.append(warning)
-            params.pop("exclude", None)
-            exclude_applied = False
-            response = _osrm_get(request_url, params, timeout_s)
-        elif route_preference == "conventional":
-            raise RoutingError(
-                "No se encontró ruta solo por carreteras convencionales.",
-                status_code=response.status_code,
-            )
-        else:
-            params.pop("exclude", None)
-            response = _osrm_get(request_url, params, timeout_s)
+        params.pop("exclude", None)
+        exclude_applied = False
+        warning = routing_warning_exclude_unavailable(
+            route_preference=route_preference,
+            avoid_highways=avoid_highways,
+        )
+        if warning:
+            routing_warnings.append(warning)
+        response = _osrm_get(request_url, params, timeout_s)
 
     if response.status_code != 200:
         detail = _osrm_http_error_detail(response)
