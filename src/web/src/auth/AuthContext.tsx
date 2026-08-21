@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { fetchAuthConfig, fetchAuthSession, loginWithTotp, logoutSession } from '../api/auth'
 import { setUnauthorizedHandler } from '../api/client'
+import { setLastUsername } from './lastUsername'
 
 type AuthContextValue = {
   loading: boolean
@@ -37,6 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthenticated(session.authenticated)
       setLoginEnabled(session.login_enabled)
       setUsername(session.username ?? null)
+      if (session.username) {
+        setLastUsername(session.username)
+      }
     } catch {
       setAuthenticated(false)
     }
@@ -63,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loginWithTotp(usernameInput, totpCode)
     setAuthenticated(true)
     setUsername(usernameInput)
+    setLastUsername(usernameInput)
   }, [])
 
   const logout = useCallback(async () => {

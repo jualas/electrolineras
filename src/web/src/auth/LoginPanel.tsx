@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
 
 import { useAuth } from './AuthContext'
+import { getLastUsername } from './lastUsername'
 
 export function LoginPanel() {
   const { login } = useAuth()
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(getLastUsername)
   const [totpCode, setTotpCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
