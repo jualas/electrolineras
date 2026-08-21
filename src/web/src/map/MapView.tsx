@@ -61,6 +61,7 @@ import { MapLayerControl, type MapLayerToggles } from './MapLayerControl'
 import { enhancePlaceLabels } from './mapPlaceLabels'
 import { ensureReliefLayers, setContourVisible, setShadowVisible } from './mapTerrainLayers'
 import { ensureTrafficLayer, setTrafficLayerVisible } from './mapTrafficLayer'
+import { stationTapInfoFromFeature, type TappedStationInfo } from './stationTapInfo'
 
 const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
 const DEFAULT_ZOOM = 5.8
@@ -107,6 +108,7 @@ type MapViewProps = {
   onPlannedStopSelect?: (stop: RouteChargingStop | null) => void
   mapFocusPlace?: GeocodeResult | null
   onRegisterMapBounds?: (getter: MapBoundsGetter | null) => void
+  onStationFeatureClick?: (info: TappedStationInfo | null) => void
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
@@ -215,6 +217,7 @@ export function MapView({
   onPlannedStopSelect,
   mapFocusPlace = null,
   onRegisterMapBounds,
+  onStationFeatureClick,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -244,6 +247,7 @@ export function MapView({
   const chargePlanDataRef = useRef(chargePlanData)
   const selectedPlannedStopOrderRef = useRef(selectedPlannedStopOrder)
   const onPlannedStopSelectRef = useRef(onPlannedStopSelect)
+  const onStationFeatureClickRef = useRef(onStationFeatureClick)
   const clusterNavUntilRef = useRef(0)
   const loadVisibleStationsRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
   const scheduleLoadRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
@@ -267,6 +271,7 @@ export function MapView({
   chargePlanDataRef.current = chargePlanData
   selectedPlannedStopOrderRef.current = selectedPlannedStopOrder
   onPlannedStopSelectRef.current = onPlannedStopSelect
+  onStationFeatureClickRef.current = onStationFeatureClick
 
   const resolveRouteChargingStop = useCallback(
     (order: number): RouteChargingStop | null => {
@@ -658,10 +663,14 @@ export function MapView({
       const properties = feature.properties ?? {}
       if (handlePlannedStopFeatureClickRef.current(properties)) {
         popupRef.current?.remove()
+        onStationFeatureClickRef.current?.(null)
         return
       }
       const coordinates = feature.geometry.coordinates.slice() as [number, number]
       showStationPopup(map, popupRef.current, coordinates, properties)
+      onStationFeatureClickRef.current?.(
+        stationTapInfoFromFeature(properties, { lat: coordinates[1], lon: coordinates[0] }),
+      )
     }
 
     const onPlannedLabelClick = (event: maplibregl.MapLayerMouseEvent) => {
@@ -720,6 +729,7 @@ export function MapView({
       })
       if (hit.length === 0) {
         popupRef.current?.remove()
+        onStationFeatureClickRef.current?.(null)
         if (mode === 'overlay' && selectedPlannedStopOrderRef.current != null) {
           onPlannedStopSelectRef.current?.(null)
         }

@@ -471,7 +471,7 @@ function formatChargeLine(
   return `<p class="station-popup__charge">${orderText}${classText}${socText}${departureText}${chargeText}</p>`
 }
 
-function parseExternalComments(raw: unknown): Array<Record<string, unknown>> {
+export function parseExternalComments(raw: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(raw)) {
     return raw.filter((item) => item && typeof item === 'object') as Array<Record<string, unknown>>
   }
