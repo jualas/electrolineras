@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import httpx
 
 from api.config import settings
@@ -7,6 +9,18 @@ from api.routing.nominatim_cache import cache_key, geocode_cache
 
 
 PUBLIC_NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"
+
+# Nominatim a veces no encuentra nada con «X en el Y» (p. ej. «fuente caputa en el
+# rio Mula») pero sí con «X Y» — reintenta sin la preposición locativa antes de rendirse.
+_LOCATIVE_CONNECTOR_RE = re.compile(r"\s+en\s+(?:el|la|los|las)\s+", re.IGNORECASE)
+
+
+def _simplify_query(query: str) -> str | None:
+    simplified = _LOCATIVE_CONNECTOR_RE.sub(" ", query)
+    simplified = re.sub(r"\s+", " ", simplified).strip()
+    if simplified and simplified.lower() != query.strip().lower():
+        return simplified
+    return None
 
 
 class GeocodingError(Exception):
@@ -129,6 +143,15 @@ def geocode_address(
         timeout_s=timeout_s,
     )
     if not results:
+        simplified = _simplify_query(query)
+        if simplified:
+            results = _fetch_nominatim_search(
+                simplified,
+                1,
+                base_url=base_url,
+                timeout_s=timeout_s,
+            )
+    if not results:
         raise GeocodingError(f"No se encontró ubicación para: {query.strip()}")
 
     hit = results[0]
@@ -155,6 +178,15 @@ def search_places(
         base_url=base_url,
         timeout_s=timeout_s,
     )
+    if not results:
+        simplified = _simplify_query(query)
+        if simplified:
+            results = _fetch_nominatim_search(
+                simplified,
+                limit,
+                base_url=base_url,
+                timeout_s=timeout_s,
+            )
     if not results:
         raise GeocodingError(f"No se encontró ubicación para: {query.strip()}")
 

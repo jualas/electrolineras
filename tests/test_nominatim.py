@@ -34,6 +34,55 @@ def test_geocode_address_parses_first_hit():
     assert label.startswith("Granada")
 
 
+def test_retries_without_locative_connector_on_empty_result():
+    """«X en el Y» sin resultados → reintenta como «X Y» antes de fallar."""
+    empty = MagicMock()
+    empty.status_code = 200
+    empty.headers = {"content-type": "application/json"}
+    empty.json.return_value = []
+
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.headers = {"content-type": "application/json"}
+    ok.json.return_value = [
+        {
+            "lat": "38.0840984",
+            "lon": "-1.5020641",
+            "display_name": "Fuente Caputa, Mula, Río Mula, Región de Murcia, España",
+        },
+    ]
+
+    with patch("api.routing.nominatim.httpx.Client") as client_cls:
+        client = client_cls.return_value.__enter__.return_value
+        client.get.side_effect = [empty, ok]
+        lat, lon, label = geocode_address(
+            "fuente caputa en el rio Mula", base_url="http://nominatim.test"
+        )
+
+    assert lat == pytest.approx(38.0840984)
+    assert lon == pytest.approx(-1.5020641)
+    assert label.startswith("Fuente Caputa")
+    assert client.get.call_count == 2
+    second_call_params = client.get.call_args_list[1].kwargs["params"]
+    assert second_call_params["q"] == "fuente caputa rio Mula"
+
+
+def test_no_retry_when_query_has_no_locative_connector():
+    """Sin «en el/la», una consulta sin resultados falla directamente (sin llamada extra)."""
+    empty = MagicMock()
+    empty.status_code = 200
+    empty.headers = {"content-type": "application/json"}
+    empty.json.return_value = []
+
+    with patch("api.routing.nominatim.httpx.Client") as client_cls:
+        client = client_cls.return_value.__enter__.return_value
+        client.get.return_value = empty
+        with pytest.raises(GeocodingError):
+            geocode_address("un sitio que no existe", base_url="http://nominatim.test")
+
+    assert client.get.call_count == 1
+
+
 def test_cache_avoids_second_http_call():
     response = MagicMock()
     response.status_code = 200

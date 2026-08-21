@@ -73,6 +73,29 @@ def test_parse_natural_weekend_camping(monkeypatch):
     assert parsed.stops[1].is_home
 
 
+def test_parse_ida_y_vuelta_a_destino_no_pernocta(monkeypatch):
+    """«ida y vuelta a X» no debe recortar X como si fuera la cola de regreso a casa,
+    y «no pernoctamos» debe anular cualquier pernocta detectada."""
+
+    def fake_geocode(query: str, **_kwargs):
+        assert query.lower().strip() == "fuente caputa en el rio mula"
+        return 38.045, -1.484, "Fuente Caputa, Río Mula"
+
+    monkeypatch.setattr("api.routing.itinerary_parse.geocode_address", fake_geocode)
+
+    parsed = parse_and_geocode_itinerary(
+        "ida y vuelta a fuente caputa en el rio Mula, no pernoctamos",
+        home_lat=37.625,
+        home_lon=-0.996,
+        home_label="Casa",
+    )
+    assert len(parsed.stops) == 2
+    assert parsed.stops[0].label == "Fuente Caputa"
+    assert parsed.stops[0].overnight is False
+    assert parsed.stops[0].nights is None
+    assert parsed.stops[1].is_home
+
+
 def test_parse_day_after_place_and_instruction_tail(monkeypatch):
     """«vamos a X viernes tarde y volvemos…, genera un plan…» no debe geocodificar el día."""
     from api.routing.itinerary_parse import _place_query_from_hint, split_itinerary_segments

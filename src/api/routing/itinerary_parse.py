@@ -22,9 +22,19 @@ _RETURN_HOME_TAIL_RE = re.compile(
     r"regresamos(?:\s+a\s+casa)?|"
     r"regreso(?:\s+a\s+casa)?|"
     r"regresaremos(?:\s+a\s+casa)?"
-    r")\b.*$",
+    # Si tras el verbo viene «a <algo distinto de casa>», es el destino
+    # («ida y vuelta a fuente caputa»), no la cola de regreso: no cortar ahí.
+    r")\b(?!\s+a\s+(?!casa\b)).*$",
     re.IGNORECASE,
 )
+# «No pernoctamos» / «sin pernoctar» / «mismo día»: niega cualquier pernocta detectada.
+_NO_OVERNIGHT_RE = re.compile(
+    r"\b(?:no|sin)\s+(?:pernocta\w*|dormimos|nos\s+quedamos(?:\s+a\s+dormir)?)|"
+    r"\bmismo\s+d[ií]a\b",
+    re.IGNORECASE,
+)
+# «Ida y vuelta a X»: implica regreso a casa aunque «vuelta» no vaya seguida de «a casa».
+_ROUND_TRIP_RE = re.compile(r"\bida\s+y\s+vuelta\b", re.IGNORECASE)
 _SOC_RE = re.compile(
     r"(?:al|a\s+la|salida\s+al|salgo\s+al|salimos\s+(?:cargados?\s+)?al|partir\s+al|"
     r"cargados?\s+al|con)\s*(\d{2,3})\s*%|"
@@ -32,7 +42,7 @@ _SOC_RE = re.compile(
     re.IGNORECASE,
 )
 _NIGHTS_RE = re.compile(
-    r"(\d+)\s*noches?|pernocta(?:r)?|dormir|overnight|pasar\s+la\s+noche",
+    r"(\d+)\s*noches?|pernocta\w*|dormir|overnight|pasar\s+la\s+noche",
     re.IGNORECASE,
 )
 _WEEKEND_OVERNIGHT_RE = re.compile(
@@ -197,6 +207,7 @@ def _place_query_from_hint(raw: str) -> str:
     place = _PAREN_RE.sub(" ", raw)
     place = _INSTRUCTION_TAIL_RE.sub(" ", place)
     place = _RETURN_HOME_TAIL_RE.sub(" ", place)
+    place = _NO_OVERNIGHT_RE.sub(" ", place)
     place = _NIGHTS_RE.sub(" ", place)
     place = _HOME_RE.sub(" ", place)
     place = _SOC_RE.sub(" ", place)
@@ -244,7 +255,9 @@ def _extract_go_to_destinations(text: str, *, overnight_default: bool) -> list[P
     working = _SOC_RE.sub(" ", working)
     working = re.sub(r"\s+", " ", working).strip()
 
-    return_home = bool(_HOME_RE.search(working) or _RETURN_HOME_TAIL_RE.search(working))
+    return_home = bool(
+        _HOME_RE.search(working) or _RETURN_HOME_TAIL_RE.search(working) or _ROUND_TRIP_RE.search(working)
+    )
     before_return = _RETURN_HOME_TAIL_RE.sub("", working).strip()
     before_return = _strip_instruction_tails(before_return)
 
@@ -350,8 +363,11 @@ def parse_and_geocode_itinerary(
 ) -> ParsedItinerary:
     warnings: list[str] = []
     departure_soc = extract_departure_soc(text)
-    return_home = bool(_HOME_RE.search(text) or _RETURN_HOME_TAIL_RE.search(text))
+    return_home = bool(
+        _HOME_RE.search(text) or _RETURN_HOME_TAIL_RE.search(text) or _ROUND_TRIP_RE.search(text)
+    )
     overnight_default = bool(_WEEKEND_OVERNIGHT_RE.search(text))
+    no_overnight = bool(_NO_OVERNIGHT_RE.search(text))
     hints = split_itinerary_segments(text)
 
     stops: list[GeocodedItineraryStop] = []
@@ -449,8 +465,25 @@ def parse_and_geocode_itinerary(
             "No se pudo interpretar ningún destino. Prueba: «Vamos el sábado a Camping Garrote Gordo y volvemos a casa el domingo»."
         )
 
+    if no_overnight:
+        # El texto niega explícitamente la pernocta («no pernoctamos», «mismo día»):
+        # prevalece sobre cualquier pernocta detectada (incl. falsos positivos de _NIGHTS_RE).
+        stops = [
+            GeocodedItineraryStop(
+                order=x.order,
+                raw=x.raw,
+                label=x.label,
+                lat=x.lat,
+                lon=x.lon,
+                overnight=False,
+                nights=None,
+                is_home=x.is_home,
+                confidence=x.confidence,
+            )
+            for x in stops
+        ]
     # Pernocta por defecto en ida-vuelta
-    if len(stops) >= 2 and return_home and not any(s.overnight for s in stops if not s.is_home):
+    elif len(stops) >= 2 and return_home and not any(s.overnight for s in stops if not s.is_home):
         stops = [
             GeocodedItineraryStop(
                 order=x.order,
