@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
@@ -11,6 +11,7 @@ import { useVehicleProfile } from '../../hooks/useVehicleProfile'
 import type { MapLayerToggles } from '../../map/MapLayerControl'
 import { MapView } from '../../map/MapView'
 import { MapFloatingSearch } from '../../map/MapFloatingSearch'
+import type { TappedStationInfo } from '../../map/stationTapInfo'
 import {
   APP_NAV_MODES,
   CHARGE_PLAN_NAV_ENABLED,
@@ -18,6 +19,7 @@ import {
   isNavModeEnabled,
 } from '../../navigation/appModes'
 import { SearchPanel, type SearchMode } from '../../search/SearchPanel'
+import { StationDetailSheet } from '../../stations/StationDetailSheet'
 import { ThemeToggle } from './ThemeToggle'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 
@@ -51,6 +53,7 @@ export function AppShell() {
   const [chargePlanSearching, setChargePlanSearching] = useState(false)
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
   const [selectedPlannedStopOrder, setSelectedPlannedStopOrder] = useState<number | null>(null)
+  const [tappedStation, setTappedStation] = useState<TappedStationInfo | null>(null)
   const [mapFocusPlace, setMapFocusPlace] = useState<GeocodeResult | null>(null)
   const [mapSearchText, setMapSearchText] = useState('')
   const [mapLayers, setMapLayers] = useState<MapLayerToggles>(DEFAULT_MAP_LAYERS)
@@ -105,6 +108,7 @@ export function AppShell() {
     }
     setSelectedStation(null)
     setSelectedPlannedStopOrder(null)
+    setTappedStation(null)
     setPanelOpen(nextMode !== 'map')
   }
 
@@ -225,6 +229,13 @@ export function AppShell() {
     mapBoundsGetterRef.current = getter
   }, [])
 
+  const handleStationFeatureClick = useCallback((info: TappedStationInfo | null) => {
+    setTappedStation(info)
+    if (info) {
+      setPanelOpen(false)
+    }
+  }, [])
+
   const assistantMode = mode === 'assistant'
   const shellClass = [
     'app-shell',
@@ -267,6 +278,7 @@ export function AppShell() {
         onPlannedStopSelect={mode !== 'map' ? handlePlannedStopSelect : undefined}
         mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
         onRegisterMapBounds={handleRegisterMapBounds}
+        onStationFeatureClick={handleStationFeatureClick}
       />
 
       <div className="map-ui-layer">
@@ -391,7 +403,52 @@ export function AppShell() {
             />
           )}
         </aside>
+
+        <StationDetailSheet info={tappedStation} onClose={() => setTappedStation(null)} />
+
+        <nav className="bottom-nav" aria-label="Modo de búsqueda">
+          {APP_NAV_MODES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`bottom-nav__tab ${mode === item.id ? 'bottom-nav__tab--active' : ''}`}
+              onClick={() => handleModeChange(item.id)}
+              aria-pressed={mode === item.id}
+            >
+              <span className="bottom-nav__icon" aria-hidden="true">
+                {NAV_ICONS[item.id]}
+              </span>
+              <span className="bottom-nav__label">{item.label}</span>
+            </button>
+          ))}
+        </nav>
       </div>
     </div>
   )
+}
+
+const NAV_ICONS: Record<SearchMode, ReactElement> = {
+  map: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  ),
+  assistant: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M12 2.5c.35 3.1 1.05 5.28 2.1 6.4 1.12 1.05 3.3 1.75 6.4 2.1-3.1.35-5.28 1.05-6.4 2.1-1.05 1.12-1.75 3.3-2.1 6.4-.35-3.1-1.05-5.28-2.1-6.4C8.78 12 6.6 11.3 3.5 11c3.1-.35 5.28-1.05 6.4-2.1 1.05-1.12 1.75-3.3 2.1-6.4Z" />
+    </svg>
+  ),
+  charge: (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z" />
+    </svg>
+  ),
+  route: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="6" r="2.4" />
+      <circle cx="18" cy="18" r="2.4" />
+      <path d="M8 6h6a4 4 0 0 1 4 4v0a4 4 0 0 1-4 4H8" strokeDasharray="3 3" />
+    </svg>
+  ),
 }
