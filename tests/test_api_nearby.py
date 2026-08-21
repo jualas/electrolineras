@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from api.config import settings
 from api.dependencies import get_repository
 from api.main import app
 from db.repository import StationRepository
@@ -129,3 +130,26 @@ def test_nearby_bbox_mode(api_client: TestClient) -> None:
 def test_nearby_requires_location(api_client: TestClient) -> None:
     response = api_client.get("/api/v1/stations/nearby")
     assert response.status_code == 422
+
+
+def test_nearby_requires_auth_when_private_stack_enabled(api_client: TestClient) -> None:
+    original_enabled = settings.private_stack_enabled
+    original_token = settings.private_api_token
+    settings.private_stack_enabled = True
+    settings.private_api_token = "test-private-token-min-32-chars-long"
+    try:
+        blocked = api_client.get(
+            "/api/v1/stations/nearby",
+            params={"bbox": "-3.75,40.40,-3.65,40.43"},
+        )
+        assert blocked.status_code == 401
+
+        allowed = api_client.get(
+            "/api/v1/stations/nearby",
+            params={"bbox": "-3.75,40.40,-3.65,40.43"},
+            headers={"Authorization": "Bearer test-private-token-min-32-chars-long"},
+        )
+        assert allowed.status_code == 200
+    finally:
+        settings.private_stack_enabled = original_enabled
+        settings.private_api_token = original_token

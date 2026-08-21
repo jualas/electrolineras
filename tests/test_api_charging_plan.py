@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from osrm_mocks import MOCK_OSRM, MOCK_ROUTE
 
+from api.config import settings
 from api.dependencies import get_repository
 from api.main import app
 from db.repository import StationRepository
@@ -99,6 +100,36 @@ def test_charging_plan_route_mode(mock_fetch, api_client: TestClient) -> None:
     assert payload["route_variant_plans"] is not None
     assert set(payload["route_variant_plans"]) >= {"shortest", "fastest", "conventional"}
     assert payload["route_variant_plans"]["fastest"]["planned_stops"] is not None
+
+
+@patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)
+def test_charging_plan_requires_auth_when_private_stack_enabled(mock_fetch, api_client: TestClient) -> None:
+    params = {
+        "origin_lat": 40.0,
+        "origin_lon": 0.1,
+        "dest_lat": 40.0,
+        "dest_lon": 1.0,
+        "min_kw": 100,
+        "corridor_km": 20,
+        **VEHICLE_PARAMS,
+    }
+    original_enabled = settings.private_stack_enabled
+    original_token = settings.private_api_token
+    settings.private_stack_enabled = True
+    settings.private_api_token = "test-private-token-min-32-chars-long"
+    try:
+        blocked = api_client.get("/api/v1/stations/charging-plan", params=params)
+        assert blocked.status_code == 401
+
+        allowed = api_client.get(
+            "/api/v1/stations/charging-plan",
+            params=params,
+            headers={"Authorization": "Bearer test-private-token-min-32-chars-long"},
+        )
+        assert allowed.status_code == 200
+    finally:
+        settings.private_stack_enabled = original_enabled
+        settings.private_api_token = original_token
 
 
 @patch("api.charging_plan_service.fetch_osrm_route_with_alternatives", return_value=MOCK_OSRM)

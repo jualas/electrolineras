@@ -11,25 +11,36 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+from apply_auth_env import parse_auth_users, read_env_value  # noqa: E402
 from totp_qr import build_provisioning_uri, render_totp_qr  # noqa: E402
 
 
-def load_totp_secret(env_file: Path) -> str:
+def load_totp_secret(env_file: Path, username: str | None) -> tuple[str, str]:
+    """Devuelve (usuario, secreto). Si hay varios usuarios, --username es obligatorio."""
     if not env_file.is_file():
         raise FileNotFoundError(f"No existe {env_file}")
 
-    for line in env_file.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key == "PRIVATE_TOTP_SECRET":
-            secret = value.strip()
-            if secret:
-                return secret
-            break
+    users = parse_auth_users(read_env_value(env_file, "PRIVATE_AUTH_USERS") or "")
+    if not users:
+        legacy_username = read_env_value(env_file, "PRIVATE_AUTH_USERNAME")
+        legacy_secret = read_env_value(env_file, "PRIVATE_TOTP_SECRET")
+        if legacy_username and legacy_secret:
+            users = [(legacy_username, legacy_secret)]
 
-    raise ValueError(f"PRIVATE_TOTP_SECRET vacío o ausente en {env_file}")
+    if not users:
+        raise ValueError(f"No hay ningún usuario TOTP configurado en {env_file}")
+
+    if username:
+        for candidate, secret in users:
+            if candidate.lower() == username.strip().lower():
+                return candidate, secret
+        raise ValueError(f"Usuario «{username}» no encontrado en {env_file}")
+
+    if len(users) > 1:
+        nombres = ", ".join(u for u, _ in users)
+        raise ValueError(f"Hay varios usuarios configurados ({nombres}); pasa --username")
+
+    return users[0]
 
 
 def main() -> None:
@@ -39,26 +50,34 @@ def main() -> None:
     parser.add_argument(
         "--env-file",
         default="/mnt/datos/docker/electrolineras/.env",
-        help="Ruta al .env con PRIVATE_TOTP_SECRET",
+        help="Ruta al .env con PRIVATE_AUTH_USERS",
+    )
+    parser.add_argument(
+        "--username",
+        help="Usuario cuyo QR regenerar (obligatorio si hay más de uno configurado)",
     )
     parser.add_argument(
         "--account",
-        default="electrolineras",
-        help="Nombre mostrado en Authenticator",
+        help="Nombre mostrado en Authenticator (por defecto, el propio usuario)",
     )
     parser.add_argument(
         "--output",
-        default="img/totp-authenticator-qr.png",
-        help="Ruta del PNG de salida",
+        help="Ruta del PNG de salida (por defecto img/totp-authenticator-qr-<usuario>.png)",
     )
     args = parser.parse_args()
 
-    secret = load_totp_secret(Path(args.env_file))
-    uri = build_provisioning_uri(secret, account=args.account)
-    output = render_totp_qr(uri, Path(args.output))
+    try:
+        username, secret = load_totp_secret(Path(args.env_file), args.username)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+    account = args.account or username
+    output_path = args.output or f"img/totp-authenticator-qr-{username}.png"
+    uri = build_provisioning_uri(secret, account=account)
+    output = render_totp_qr(uri, Path(output_path))
 
     print(f"QR guardado en: {output}")
-    print(f"Cuenta Authenticator: {args.account}")
+    print(f"Usuario: {username}  |  Cuenta Authenticator: {account}")
     print("Microsoft Authenticator → Agregar cuenta → Otra cuenta → Escanear código QR")
     print(f"URI (referencia): {uri}")
 

@@ -1,13 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { fetchAuthConfig, fetchAuthSession, loginWithTotp, logoutSession } from '../api/auth'
+import { setUnauthorizedHandler } from '../api/client'
 
 type AuthContextValue = {
   loading: boolean
   authenticated: boolean
   privateStackEnabled: boolean
   loginEnabled: boolean
-  loginUsername: string | null
+  username: string | null
   login: (username: string, totpCode: string) => Promise<void>
   logout: () => Promise<void>
   refresh: () => Promise<void>
@@ -20,21 +21,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false)
   const [privateStackEnabled, setPrivateStackEnabled] = useState(false)
   const [loginEnabled, setLoginEnabled] = useState(false)
-  const [loginUsername, setLoginUsername] = useState<string | null>(null)
+  const [username, setUsername] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
       const config = await fetchAuthConfig()
       setPrivateStackEnabled(config.private_stack_enabled)
       setLoginEnabled(config.login_enabled)
-      setLoginUsername(config.login_username ?? null)
       if (!config.private_stack_enabled) {
         setAuthenticated(false)
+        setUsername(null)
         return
       }
       const session = await fetchAuthSession()
       setAuthenticated(session.authenticated)
       setLoginEnabled(session.login_enabled)
+      setUsername(session.username ?? null)
     } catch {
       setAuthenticated(false)
     }
@@ -48,14 +50,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })()
   }, [refresh])
 
-  const login = useCallback(async (username: string, totpCode: string) => {
-    await loginWithTotp(username, totpCode)
+  // Cualquier 401 de la API (p. ej. sesión caducada a mitad de uso) devuelve al gate de login.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setAuthenticated(false)
+      setUsername(null)
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [])
+
+  const login = useCallback(async (usernameInput: string, totpCode: string) => {
+    await loginWithTotp(usernameInput, totpCode)
     setAuthenticated(true)
+    setUsername(usernameInput)
   }, [])
 
   const logout = useCallback(async () => {
     await logoutSession()
     setAuthenticated(false)
+    setUsername(null)
   }, [])
 
   const value = useMemo(
@@ -64,12 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authenticated,
       privateStackEnabled,
       loginEnabled,
-      loginUsername,
+      username,
       login,
       logout,
       refresh,
     }),
-    [loading, authenticated, privateStackEnabled, loginEnabled, loginUsername, login, logout, refresh],
+    [loading, authenticated, privateStackEnabled, loginEnabled, username, login, logout, refresh],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

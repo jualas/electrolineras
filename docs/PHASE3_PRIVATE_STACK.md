@@ -8,8 +8,12 @@ Separar dos mundos:
 
 | Zona | Quién | Qué |
 |------|-------|-----|
-| **Pública** | Cualquiera | Mapa, estaciones, plan de carga manual (SOC + GPS móvil) |
-| **Privada** | Solo tú (inicialmente) | Agente IA, telemetría del coche, plan desde el vehículo |
+| **Pública** | Cualquiera | Solo el HTML/JS estático de la SPA (la página en sí, sin datos) |
+| **Privada** | Tu familia (login TOTP, un usuario por persona) | Toda la API: mapa, estaciones, plan de carga, ruta, agente IA, telemetría del coche |
+
+Desde que `PRIVATE_STACK_ENABLED=true`, ninguna llamada a `/api/v1/*` (salvo
+`/api/v1/auth/*` y `/health`) funciona sin sesión — no solo el agente IA. Ver el
+detalle de login multiusuario en [`PHASE3_AUTH.md`](PHASE3_AUTH.md).
 
 La telemetría **no pasa por Tesla Fleet API** en esta fase: reutilizamos **TeslaMate** (ya autenticado con tu cuenta Tesla en tu mini PC) y **TeslaMateApi** como bridge REST — el mismo patrón que MateDroid y otros proyectos de la comunidad.
 
@@ -123,10 +127,16 @@ Con `TESLAMATE_DATA_SOURCE=auto`, si MQTT falla se intenta la API.
 - Cursor CLI: `AGENT_API_TOKEN` o `PRIVATE_API_TOKEN` en el script (`scripts/agent/trip_advice.sh`).
 - El LLM **no calcula** SOC; solo narra JSON del motor ([`CHARGING_AGENT.md`](CHARGING_AGENT.md)).
 
-## Endpoints privados
+## Endpoints protegidos
+
+Con `PRIVATE_STACK_ENABLED=true`, **toda** la API bajo `/api/v1/*` exige cookie de
+sesión o Bearer token, excepto `/api/v1/auth/*` (login) y `/health`. Selección:
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
+| GET | `/api/v1/stations`, `/api/v1/stations/nearby`, `/api/v1/meta/*` | Mapa y búsqueda de estaciones |
+| GET | `/api/v1/stations/along-route` | Estaciones a lo largo de una ruta |
+| GET/POST | `/api/v1/charging-plan*` | Plan de carga manual |
 | GET | `/api/v1/private/status` | Estado del stack privado |
 | GET | `/api/v1/private/vehicle/state` | Posición + SOC vía TeslaMate |
 | GET | `/api/v1/private/trip-advice-from-car` | Plan de carga: origen/SOC del coche + destino |
@@ -147,7 +157,8 @@ curl -fsS \
 1. Abres `electro-private.jualas.es` (tras Cloudflare Access con tu cuenta).
 2. La UI privada llama a `/api/v1/private/*` con sesión o token de corta duración (futuro #6058).
 3. Origen y SOC vienen de TeslaMate, no del GPS del navegador (más fiable en el coche).
-4. El mapa público sigue disponible en `electro.jualas.es` sin login.
+4. La SPA de `electro.jualas.es` carga siempre, pero muestra la pantalla de login
+   antes del mapa en cuanto `PRIVATE_STACK_ENABLED=true` (ya no hay datos sin sesión).
 
 ## Publicar en GitHub para otros usuarios
 
@@ -196,7 +207,8 @@ O URL host: `http://<IP-LAN-SERVIDOR>:8080` si TeslaMateApi expone puerto en LAN
 | ⏳ | Cloudflare Access en subdominio privado |
 | ⏳ | UI privada en Tesla (#6058) con sesión tras Access |
 | ⏳ | Workflow Dify (#6057) |
-| Futuro | OAuth multi-usuario si quieres abrir a amigos (cada uno su TeslaMate) |
+| ✅ | Login TOTP multiusuario (un usuario/secreto por miembro de la familia, `PRIVATE_AUTH_USERS`) |
+| Futuro | OAuth si se abre a gente fuera de la familia (cada uno su TeslaMate) |
 
 ## Referencias
 

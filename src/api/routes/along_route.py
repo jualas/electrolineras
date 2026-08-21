@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from api.auth.private_access import require_private_access
 from api.config import settings
 from api.dependencies import get_repository
 from api.query_params import parse_country_list
@@ -20,7 +21,11 @@ from api.schemas import (
 )
 from db.repository import StationRepository
 
-router = APIRouter(prefix="/api/v1", tags=["route-search"])
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["route-search"],
+    dependencies=[Depends(require_private_access)],
+)
 
 
 @router.get("/stations/along-route")

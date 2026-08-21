@@ -488,7 +488,6 @@ class PrivateStackStatusResult(BaseModel):
 class AuthConfigResponse(BaseModel):
     private_stack_enabled: bool
     login_enabled: bool
-    login_username: str | None = None
     token_fallback_enabled: bool
 
 
@@ -496,6 +495,7 @@ class AuthSessionResponse(BaseModel):
     authenticated: bool
     private_stack_enabled: bool
     login_enabled: bool
+    username: str | None = None
 
 
 class NearbyStationResult(BaseModel):

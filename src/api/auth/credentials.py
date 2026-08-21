@@ -5,8 +5,12 @@ import secrets
 from api.config import settings
 
 
-def verify_login_username(username: str) -> bool:
-    expected = settings.private_auth_username.strip()
-    if not expected or not username:
-        return False
-    return secrets.compare_digest(username.strip().lower(), expected.lower())
+def find_user_secret(username: str) -> str | None:
+    """Busca el secreto TOTP del usuario dado (comparación case-insensitive)."""
+    normalized = username.strip().lower()
+    if not normalized:
+        return None
+    for candidate_username, secret in settings.auth_users():
+        if secrets.compare_digest(candidate_username.strip().lower(), normalized):
+            return secret
+    return None

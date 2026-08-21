@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.access_filters import passes_access_filters
+from api.auth.private_access import require_private_access
 from api.converters import effective_dynamic_status, stations_to_geojson
 from api.dependencies import get_repository
 from api.query_params import (
@@ -35,7 +36,11 @@ from ingest.config import settings as ingest_settings
 from ingest.ocm_parser import OCM_SOURCE
 from models.station import Station
 
-router = APIRouter(prefix="/api/v1", tags=["stations"])
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["stations"],
+    dependencies=[Depends(require_private_access)],
+)
 
 
 def _validate_kw_range(min_kw: float | None, max_kw: float | None) -> None:

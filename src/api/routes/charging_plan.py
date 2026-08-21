@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from api.auth.private_access import require_private_access
 from api.charging_plan_service import ChargingPlanBuildResult, RouteVariantPlanBuild, build_charging_plan
 from api.config import settings
 from api.dependencies import get_repository
@@ -24,7 +25,11 @@ from api.schemas import (
 )
 from db.repository import StationRepository
 
-router = APIRouter(prefix="/api/v1", tags=["charging-plan"])
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["charging-plan"],
+    dependencies=[Depends(require_private_access)],
+)
 
 
 def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanResponse:

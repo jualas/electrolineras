@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.access_filters import classify_access, passes_access_filters
+from api.auth.private_access import require_private_access
 from api.config import settings
 from api.dependencies import get_repository
 from api.query_params import parse_bbox, parse_country_list
@@ -20,7 +21,11 @@ from db.repository import StationRepository
 from db.spatial import haversine_m
 from models.station import Station
 
-router = APIRouter(prefix="/api/v1", tags=["city-search"])
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["city-search"],
+    dependencies=[Depends(require_private_access)],
+)
 
 
 def _validate_kw_range(min_kw: float | None, max_kw: float | None) -> None:

@@ -2220,6 +2220,45 @@ button {
   opacity: 0.6;
 }
 
+.map-logout-btn {
+  flex: 0 0 auto;
+  height: 2.25rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 1.25rem;
+  background: var(--color-bg);
+}
+
+.login-screen__card {
+  width: 100%;
+  max-width: 22rem;
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, var(--radius-sm));
+  background: var(--color-surface);
+}
+
+.login-screen__brand {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
 .assistant-panel__header {
   display: flex;
   align-items: center;
