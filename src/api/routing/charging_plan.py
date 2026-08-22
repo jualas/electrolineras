@@ -488,12 +488,18 @@ def origin_exclusion_fallback_levels_km(preferred_exclusion_km: float) -> list[t
 
 
 def station_origin_exclusion_km(base_exclusion_km: float, max_power_kw: float) -> float:
-    """Exclusión desde salida: HPC/Supercharger puede adelantarse al tramo ideal ~2 h."""
+    """Exclusión desde salida: HPC/Supercharger puede adelantarse al tramo ideal ~2 h.
+
+    El suelo mínimo nunca debe subir la exclusión por encima de base_exclusion_km:
+    si ya venía relajada (p. ej. nivel de emergencia por debajo del suelo), debe
+    mantenerse relajada, no volver a inflarse hasta el suelo.
+    """
     if base_exclusion_km <= 0:
         return 0.0
     if max_power_kw >= HPC_EARLY_STOP_MIN_KW:
         relaxed = base_exclusion_km * HPC_ORIGIN_EXCLUSION_FRACTION
-        return max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, min(base_exclusion_km, relaxed))
+        floor = min(MIN_ORIGIN_SKIP_ABSOLUTE_KM, base_exclusion_km)
+        return max(floor, min(base_exclusion_km, relaxed))
     return base_exclusion_km
 
 
@@ -879,6 +885,41 @@ def build_planned_route_stops_greedy(
     current_route_km = origin_position_km
     current_soc = profile.soc_percent
     previous_route_km = origin_position_km
+    # Última parada descartada por "prematura" (#6098) que sí hacía avanzar la ruta:
+    # se usa como último recurso si, tras descartarla, no queda ningún cargador alcanzable.
+    last_resort: tuple[ScoredChargingStop, float, float] | None = None
+
+    def _accept_stop(chosen: ScoredChargingStop, departure_soc: float, charge_minutes: float) -> None:
+        nonlocal previous_route_km, current_route_km, current_soc
+        stop_route_km = chosen.route_distance_km
+        leg_distance_km = max(0.0, stop_route_km - previous_route_km)
+        leg_driving_minutes = driving_minutes_for_distance(leg_distance_km, avg_speed_kmh)
+        if leg_driving_minutes > MAX_DRIVING_LEG_MINUTES + 5:
+            warnings.append(
+                f"Tramo {len(planned) + 1}: ~{leg_driving_minutes:.0f} min conducción "
+                f"(recomendado ≤{TARGET_DRIVING_LEG_MINUTES:.0f} min, máx. {MAX_DRIVING_LEG_MINUTES:.0f})."
+            )
+        planned.append(
+            PlannedRouteStop(
+                order=len(planned) + 1,
+                station=chosen.station,
+                deviation_km=chosen.deviation_km,
+                route_distance_km=chosen.route_distance_km,
+                extra_minutes=chosen.extra_minutes,
+                wrong_side=chosen.wrong_side,
+                distance_from_origin_km=round(stop_route_km - trip_start_route_km, 2),
+                leg_distance_km=round(leg_distance_km, 2),
+                leg_driving_minutes=round(leg_driving_minutes, 1),
+                soc_arrival_pct=chosen.soc_arrival_pct,
+                soc_departure_pct=round(departure_soc, 1),
+                charge_minutes=charge_minutes,
+                classification=chosen.classification,
+            )
+        )
+        used_station_ids.add(chosen.station.id)
+        previous_route_km = stop_route_km
+        current_route_km = stop_route_km
+        current_soc = departure_soc
 
     max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
     target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
@@ -980,6 +1021,15 @@ def build_planned_route_stops_greedy(
                         warnings.append(note)
                     break
         if not segment_matches:
+            if last_resort is not None and last_resort[0].route_distance_km > previous_route_km + 1e-6:
+                resort_chosen, resort_departure_soc, resort_charge_minutes = last_resort
+                last_resort = None
+                warnings.append(
+                    f"Parada a {resort_chosen.distance_from_origin_km:.0f} km antes descartada por prematura, "
+                    "pero era la única alcanzable: se usa igualmente para no quedarte sin batería."
+                )
+                _accept_stop(resort_chosen, resort_departure_soc, resort_charge_minutes)
+                continue
             warnings.append(
                 f"No hay cargador alcanzable en el tramo ~{current_route_km:.0f}–{segment_end_km:.0f} km "
                 f"(SOC {current_soc:.0f} %, máx. {MAX_DRIVING_LEG_MINUTES / 60:.0f} h conducción)."
@@ -1058,39 +1108,19 @@ def build_planned_route_stops_greedy(
             avg_speed_kmh=avg_speed_kmh,
         ):
             used_station_ids.add(chosen.station.id)
+            if last_resort is None or last_resort[0].route_distance_km <= previous_route_km + 1e-6:
+                # El primer descarte de esta parada (tras la anterior aceptada) viene del pool
+                # más amplio, antes de excluir candidatos peores en rondas siguientes: es el
+                # mejor último recurso posible. Se descarta cualquier resto obsoleto de una
+                # parada ya superada (de una parada previa aceptada normalmente).
+                last_resort = (chosen, departure_soc, charge_minutes)
             warnings.append(
                 f"Omitido cargador a {chosen.distance_from_origin_km:.0f} km (parada innecesaria tan cerca de la salida)."
             )
             if len(used_station_ids) > max_stops * 3:
                 break
             continue
-        leg_driving_minutes = driving_minutes_for_distance(leg_distance_km, avg_speed_kmh)
-        if leg_driving_minutes > MAX_DRIVING_LEG_MINUTES + 5:
-            warnings.append(
-                f"Tramo {len(planned) + 1}: ~{leg_driving_minutes:.0f} min conducción "
-                f"(recomendado ≤{TARGET_DRIVING_LEG_MINUTES:.0f} min, máx. {MAX_DRIVING_LEG_MINUTES:.0f})."
-            )
-        planned.append(
-            PlannedRouteStop(
-                order=len(planned) + 1,
-                station=chosen.station,
-                deviation_km=chosen.deviation_km,
-                route_distance_km=chosen.route_distance_km,
-                extra_minutes=chosen.extra_minutes,
-                wrong_side=chosen.wrong_side,
-                distance_from_origin_km=round(stop_route_km - trip_start_route_km, 2),
-                leg_distance_km=round(leg_distance_km, 2),
-                leg_driving_minutes=round(leg_driving_minutes, 1),
-                soc_arrival_pct=chosen.soc_arrival_pct,
-                soc_departure_pct=round(departure_soc, 1),
-                charge_minutes=charge_minutes,
-                classification=chosen.classification,
-            )
-        )
-        used_station_ids.add(chosen.station.id)
-        previous_route_km = stop_route_km
-        current_route_km = stop_route_km
-        current_soc = departure_soc
+        _accept_stop(chosen, departure_soc, charge_minutes)
 
     if planned:
         final_profile = _profile_at_soc(profile, current_soc)
