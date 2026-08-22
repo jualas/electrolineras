@@ -510,6 +510,8 @@ export function AssistantPanel({
             selectedStationId={selectedStationId}
             onSelectStation={onSelectStation}
             variant="assistant"
+            originLabel="Tu coche"
+            destinationLabel={destination?.label}
           />
         </div>
       )}

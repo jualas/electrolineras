@@ -429,6 +429,8 @@ export function RouteSearchPanel({
           plan={chargePlan}
           selectedStationId={selectedStationId}
           onSelectStation={onSelectStation}
+          originLabel={originPoint?.label ?? originText}
+          destinationLabel={destPoint?.label ?? destText}
         />
       )}
 

@@ -54,6 +54,9 @@ export function ChargingStopList({
               <div>
                 <p className="route-result__title">{stationLabel(item.station)}</p>
                 <p className="route-result__operator">{item.station.operator ?? '—'}</p>
+                {item.station.location.address && (
+                  <p className="route-result__address">{item.station.location.address}</p>
+                )}
               </div>
             </div>
             <span className={classificationClassName(item.classification, 'charging-class')}>

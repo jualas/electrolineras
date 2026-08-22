@@ -13,6 +13,8 @@ type ChargingPlanResultsProps = {
   selectedStationId?: string | null
   onSelectStation?: (station: import('../api/types').Station | null) => void
   variant?: 'full' | 'assistant'
+  originLabel?: string | null
+  destinationLabel?: string | null
 }
 
 /** Estrategias de «cargar antes de salir» — no forman parte del relato de la ruta. */
@@ -38,11 +40,31 @@ function compactStopDistanceLabel(stop: PlannedRouteStopResult): string {
   return `km ${stop.distance_from_origin_km.toFixed(0)} · llegada ${stop.soc_arrival_pct.toFixed(0)} % · carga ${stop.charge_minutes.toFixed(0)} min → ${stop.soc_departure_pct.toFixed(0)} % · ${stop.station.max_power_kw.toFixed(0)} kW`
 }
 
-function TripSummaryBox({ summary }: { summary: NonNullable<ChargingPlanResponse['route_trip_summary']> }) {
+function TripSummaryBox({
+  summary,
+  distanceKm,
+  originLabel,
+  destinationLabel,
+}: {
+  summary: NonNullable<ChargingPlanResponse['route_trip_summary']>
+  distanceKm?: number | null
+  originLabel?: string | null
+  destinationLabel?: string | null
+}) {
   return (
     <div className="reve-trip-summary" aria-label="Resumen del viaje">
+      {originLabel && destinationLabel && (
+        <p className="reve-trip-summary__route">
+          {originLabel} → {destinationLabel}
+        </p>
+      )}
       <p className="reve-trip-summary__title">Resumen del viaje</p>
       <ul className="reve-trip-summary__stats">
+        {distanceKm != null && (
+          <li>
+            <strong>{distanceKm.toFixed(0)} km</strong> distancia
+          </li>
+        )}
         <li>
           <strong>{summary.total_duration_minutes.toFixed(0)} min</strong> total
         </li>
@@ -78,6 +100,8 @@ export function ChargingPlanResults({
   selectedStationId,
   onSelectStation,
   variant = 'full',
+  originLabel,
+  destinationLabel,
 }: ChargingPlanResultsProps) {
   const assistant = variant === 'assistant'
   const plannedStops = plan.planned_stops ?? []
@@ -132,14 +156,28 @@ export function ChargingPlanResults({
         ) : (
           <p className="route-message">No hay paradas en el corredor alcanzables con el SOC actual.</p>
         )}
-        {tripSummary && <TripSummaryBox summary={tripSummary} />}
+        {tripSummary && (
+          <TripSummaryBox
+            summary={tripSummary}
+            distanceKm={plan.route_distance_km}
+            originLabel={originLabel}
+            destinationLabel={destinationLabel}
+          />
+        )}
       </>
     )
   }
 
   return (
     <>
-      {tripSummary && plan.mode === 'route' && <TripSummaryBox summary={tripSummary} />}
+      {tripSummary && plan.mode === 'route' && (
+        <TripSummaryBox
+          summary={tripSummary}
+          distanceKm={plan.route_distance_km}
+          originLabel={originLabel}
+          destinationLabel={destinationLabel}
+        />
+      )}
 
       {plan.warnings.length > 0 && (!assistant || !planComplete) && (
         <ul className="charge-warnings" aria-label="Alertas del plan">

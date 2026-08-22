@@ -1118,6 +1118,13 @@ button {
   background: var(--color-surface-elevated, var(--color-surface));
 }
 
+.reve-trip-summary__route {
+  margin: 0 0 0.3rem;
+  font-weight: 650;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
 .reve-trip-summary__title {
   margin: 0 0 0.4rem;
   font-weight: 600;
@@ -1444,6 +1451,12 @@ button {
 
 .route-result__operator {
   margin: 0.1rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.route-result__address {
+  margin: 0.05rem 0 0;
   font-size: 0.75rem;
   color: var(--color-text-muted);
 }

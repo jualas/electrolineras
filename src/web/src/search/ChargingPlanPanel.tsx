@@ -762,6 +762,8 @@ export function ChargingPlanPanel({
             plan={lastResponse}
             selectedStationId={selectedStationId}
             onSelectStation={onSelectStation}
+            originLabel={originLabel}
+            destinationLabel={emergencyMode ? undefined : destPoint?.label ?? replanDestination?.label}
           />
 
           {activeTrip && !emergencyMode ? (
