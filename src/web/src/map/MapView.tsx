@@ -5,13 +5,11 @@ import { chargingPlanRouteMapFeatures, routeChargingStops, routeMapFitPoints, ty
 import { alongRouteToFeatures } from '../api/route'
 import { fetchStationsGeoJSON } from '../api/stations'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station, StationFeature } from '../api/types'
-import type { ThemeMode } from '../hooks/useTheme'
 import {
   clearCityOverlay,
   ensureCityLayers,
   setCityReference,
   setCityRadiusCircle,
-  updateCityLayerTheme,
 } from './cityLayers'
 import {
   activeRouteGeometry,
@@ -26,7 +24,6 @@ import {
   setRouteComparisonLines,
   setRouteEndpoints,
   setRangeCircle,
-  updateRouteLayerTheme,
 } from './routeLayers'
 import {
   CLUSTER_COUNT_LAYER_ID,
@@ -47,7 +44,6 @@ import {
   stationPopupHtml,
   STATIONS_BROWSE_SOURCE_ID,
   updatePlannedStopSelection,
-  updateStationLayerTheme,
   type StationMapMode,
 } from './stationLayers'
 import {
@@ -85,7 +81,6 @@ function getMapUiPadding(): maplibregl.PaddingOptions {
 
 type MapViewProps = {
   className?: string
-  theme: ThemeMode
   loadStations?: boolean
   minKw?: number
   maxKw?: number
@@ -193,7 +188,6 @@ function handleClusterClick(
 
 export function MapView({
   className,
-  theme,
   loadStations = true,
   minKw,
   maxKw,
@@ -226,7 +220,6 @@ export function MapView({
   const coverageBoundsRef = useRef<MapBounds | null>(null)
   const lastLoadedZoomRef = useRef<number | null>(null)
   const stationMapModeRef = useRef<StationMapMode>('browse')
-  const themeRef = useRef(theme)
   const loadStationsRef = useRef(loadStations)
   const mapFocusPlaceRef = useRef(mapFocusPlace)
   const stationFiltersRef = useRef({
@@ -249,7 +242,6 @@ export function MapView({
   const scheduleLoadRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
   const applyActiveOverlayRef = useRef<(map: maplibregl.Map) => void>(() => undefined)
 
-  themeRef.current = theme
   loadStationsRef.current = loadStations
   mapFocusPlaceRef.current = mapFocusPlace
   stationFiltersRef.current = {
@@ -325,7 +317,7 @@ export function MapView({
       if (!place) {
         return
       }
-      ensureCityLayers(map, themeRef.current)
+      ensureCityLayers(map)
       setCityReference(map, place)
       setCityRadiusCircle(map, null, null)
     },
@@ -334,7 +326,7 @@ export function MapView({
 
   const paintBrowseStations = useCallback(
     (map: maplibregl.Map, features: StationFeature[]) => {
-      ensureStationLayers(map, themeRef.current)
+      ensureStationLayers(map)
       clearOverlayStationData(map)
       setStationMapModeState(map, 'browse')
       const visibleBounds = boundsFromMap(map)
@@ -352,7 +344,7 @@ export function MapView({
 
   const paintOverlayStations = useCallback(
     (map: maplibregl.Map, features: StationFeature[], mode: 'route' | 'charge') => {
-      ensureStationLayers(map, themeRef.current)
+      ensureStationLayers(map)
       clearBrowseStationData(map)
       setStationMapModeState(map, 'overlay')
       setOverlayStationData(map, {
@@ -370,7 +362,7 @@ export function MapView({
   )
 
   const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse, chargePlan?: ChargingPlanResponse | null) => {
-    ensureRouteLayers(map, themeRef.current)
+    ensureRouteLayers(map)
     clearCityOverlay(map)
     const variantGeometries = routeVariantGeometriesFromResponse(data)
     const preference = data.route_preference ?? chargePlan?.route_preference ?? 'fastest'
@@ -407,7 +399,7 @@ export function MapView({
   }, [paintOverlayStations])
 
   const applyChargePlanOverlay = useCallback((map: maplibregl.Map, data: ChargingPlanResponse) => {
-    ensureRouteLayers(map, themeRef.current)
+    ensureRouteLayers(map)
     clearCityOverlay(map)
     const variantGeometries = routeVariantGeometriesFromResponse(data)
     const preference = data.route_preference ?? 'fastest'
@@ -689,9 +681,9 @@ export function MapView({
       enhancePlaceLabels(map)
       ensureReliefLayers(map)
       ensureTrafficLayer(map)
-      ensureStationLayers(map, themeRef.current)
-      ensureRouteLayers(map, themeRef.current)
-      ensureCityLayers(map, themeRef.current)
+      ensureStationLayers(map)
+      ensureRouteLayers(map)
+      ensureCityLayers(map)
       const layers = mapLayersRef.current
       setShadowVisible(map, true)
       if (layers) {
@@ -755,16 +747,6 @@ export function MapView({
       mapRef.current = null
     }
   }, [])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) {
-      return
-    }
-    updateStationLayerTheme(map, theme)
-    updateRouteLayerTheme(map, theme)
-    updateCityLayerTheme(map, theme)
-  }, [theme])
 
   useEffect(() => {
     const map = mapRef.current

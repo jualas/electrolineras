@@ -7,7 +7,6 @@ import { routeChargingStops, type RouteChargingStop } from '../../charging/planR
 import { MapStationFilters, type MapStationFilterState } from '../../filters/MapStationFilters'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
-import { useTheme } from '../../hooks/useTheme'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
 import type { MapLayerToggles } from '../../map/MapLayerControl'
 import { MapView } from '../../map/MapView'
@@ -19,7 +18,6 @@ import {
   isNavModeEnabled,
 } from '../../navigation/appModes'
 import { SearchPanel, type SearchMode } from '../../search/SearchPanel'
-import { ThemeToggle } from './ThemeToggle'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 
 const DEFAULT_MAP_LAYERS: MapLayerToggles = {
@@ -40,7 +38,6 @@ const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
 }
 
 export function AppShell() {
-  const { theme, toggleTheme } = useTheme()
   const [mode, setMode] = useState<SearchMode>(defaultNavMode)
   const [panelOpen, setPanelOpen] = useState(false)
   const [apiOk, setApiOk] = useState(false)
@@ -226,7 +223,6 @@ export function AppShell() {
     <div className={`app-shell${mode === 'map' ? ' app-shell--map-search' : ''}`}>
       <MapView
         className="app-map"
-        theme={theme}
         loadStations={mode === 'map'}
         minKw={mode === 'map' ? apiQuery.minKw : apiQuery.minKw}
         maxKw={mode === 'map' ? apiQuery.maxKw : apiQuery.maxKw}
@@ -289,7 +285,6 @@ export function AppShell() {
                 </button>
               ))}
             </nav>
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </header>
 
           {mode === 'map' && (

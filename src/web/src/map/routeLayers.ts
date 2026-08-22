@@ -14,24 +14,13 @@ export const RANGE_SOURCE_ID = 'route-range'
 export const RANGE_LAYER_ID = 'route-range-layer'
 export const RANGE_OUTLINE_LAYER_ID = 'route-range-outline'
 
-type ThemeMode = 'light' | 'dark'
-
-function routeColors(theme: ThemeMode) {
-  if (theme === 'dark') {
-    return {
-      line: '#5fd4ff',
-      origin: '#7ee787',
-      destination: '#ff7b72',
-    }
-  }
-  return {
-    line: '#0d7ea6',
-    origin: '#1a7f37',
-    destination: '#cf222e',
-  }
+const ROUTE_COLORS = {
+  line: '#0d7ea6',
+  origin: '#1a7f37',
+  destination: '#cf222e',
 }
 
-export function ensureRouteLayers(map: maplibregl.Map, theme: ThemeMode): void {
+export function ensureRouteLayers(map: maplibregl.Map): void {
   if (!map.getSource(ROUTE_SOURCE_ID)) {
     map.addSource(ROUTE_SOURCE_ID, {
       type: 'geojson',
@@ -60,7 +49,7 @@ export function ensureRouteLayers(map: maplibregl.Map, theme: ThemeMode): void {
     })
   }
 
-  const colors = routeColors(theme)
+  const colors = ROUTE_COLORS
 
   if (!map.getLayer(ROUTE_LAYER_ID)) {
     map.addLayer(
@@ -171,26 +160,6 @@ export function ensureRouteLayers(map: maplibregl.Map, theme: ThemeMode): void {
       },
       ROUTE_LAYER_ID,
     )
-  }
-}
-
-export function updateRouteLayerTheme(map: maplibregl.Map, theme: ThemeMode): void {
-  if (!map.getLayer(ROUTE_LAYER_ID)) {
-    return
-  }
-  const colors = routeColors(theme)
-  map.setPaintProperty(ROUTE_LAYER_ID, 'line-color', colors.line)
-  if (map.getLayer(ROUTE_ALT_LAYER_ID)) {
-    map.setPaintProperty(ROUTE_ALT_LAYER_ID, 'line-color', colors.line)
-  }
-  if (map.getLayer(ROUTE_DEST_LAYER_ID)) {
-    map.setPaintProperty(ROUTE_DEST_LAYER_ID, 'circle-color', colors.destination)
-  }
-  if (map.getLayer(RANGE_LAYER_ID)) {
-    map.setPaintProperty(RANGE_LAYER_ID, 'fill-color', colors.origin)
-  }
-  if (map.getLayer(RANGE_OUTLINE_LAYER_ID)) {
-    map.setPaintProperty(RANGE_OUTLINE_LAYER_ID, 'line-color', colors.origin)
   }
 }
 

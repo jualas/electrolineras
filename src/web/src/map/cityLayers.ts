@@ -9,21 +9,10 @@ export const CITY_REFERENCE_LAYER_ID = 'city-reference-point'
 export const CITY_RADIUS_LAYER_ID = 'city-radius-fill'
 export const CITY_RADIUS_LINE_LAYER_ID = 'city-radius-line'
 
-type ThemeMode = 'light' | 'dark'
-
-function cityColors(theme: ThemeMode) {
-  if (theme === 'dark') {
-    return {
-      point: '#d2a8ff',
-      fill: 'rgba(210, 168, 255, 0.12)',
-      line: 'rgba(210, 168, 255, 0.55)',
-    }
-  }
-  return {
-    point: '#8250df',
-    fill: 'rgba(130, 80, 223, 0.12)',
-    line: 'rgba(130, 80, 223, 0.45)',
-  }
+const CITY_COLORS = {
+  point: '#8250df',
+  fill: 'rgba(130, 80, 223, 0.12)',
+  line: 'rgba(130, 80, 223, 0.45)',
 }
 
 function circlePolygon(lon: number, lat: number, radiusM: number, steps = 64): [number, number][] {
@@ -40,7 +29,7 @@ function circlePolygon(lon: number, lat: number, radiusM: number, steps = 64): [
   return coordinates
 }
 
-export function ensureCityLayers(map: maplibregl.Map, theme: ThemeMode): void {
+export function ensureCityLayers(map: maplibregl.Map): void {
   if (!map.getSource(CITY_REFERENCE_SOURCE_ID)) {
     map.addSource(CITY_REFERENCE_SOURCE_ID, {
       type: 'geojson',
@@ -55,7 +44,7 @@ export function ensureCityLayers(map: maplibregl.Map, theme: ThemeMode): void {
     })
   }
 
-  const colors = cityColors(theme)
+  const colors = CITY_COLORS
   const beforeLayer = map.getLayer(CLUSTER_LAYER_ID) ? CLUSTER_LAYER_ID : undefined
 
   if (!map.getLayer(CITY_RADIUS_LAYER_ID)) {
@@ -104,16 +93,6 @@ export function ensureCityLayers(map: maplibregl.Map, theme: ThemeMode): void {
       beforeLayer,
     )
   }
-}
-
-export function updateCityLayerTheme(map: maplibregl.Map, theme: ThemeMode): void {
-  if (!map.getLayer(CITY_REFERENCE_LAYER_ID)) {
-    return
-  }
-  const colors = cityColors(theme)
-  map.setPaintProperty(CITY_REFERENCE_LAYER_ID, 'circle-color', colors.point)
-  map.setPaintProperty(CITY_RADIUS_LAYER_ID, 'fill-color', colors.fill)
-  map.setPaintProperty(CITY_RADIUS_LINE_LAYER_ID, 'line-color', colors.line)
 }
 
 export function setCityReference(map: maplibregl.Map, reference: LatLon | null): void {
