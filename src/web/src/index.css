@@ -1110,35 +1110,213 @@ button {
   margin: 0.5rem 0 0;
 }
 
-.reve-trip-summary {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 0.65rem 0.75rem;
-  margin-bottom: 0.5rem;
+.reve-route-summary {
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
   background: var(--color-surface-elevated, var(--color-surface));
+  box-shadow: var(--shadow-sm);
 }
 
-.reve-trip-summary__route {
-  margin: 0 0 0.3rem;
-  font-weight: 650;
-  font-size: 0.95rem;
-  color: var(--color-text);
+.reve-route-summary__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
-.reve-trip-summary__title {
-  margin: 0 0 0.4rem;
+.reve-route-summary__route {
+  margin: 0 0 0.15rem;
   font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.reve-route-summary__duration {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.5rem;
+  color: var(--color-primary, var(--color-text));
+}
+
+.reve-route-summary__subline {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.reve-route-summary__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.reve-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary, var(--color-text));
+  cursor: pointer;
+}
+
+.reve-route-summary__divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0.75rem 0;
+}
+
+.reve-route-summary__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reve-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.reve-stat-row__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-text-muted);
+}
+
+.reve-stat-row__value {
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.reve-timeline {
+  list-style: none;
+  margin: 0.75rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.reve-timeline__origin {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.25rem;
+}
+
+.reve-timeline__origin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--color-primary, var(--color-accent));
+  color: var(--color-primary-contrast, var(--color-accent-contrast));
+  flex-shrink: 0;
+}
+
+.reve-timeline__origin-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.reve-timeline__origin-soc {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.reve-timeline__segment {
+  position: relative;
+  padding-left: 0.875rem;
+  margin-left: 0.875rem;
+  border-left: 2px dashed var(--color-border);
+}
+
+.reve-timeline__segment:last-child {
+  border-left-color: transparent;
+}
+
+.reve-timeline__leg {
+  margin: 0 0 0.5rem;
+  padding: 0.15rem 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.reve-stop-card {
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+
+.reve-stop-card--active {
+  outline: 2px solid var(--color-accent);
+}
+
+.reve-stop-card__button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reve-stop-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.reve-stop-card__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  background: var(--color-primary, var(--color-accent));
+  color: var(--color-primary-contrast, var(--color-accent-contrast));
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.reve-stop-card__title-group {
+  min-width: 0;
+}
+
+.reve-stop-card__title {
+  margin: 0;
+  font-weight: 650;
   font-size: 0.9rem;
 }
 
-.reve-trip-summary__stats {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.reve-stop-card__address {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.75rem;
-  font-size: 0.85rem;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
 }
 
 .charging-preferences {
@@ -1437,8 +1615,8 @@ button {
   min-width: 1.35rem;
   height: 1.35rem;
   border-radius: 999px;
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
+  background: var(--color-primary, var(--color-accent));
+  color: var(--color-primary-contrast, var(--color-accent-contrast));
   font-size: 0.75rem;
   font-weight: 700;
 }
@@ -1573,9 +1751,9 @@ button {
 }
 
 .route-result-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .route-result-card .route-result {

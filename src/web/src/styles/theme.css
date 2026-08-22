@@ -41,6 +41,8 @@
   --color-text-muted: #9aa8b8;
   --color-accent: #3db8e8;
   --color-accent-contrast: #0f1419;
+  --color-primary: #e7ecf1;
+  --color-primary-contrast: #0f1419;
   --color-success: #3ecf8e;
   --color-danger: #f07178;
   --color-map-overlay: rgba(15, 20, 25, 0.92);
@@ -58,6 +60,8 @@
     --color-text-muted: #9aa8b8;
     --color-accent: #3db8e8;
     --color-accent-contrast: #0f1419;
+    --color-primary: #e7ecf1;
+    --color-primary-contrast: #0f1419;
     --color-success: #3ecf8e;
     --color-danger: #f07178;
     --color-map-overlay: rgba(15, 20, 25, 0.92);
