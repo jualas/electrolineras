@@ -12,6 +12,10 @@ from api.integrations.dify_client import (
 from api.integrations.poi_hints import fetch_destination_poi_hints
 from api.schemas import (
     ChargingPlanResponse,
+    ConsumptionBinName,
+    ConsumptionConfidence,
+    ConsumptionProfileResponse,
+    ConsumptionSource,
     PlannedRouteStopResult,
     TripGuideContext,
     TripGuideResponse,
@@ -131,6 +135,12 @@ def build_trip_guide_context(
     destination_label: str | None = None,
     cultural_poi_enabled: bool = False,
     user_note: str | None = None,
+    consumption_profile: ConsumptionProfileResponse | None = None,
+    consumption_source: ConsumptionSource | None = None,
+    consumption_kwh_per_100km: float | None = None,
+    consumption_confidence: ConsumptionConfidence | None = None,
+    consumption_note: str | None = None,
+    consumption_bin: ConsumptionBinName | None = None,
 ) -> TripGuideContext:
     poi_hints: list[str] = []
     if cultural_poi_enabled and plan.destination:
@@ -151,6 +161,20 @@ def build_trip_guide_context(
         charging_while_visiting_hint=_charging_while_visiting_hint(plan),
         vehicle_snapshot=_vehicle_snapshot(vehicle),
         plan_snapshot=_plan_snapshot(plan),
+        consumption_profile=consumption_profile,
+        consumption_source=consumption_source if consumption_source is not None else plan.consumption_source,
+        consumption_kwh_per_100km=(
+            consumption_kwh_per_100km
+            if consumption_kwh_per_100km is not None
+            else plan.consumption_kwh_per_100km
+        ),
+        consumption_confidence=(
+            consumption_confidence
+            if consumption_confidence is not None
+            else plan.consumption_confidence
+        ),
+        consumption_note=consumption_note if consumption_note is not None else plan.consumption_note,
+        consumption_bin=consumption_bin if consumption_bin is not None else plan.consumption_bin,
     )
 
 
@@ -178,6 +202,18 @@ def format_deterministic_guide(
             lines.append(f"- Referencia convencionales: ~{conventional:.0f} km")
         if snapshot.get("route_variants_approximate"):
             lines.append("- _Variantes de referencia aproximadas (OSRM no disponible)._")
+        lines.append("")
+
+    if context.consumption_note or context.consumption_kwh_per_100km is not None:
+        lines.append("### Consumo del plan")
+        if context.consumption_note:
+            lines.append(f"- {context.consumption_note}")
+        elif context.consumption_kwh_per_100km is not None:
+            lines.append(f"- Consumo efectivo: **{context.consumption_kwh_per_100km:.1f} kWh/100 km**")
+        if context.consumption_source:
+            lines.append(f"- Fuente: `{context.consumption_source}`")
+        if context.consumption_confidence:
+            lines.append(f"- Confianza: `{context.consumption_confidence}`")
         lines.append("")
 
     if bullets:
@@ -258,6 +294,12 @@ def build_trip_guide_response(
     cultural_poi_enabled: bool = False,
     user_note: str | None = None,
     invoke_dify: bool = True,
+    consumption_profile: ConsumptionProfileResponse | None = None,
+    consumption_source: ConsumptionSource | None = None,
+    consumption_kwh_per_100km: float | None = None,
+    consumption_confidence: ConsumptionConfidence | None = None,
+    consumption_note: str | None = None,
+    consumption_bin: ConsumptionBinName | None = None,
 ) -> TripGuideResponse:
     summary, bullets = build_agent_narration(plan)
     context = build_trip_guide_context(
@@ -266,6 +308,12 @@ def build_trip_guide_response(
         destination_label=destination_label,
         cultural_poi_enabled=cultural_poi_enabled,
         user_note=user_note,
+        consumption_profile=consumption_profile,
+        consumption_source=consumption_source,
+        consumption_kwh_per_100km=consumption_kwh_per_100km,
+        consumption_confidence=consumption_confidence,
+        consumption_note=consumption_note,
+        consumption_bin=consumption_bin,
     )
 
     guide_source: Literal["deterministic", "dify"] = "deterministic"

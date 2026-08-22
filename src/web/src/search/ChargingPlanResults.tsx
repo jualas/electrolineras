@@ -7,6 +7,7 @@ import {
 import { routeExportSpecFromChargingPlan, routeChargingStops, isChargingPlanComplete } from '../charging/planRouteStops'
 import { avoidTollsLabel, formatRouteAlternativesKm } from './RoutePreferenceFields'
 import { ChargingStopList } from './ChargingStopList'
+import { formatDurationMinutes } from '../utils/duration'
 
 type ChargingPlanResultsProps = {
   plan: ChargingPlanResponse
@@ -21,7 +22,7 @@ const ORIGIN_NOISE_STRATEGY_IDS = new Set(['charge_at_origin'])
 function plannedStopDistanceLabel(stop: PlannedRouteStopResult): string {
   const drive =
     stop.leg_driving_minutes != null && stop.leg_driving_minutes > 0
-      ? ` · ~${stop.leg_driving_minutes.toFixed(0)} min conducción`
+      ? ` · ~${formatDurationMinutes(stop.leg_driving_minutes)} conducción`
       : ''
   const energy =
     stop.leg_energy_kwh != null && stop.leg_energy_kwh > 0
@@ -31,11 +32,12 @@ function plannedStopDistanceLabel(stop: PlannedRouteStopResult): string {
     stop.estimated_charge_cost_eur != null
       ? ` · ~${stop.estimated_charge_cost_eur.toFixed(2)} €`
       : ''
-  return `${stop.distance_from_origin_km.toFixed(0)} km · tramo ${stop.leg_distance_km.toFixed(0)} km${drive}${energy} · ${stop.soc_arrival_pct.toFixed(0)}→${stop.soc_departure_pct.toFixed(0)} % · ~${stop.charge_minutes.toFixed(0)} min carga${cost}`
+  const charge = formatDurationMinutes(stop.charge_minutes)
+  return `${stop.distance_from_origin_km.toFixed(0)} km · tramo ${stop.leg_distance_km.toFixed(0)} km${drive}${energy} · ${stop.soc_arrival_pct.toFixed(0)}→${stop.soc_departure_pct.toFixed(0)} % · ~${charge} carga${cost}`
 }
 
 function compactStopDistanceLabel(stop: PlannedRouteStopResult): string {
-  return `km ${stop.distance_from_origin_km.toFixed(0)} · llegada ${stop.soc_arrival_pct.toFixed(0)} % · carga ${stop.charge_minutes.toFixed(0)} min → ${stop.soc_departure_pct.toFixed(0)} % · ${stop.station.max_power_kw.toFixed(0)} kW`
+  return `km ${stop.distance_from_origin_km.toFixed(0)} · llegada ${stop.soc_arrival_pct.toFixed(0)} % · carga ${formatDurationMinutes(stop.charge_minutes)} → ${stop.soc_departure_pct.toFixed(0)} % · ${stop.station.max_power_kw.toFixed(0)} kW`
 }
 
 function TripSummaryBox({ summary }: { summary: NonNullable<ChargingPlanResponse['route_trip_summary']> }) {
@@ -44,13 +46,13 @@ function TripSummaryBox({ summary }: { summary: NonNullable<ChargingPlanResponse
       <p className="reve-trip-summary__title">Resumen del viaje</p>
       <ul className="reve-trip-summary__stats">
         <li>
-          <strong>{summary.total_duration_minutes.toFixed(0)} min</strong> total
+          <strong>{formatDurationMinutes(summary.total_duration_minutes)}</strong> total
         </li>
         <li>
-          <strong>{summary.driving_duration_minutes.toFixed(0)} min</strong> conducción
+          <strong>{formatDurationMinutes(summary.driving_duration_minutes)}</strong> conducción
         </li>
         <li>
-          <strong>{summary.total_charge_minutes.toFixed(0)} min</strong> recarga
+          <strong>{formatDurationMinutes(summary.total_charge_minutes)}</strong> recarga
         </li>
         <li>
           <strong>{summary.stop_count}</strong> parada{summary.stop_count === 1 ? '' : 's'}
@@ -190,7 +192,7 @@ export function ChargingPlanResults({
               {plannedStops.length > 0 && (
                 <>
                   {' · '}
-                  ~{plannedStops.reduce((sum, stop) => sum + stop.charge_minutes, 0).toFixed(0)} min carga total
+                  ~{formatDurationMinutes(plannedStops.reduce((sum, stop) => sum + stop.charge_minutes, 0))} carga total
                 </>
               )}
             </>

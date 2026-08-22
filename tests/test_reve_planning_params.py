@@ -13,8 +13,9 @@ def test_resolve_consumption_kwh_per_100km_alias() -> None:
 
 def test_resolve_planning_min_kw_exclude_slow() -> None:
     assert resolve_planning_min_kw(100.0, exclude_slow_chargers=True) == 100.0
-    assert resolve_planning_min_kw(22.0, exclude_slow_chargers=True) == 50.0
-    assert resolve_planning_min_kw(None, exclude_slow_chargers=True) == 50.0
+    assert resolve_planning_min_kw(150.0, exclude_slow_chargers=True) == 150.0
+    assert resolve_planning_min_kw(22.0, exclude_slow_chargers=True) == 100.0
+    assert resolve_planning_min_kw(None, exclude_slow_chargers=True) == 100.0
     assert resolve_planning_min_kw(22.0, exclude_slow_chargers=False) == 22.0
 
 

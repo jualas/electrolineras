@@ -216,6 +216,7 @@ def _charge_at_stop(
         max_power_kw=station_max_kw,
         vehicle_preset_id=profile.vehicle_preset_id,
         vehicle_max_charge_kw=profile.max_charge_power_kw,
+        teslamate_car_id=profile.teslamate_car_id,
     )
     return departure, charge_min
 

@@ -14,6 +14,7 @@ import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
 import { ChargingPlanResults } from './ChargingPlanResults'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 import { formatRouteAlternativesKm, RoutePreferenceFields } from './RoutePreferenceFields'
+import { formatDurationMinutes } from '../utils/duration'
 import type { RoutePreference } from '../api/types'
 
 export type RouteEndpointInput = {
@@ -400,7 +401,7 @@ export function RouteSearchPanel({
         <div className="route-summary">
           <p className="route-summary__meta">
             {formatRouteAlternativesKm(lastResponse)} · ~
-            {lastResponse.route_duration_minutes.toFixed(0)} min · {lastResponse.results.length} cargadores
+            {formatDurationMinutes(lastResponse.route_duration_minutes)} · {lastResponse.results.length} cargadores
           </p>
         </div>
       )}
@@ -457,7 +458,7 @@ export function RouteSearchPanel({
                   <p className="route-result__meta">
                     <strong>{summarizeConnectors(item.station.connectors)}</strong>
                     · +{item.deviation_km.toFixed(1)} km desvío
-                    {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
+                    {item.extra_minutes > 0 && <> · +{formatDurationMinutes(item.extra_minutes)}</>}
                     {item.wrong_side && <span className="route-result__warn"> · sentido contrario</span>}
                   </p>
                 <StationDynamicBadge

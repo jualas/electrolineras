@@ -94,6 +94,18 @@ def test_no_charge_when_departure_not_above_arrival() -> None:
     )
 
 
+def test_reve_style_mid_soc_charge_at_200kw() -> None:
+    """46→73 % @200 kW (parada REVE típica): orden de magnitud ~5–10 min."""
+    minutes = estimate_dc_charge_minutes(
+        46.0,
+        73.0,
+        usable_capacity_kwh=50.0,
+        station_max_kw=200.0,
+        vehicle_preset_id="tesla-model3-sr-2023",
+    )
+    assert 4.0 <= minutes <= 12.0
+
+
 def test_leaf_slower_than_model3_same_station() -> None:
     leaf = estimate_dc_charge_minutes(
         20.0,

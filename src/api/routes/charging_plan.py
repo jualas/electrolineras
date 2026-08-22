@@ -299,7 +299,7 @@ def stations_charging_plan(
     ] = 80.0,
     exclude_slow_chargers: Annotated[
         bool,
-        Query(description="Excluir cargadores lentos (AC / <50 kW) del plan en ruta"),
+        Query(description="Excluir carga lenta del plan en ruta (mín. 100 kW DC)"),
     ] = False,
     consumption_kwh_per_100km: Annotated[
         float | None,

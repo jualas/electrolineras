@@ -45,6 +45,7 @@ class VehicleEnergyProfile:
     min_destination_soc_pct: float = 10.0
     min_stop_arrival_soc_pct: float = 10.0
     max_charge_soc_pct: float = 80.0
+    teslamate_car_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -411,8 +412,8 @@ INTERMEDIATE_ARRIVAL_SOC_TARGET = 10.0
 DEPARTURE_SOC_BUFFER_PCT = 3.0
 # Techo DC rápido (UI REVE max_charge_soc); no implica cargar siempre hasta aquí.
 OPTIMAL_CHARGE_CEILING_SOC_PCT = 80.0
-# Punto dulce Tesla/REVE: 10→60-70 % minimiza tiempo total (curva DC LFP/NMC).
-INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT = 65.0
+# Punto dulce Tesla/REVE: 10→60-75 % minimiza tiempo total (curva DC LFP/NMC).
+INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT = 75.0
 # Primer tramo desde 100 %: hasta ~3 h antes de la 1.ª parada.
 FIRST_LEG_FULL_SOC_THRESHOLD_PCT = 95.0
 FIRST_LEG_DRIVING_MINUTES = 180.0
@@ -521,8 +522,13 @@ def _is_meaningful_charging_stop(
     stop_route_km: float,
     trip_start_route_km: float,
     origin_exclusion_km: float,
+    allow_near_origin: bool = False,
 ) -> bool:
-    if origin_exclusion_km > 0 and (stop_route_km - trip_start_route_km) < origin_exclusion_km - 1e-6:
+    if (
+        not allow_near_origin
+        and origin_exclusion_km > 0
+        and (stop_route_km - trip_start_route_km) < origin_exclusion_km - 1e-6
+    ):
         return False
     if leg_distance_km + 1e-6 < min_leg_km * 0.5:
         return False
@@ -545,19 +551,29 @@ def _is_worth_charging_stop(
     origin_exclusion_km: float,
     trip_start_soc_pct: float,
     avg_speed_kmh: float,
+    allow_near_origin: bool = False,
 ) -> bool:
     """Descarta micro-paradas (#6098): alta llegada y poca ganancia de carga."""
     soc_gain = departure_soc_pct - arrival_soc_pct
     if (
-        arrival_soc_pct >= MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT
+        not allow_near_origin
+        and arrival_soc_pct >= MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT
         and charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES
     ):
         return False
-    if arrival_soc_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT:
+    if (
+        not allow_near_origin
+        and arrival_soc_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT
+        and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT
+    ):
         return False
-    if charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT:
+    if (
+        not allow_near_origin
+        and charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES
+        and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT
+    ):
         return False
-    if trip_start_soc_pct >= FIRST_LEG_FULL_SOC_THRESHOLD_PCT:
+    if trip_start_soc_pct >= FIRST_LEG_FULL_SOC_THRESHOLD_PCT and not allow_near_origin:
         first_leg_min_km = max(
             origin_exclusion_km,
             leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES) * 0.9,
@@ -574,6 +590,7 @@ def _is_worth_charging_stop(
         stop_route_km=stop_route_km,
         trip_start_route_km=trip_start_route_km,
         origin_exclusion_km=origin_exclusion_km,
+        allow_near_origin=allow_near_origin,
     )
 
 
@@ -612,6 +629,7 @@ def _profile_at_soc(profile: VehicleEnergyProfile, soc_percent: float) -> Vehicl
         min_destination_soc_pct=profile.min_destination_soc_pct,
         min_stop_arrival_soc_pct=profile.min_stop_arrival_soc_pct,
         max_charge_soc_pct=profile.max_charge_soc_pct,
+        teslamate_car_id=profile.teslamate_car_id,
     )
 
 
@@ -639,6 +657,7 @@ def estimate_charge_minutes(
     max_power_kw: float,
     vehicle_preset_id: str | None = None,
     vehicle_max_charge_kw: float | None = None,
+    teslamate_car_id: int | None = None,
 ) -> float:
     station_kw = max_power_kw
     if vehicle_max_charge_kw is not None:
@@ -649,6 +668,7 @@ def estimate_charge_minutes(
         usable_capacity_kwh=usable_capacity_kwh,
         station_max_kw=station_kw,
         vehicle_preset_id=vehicle_preset_id,
+        teslamate_car_id=teslamate_car_id,
     )
 
 
@@ -667,11 +687,7 @@ def _is_final_driving_hop(
 
 def _intermediate_charge_ceiling_pct(profile: VehicleEnergyProfile) -> float:
     """Techo de carga en paradas intermedias (zona rápida DC, estilo Tesla/REVE)."""
-    return min(
-        profile.max_charge_soc_pct,
-        OPTIMAL_CHARGE_CEILING_SOC_PCT,
-        INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT,
-    )
+    return min(profile.max_charge_soc_pct, OPTIMAL_CHARGE_CEILING_SOC_PCT)
 
 
 def _optimal_departure_soc_for_stop(
@@ -694,10 +710,15 @@ def _optimal_departure_soc_for_stop(
         capped = min(buffered, profile.max_charge_soc_pct)
         return min(100.0, max(capped, arrival_soc_pct + 5.0))
 
-    # Paradas intermedias: energía para ~2 h de conducción, sin llenar hasta el taper lento.
+    # Paradas intermedias: energía para ~2 h de conducción (REVE/Tesla: ampliar si queda mucho viaje).
+    default_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
+    extended_leg_km = leg_distance_for_driving_minutes(
+        avg_speed_kmh,
+        min(MAX_DRIVING_LEG_MINUTES, TARGET_DRIVING_LEG_MINUTES * 1.25),
+    )
     next_leg_km = min(
         remaining_km,
-        leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES),
+        extended_leg_km if remaining_km > default_leg_km * 2.2 else default_leg_km,
     )
     min_departure = soc_required_to_drive_km(
         profile,
@@ -707,7 +728,44 @@ def _optimal_departure_soc_for_stop(
     buffered = min(100.0, min_departure + DEPARTURE_SOC_BUFFER_PCT)
     sweet_spot_ceiling = _intermediate_charge_ceiling_pct(profile)
     departure = min(buffered, sweet_spot_ceiling)
-    return max(departure, arrival_soc_pct + 5.0)
+    departure = max(departure, arrival_soc_pct + 5.0)
+
+    segment_at_departure = _profile_at_soc(profile, departure)
+    reach_from_departure = estimate_charging_reach_km(segment_at_departure)
+    projected_at_dest = soc_at_distance_km(segment_at_departure, remaining_km)
+
+    if remaining_km > reach_from_departure + 5.0:
+        needed_departure = soc_required_to_drive_km(
+            profile,
+            next_leg_km,
+            profile.min_stop_arrival_soc_pct,
+        )
+        departure = min(
+            profile.max_charge_soc_pct,
+            max(departure, needed_departure + DEPARTURE_SOC_BUFFER_PCT),
+        )
+    elif projected_at_dest + 1e-6 < destination_target_soc_pct:
+        # Último tramo alcanzable pero con SOC final bajo: cargar como parada final.
+        soc_at_dest_from_arrival = soc_at_distance_km(
+            _profile_at_soc(profile, arrival_soc_pct),
+            remaining_km,
+        )
+        min_departure = arrival_soc_pct + max(0.0, destination_target_soc_pct - soc_at_dest_from_arrival)
+        buffered = min(100.0, min_departure + DEPARTURE_SOC_BUFFER_PCT)
+        departure = min(max(buffered, departure), profile.max_charge_soc_pct)
+        departure = max(departure, arrival_soc_pct + 5.0)
+
+    # REVE/Tesla: no llenar por encima del dulce ~75 % si el alcance ya cubre el tramo restante.
+    if not is_final_hop:
+        final_reach = estimate_charging_reach_km(_profile_at_soc(profile, departure))
+        if (
+            remaining_km <= final_reach + 5.0
+            and departure > INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT + 1e-6
+            and buffered <= INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT + 1e-6
+        ):
+            departure = INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT
+        departure = max(departure, buffered, arrival_soc_pct + 5.0)
+    return min(departure, profile.max_charge_soc_pct)
 
 
 def _planned_stop_selection_key(
@@ -765,6 +823,7 @@ def _pick_best_planned_stop(
             max_power_kw=stop.station.max_power_kw,
             vehicle_preset_id=profile.vehicle_preset_id,
             vehicle_max_charge_kw=profile.max_charge_power_kw,
+            teslamate_car_id=profile.teslamate_car_id,
         )
         key = _planned_stop_selection_key(
             stop,
@@ -868,6 +927,7 @@ def build_planned_route_stops_greedy(
             trip_start_route_km=trip_start_route_km,
             origin_exclusion_km=origin_exclusion_km,
         )
+        corridor_gap_fallback = False
         if not segment_matches and allow_origin_zone:
             segment_matches = [
                 match
@@ -891,6 +951,31 @@ def build_planned_route_stops_greedy(
                 warnings.append(
                     "Parada más lejana: no hay cargadores en el tramo ideal ~2–3 h; "
                     "revisa corredor o filtros kW."
+                )
+        if not segment_matches:
+            relaxed_min_km = current_route_km + MIN_FORWARD_PROGRESS_KM
+            if relaxed_min_km + 1e-6 < segment_min_km:
+                segment_matches = _filter_segment_matches(
+                    matches,
+                    segment_min_km=relaxed_min_km,
+                    segment_end_km=segment_end_km,
+                    used_station_ids=used_station_ids,
+                    current_route_km=current_route_km,
+                    trip_start_route_km=trip_start_route_km,
+                    origin_exclusion_km=origin_exclusion_km,
+                )
+        if not segment_matches:
+            # Sin HPC justo tras la exclusión DGT: usar el alcanzable más cercano en el tramo.
+            segment_matches = [
+                match
+                for match in matches
+                if match.station.id not in used_station_ids
+                and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
+            ]
+            if segment_matches:
+                corridor_gap_fallback = True
+                warnings.append(
+                    "Primera parada antes del tramo ideal ~2 h: no hay HPC más adelante en este corredor."
                 )
         if not segment_matches:
             warnings.append(
@@ -923,15 +1008,30 @@ def build_planned_route_stops_greedy(
             if stop.route_distance_km > current_route_km + MIN_FORWARD_PROGRESS_KM - 1e-6
             and stop.route_distance_km >= segment_min_km - 1e-6
         ]
+        used_relaxed_forward = False
         if forward_viable:
             viable = forward_viable
         elif viable:
-            warnings.append(
-                f"Sin cargadores por delante de km {current_route_km:.0f}; "
-                "revisa corredor o filtros kW."
-            )
-            break
+            nearer = [
+                stop
+                for stop in viable
+                if stop.route_distance_km > current_route_km + MIN_FORWARD_PROGRESS_KM - 1e-6
+            ]
+            if nearer:
+                viable = nearer
+                used_relaxed_forward = True
+                warnings.append(
+                    f"Parada más cercana al origen de lo ideal (km {segment_min_km:.0f}); "
+                    "revisa corredor o tipo de ruta."
+                )
+            else:
+                warnings.append(
+                    f"Sin cargadores por delante de km {current_route_km:.0f}; "
+                    "revisa corredor o filtros kW."
+                )
+                break
 
+        allow_near_origin = corridor_gap_fallback or used_relaxed_forward
         chosen, departure_soc, charge_minutes = _pick_best_planned_stop(
             viable,
             profile=profile,
@@ -960,6 +1060,7 @@ def build_planned_route_stops_greedy(
             origin_exclusion_km=origin_exclusion_km,
             trip_start_soc_pct=trip_start_soc,
             avg_speed_kmh=avg_speed_kmh,
+            allow_near_origin=allow_near_origin,
         ):
             used_station_ids.add(chosen.station.id)
             warnings.append(

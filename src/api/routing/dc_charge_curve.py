@@ -6,8 +6,12 @@ from dataclasses import dataclass
 # Pérdidas cabo + BMS → batería (DC rápido).
 DEFAULT_DC_EFFICIENCY = 0.88
 
-# Tiempo fijo por sesión (conexión, negociación, ramp-up inicial).
+# Tiempo fijo por sesión (conexión + ramp-up). HPC: ~1 min; resto ~2–3 min.
 CHARGE_SESSION_OVERHEAD_MIN = 3.0
+CHARGE_SESSION_OVERHEAD_HPC_MIN = 1.0
+CHARGE_SESSION_OVERHEAD_FAST_MIN = 2.0
+HPC_STATION_KW_THRESHOLD = 150.0
+FAST_STATION_KW_THRESHOLD = 100.0
 
 # Paso de integración (% SOC); 0.5 % equilibra precisión y coste.
 SOC_INTEGRATION_STEP = 0.5
@@ -32,7 +36,7 @@ def _profiles_by_id() -> dict[str, DcChargeProfile]:
             id="tesla-model3-sr-2023",
             peak_dc_kw=170.0,
             usable_capacity_kwh=57.0,
-            taper_start_soc=42.0,
+            taper_start_soc=58.0,
             taper_mid_soc=78.0,
             ramp_end_soc=22.0,
         ),
@@ -109,14 +113,40 @@ def resolve_dc_profile(
     return GENERIC_DC_PROFILE
 
 
+def interpolate_calibrated_power(
+    soc_pct: float,
+    points: tuple[tuple[float, float], ...],
+) -> float:
+    if not points:
+        return 0.0
+    soc = max(0.0, min(100.0, soc_pct))
+    if soc <= points[0][0]:
+        return points[0][1]
+    if soc >= points[-1][0]:
+        return points[-1][1]
+    for index in range(len(points) - 1):
+        soc_low, power_low = points[index]
+        soc_high, power_high = points[index + 1]
+        if soc_low <= soc <= soc_high:
+            span = max(soc_high - soc_low, 1e-6)
+            blend = (soc - soc_low) / span
+            return power_low + blend * (power_high - power_low)
+    return points[-1][1]
+
+
 def dc_power_kw(
     soc_pct: float,
     *,
     profile: DcChargeProfile,
     station_max_kw: float,
+    calibrated_points: tuple[tuple[float, float], ...] | None = None,
 ) -> float:
     """Potencia instantánea (kW) entregada a la batería en un SOC dado."""
-    if station_max_kw <= 0 or profile.peak_dc_kw <= 0:
+    if station_max_kw <= 0:
+        return 0.0
+    if calibrated_points:
+        return min(station_max_kw, interpolate_calibrated_power(soc_pct, calibrated_points))
+    if profile.peak_dc_kw <= 0:
         return 0.0
 
     cap_kw = min(profile.peak_dc_kw, station_max_kw) * profile.efficiency
@@ -139,6 +169,14 @@ def dc_power_kw(
     return cap_kw * max(0.06, tail)
 
 
+def _charge_session_overhead_minutes(station_max_kw: float) -> float:
+    if station_max_kw >= HPC_STATION_KW_THRESHOLD:
+        return CHARGE_SESSION_OVERHEAD_HPC_MIN
+    if station_max_kw >= FAST_STATION_KW_THRESHOLD:
+        return CHARGE_SESSION_OVERHEAD_FAST_MIN
+    return CHARGE_SESSION_OVERHEAD_MIN
+
+
 def estimate_dc_charge_minutes(
     arrival_soc_pct: float,
     departure_soc_pct: float,
@@ -147,6 +185,8 @@ def estimate_dc_charge_minutes(
     station_max_kw: float,
     profile: DcChargeProfile | None = None,
     vehicle_preset_id: str | None = None,
+    teslamate_car_id: int | None = None,
+    calibrated_points: tuple[tuple[float, float], ...] | None = None,
 ) -> float:
     """Integra la curva DC entre arrival y departure (minutos)."""
     if departure_soc_pct <= arrival_soc_pct + 0.5:
@@ -155,13 +195,23 @@ def estimate_dc_charge_minutes(
     resolved = profile or resolve_dc_profile(vehicle_preset_id, usable_capacity_kwh)
     capacity = usable_capacity_kwh if usable_capacity_kwh > 0 else resolved.usable_capacity_kwh
     station_kw = max(station_max_kw, 11.0)
+    curve_points = calibrated_points
+    if curve_points is None and teslamate_car_id is not None:
+        from api.integrations.charge_curve_service import fetch_charge_curve_points
+
+        curve_points = fetch_charge_curve_points(car_id=teslamate_car_id)
 
     minutes = 0.0
     soc = arrival_soc_pct
     while soc < departure_soc_pct - 1e-6:
         next_soc = min(departure_soc_pct, soc + SOC_INTEGRATION_STEP)
         mid_soc = (soc + next_soc) / 2.0
-        power_kw = dc_power_kw(mid_soc, profile=resolved, station_max_kw=station_kw)
+        power_kw = dc_power_kw(
+            mid_soc,
+            profile=resolved,
+            station_max_kw=station_kw,
+            calibrated_points=curve_points,
+        )
         if power_kw <= 0:
             break
         kwh = capacity * (next_soc - soc) / 100.0
@@ -169,7 +219,7 @@ def estimate_dc_charge_minutes(
         soc = next_soc
 
     if minutes > 0:
-        minutes += CHARGE_SESSION_OVERHEAD_MIN
+        minutes += _charge_session_overhead_minutes(station_kw)
 
     return float(math.ceil(minutes)) if minutes > 0 else 0.0
 

@@ -123,6 +123,8 @@ export function avoidTollsLabel(avoidTolls: boolean | undefined): string {
   return avoidTolls ? ' · sin peajes' : ''
 }
 
+import { formatDurationMinutes } from '../utils/duration'
+
 type RouteAlternativesKm = {
   route_preference?: RoutePreference | null
   route_distance_km?: number | null
@@ -134,19 +136,6 @@ type RouteAlternativesKm = {
   route_conventional_duration_minutes?: number | null
   shortest_excess_km?: number | null
   route_variants_approximate?: boolean
-}
-
-function formatDurationMinutes(minutes: number | null | undefined): string {
-  if (minutes == null || minutes <= 0) {
-    return ''
-  }
-  const rounded = Math.round(minutes)
-  const hours = Math.floor(rounded / 60)
-  const mins = rounded % 60
-  if (hours > 0) {
-    return mins > 0 ? `${hours} h ${mins} min` : `${hours} h`
-  }
-  return `${mins} min`
 }
 
 export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
@@ -164,7 +153,11 @@ export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
       plan.shortest_excess_km != null && plan.shortest_excess_km > 0
         ? ` (+${plan.shortest_excess_km.toFixed(0)} km)`
         : ''
-    parts.push(`Directa: ${shortest.toFixed(0)} km${excess}`)
+    const duration =
+      plan.route_preference === 'shortest'
+        ? formatDurationMinutes(plan.route_duration_minutes)
+        : ''
+    parts.push(`Directa: ${shortest.toFixed(0)} km${excess}${duration ? ` · ${duration}` : ''}`)
   }
   if (fastest != null) {
     const duration =
@@ -188,8 +181,11 @@ export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
         : plan.route_preference === 'fastest'
           ? 'rápida'
           : 'convencionales'
+    const duration = formatDurationMinutes(plan.route_duration_minutes)
     const approx = plan.route_variants_approximate ? ' ~aprox.' : ''
-    parts.push(`Plan: ${selectedLabel} (${selectedKm.toFixed(0)} km${approx})`)
+    parts.push(
+      `Plan: ${selectedLabel} (${selectedKm.toFixed(0)} km${duration ? ` · ${duration}` : ''}${approx})`,
+    )
   }
 
   return parts.join(' · ')

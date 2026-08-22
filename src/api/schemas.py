@@ -129,6 +129,46 @@ class VehicleEnergyInput(BaseModel):
     consumption_kwh_per_100km: float | None = None
 
 
+ConsumptionSource = Literal["historical", "telemetry", "preset", "hybrid"]
+ConsumptionConfidence = Literal["low", "medium", "high"]
+ConsumptionBinName = Literal["highway", "mixed", "conventional", "mountain"]
+
+
+class ConsumptionBinResult(BaseModel):
+    bin: ConsumptionBinName
+    wh_per_km: float | None = None
+    kwh_per_100km: float | None = None
+    sample_count: int = 0
+    total_distance_km: float = 0.0
+
+
+class ConsumptionProfileResponse(BaseModel):
+    available: bool
+    source: ConsumptionSource = "historical"
+    lookback_days: int
+    min_distance_km: float = 20.0
+    drive_count: int = 0
+    car_id: int | None = None
+    note: str | None = None
+    bins: dict[str, ConsumptionBinResult]
+
+
+class ChargeCurvePointResult(BaseModel):
+    soc_pct: float
+    avg_power_kw: float
+    sample_count: int = 0
+
+
+class ChargeCurveResponse(BaseModel):
+    available: bool
+    car_id: int | None = None
+    session_count: int = 0
+    sample_count: int = 0
+    source: Literal["historical", "preset"] = "preset"
+    note: str | None = None
+    points: list[ChargeCurvePointResult] = Field(default_factory=list)
+
+
 class ChargingPlanStopResult(BaseModel):
     station: Station
     deviation_km: float
@@ -256,6 +296,11 @@ class ChargingPlanResponse(BaseModel):
     warnings: list[str]
     candidates_in_bbox: int
     destination_stay: DestinationStayAdviceResult | None = None
+    consumption_source: ConsumptionSource | None = None
+    consumption_kwh_per_100km: float | None = None
+    consumption_confidence: ConsumptionConfidence | None = None
+    consumption_note: str | None = None
+    consumption_bin: ConsumptionBinName | None = None
 
 
 class VehicleTelemetryResult(BaseModel):
@@ -292,6 +337,19 @@ class TripAdviceResponse(BaseModel):
         default=None,
         description="SOC usado en el plan (simulación de carga previa si difiere del vivo)",
     )
+    soc_source: Literal["live", "simulated"] | None = None
+    consumption_source: ConsumptionSource | None = None
+    consumption_kwh_per_100km: float | None = None
+    consumption_confidence: ConsumptionConfidence | None = None
+    consumption_note: str | None = None
+    consumption_bin: ConsumptionBinName | None = None
+    consumption_profile: ConsumptionProfileResponse | None = None
+    live_consumption_kwh_per_100km: float | None = None
+    consumption_divergence_pct: float | None = Field(
+        default=None,
+        description="(instantáneo - plan) / plan × 100; p. ej. +18 = vive un 18 % peor",
+    )
+    consumption_divergence_alert: bool = False
 
 
 class TripGuideContext(BaseModel):
@@ -305,6 +363,12 @@ class TripGuideContext(BaseModel):
     charging_while_visiting_hint: str | None = None
     vehicle_snapshot: dict[str, Any] = Field(default_factory=dict)
     plan_snapshot: dict[str, Any] = Field(default_factory=dict)
+    consumption_profile: ConsumptionProfileResponse | None = None
+    consumption_source: ConsumptionSource | None = None
+    consumption_kwh_per_100km: float | None = None
+    consumption_confidence: ConsumptionConfidence | None = None
+    consumption_note: str | None = None
+    consumption_bin: ConsumptionBinName | None = None
 
 
 class TripGuideResponse(TripAdviceResponse):
@@ -322,6 +386,7 @@ class PrivateStackStatusResult(BaseModel):
     mqtt_configured: bool = False
     teslamate_api_configured: bool = False
     dify_trip_guide_configured: bool = False
+    grafana_configured: bool = False
 
 
 class AuthConfigResponse(BaseModel):

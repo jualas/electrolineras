@@ -66,12 +66,15 @@ function excludeOriginNearStops(
 }
 
 function viableCorridorStops(plan: ChargingPlanResponse): ChargingPlanStopResult[] {
-  return excludeOriginNearStops(
-    plan.stops
-      .filter((stop) => stop.classification !== 'unreachable')
-      .sort((a, b) => a.route_distance_km - b.route_distance_km),
-    plan,
-  )
+  const sorted = plan.stops
+    .filter((stop) => stop.classification !== 'unreachable')
+    .sort((a, b) => a.route_distance_km - b.route_distance_km)
+  const filtered = excludeOriginNearStops(sorted, plan)
+  if (filtered.length > 0) {
+    return filtered
+  }
+  // Plan incompleto: no ocultar todo el corredor por el umbral DGT (~2 h desde origen).
+  return sorted
 }
 
 function estimateChargingStopCount(plan: ChargingPlanResponse): number {
@@ -126,11 +129,8 @@ function pickStopsByRouteDistance(
 export function routeChargingStops(plan: ChargingPlanResponse): RouteChargingStop[] {
   const planned = plan.planned_stops ?? []
   if (planned.length > 0) {
-    const minKm = minDistanceFromOriginKm(plan)
-    if (minKm <= 0) {
-      return planned
-    }
-    return planned.filter((stop) => stop.route_distance_km >= minKm - 1e-6)
+    // Paradas del optimizador: mostrar siempre (ya aplican exclusión de origen en backend).
+    return planned
   }
   if (plan.reachable_without_stop || plan.mode === 'emergency') {
     return []

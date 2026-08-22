@@ -111,7 +111,7 @@ export function telemetryToChargingPlanQuery(
   const terrain = Math.max(0.01, Math.min(2, terrainFactor))
   const preset = getVehiclePreset(vehiclePresetId ?? 'tesla-model3-sr-2023')
   const usableCapacityKwh = preset.usableCapacityKwh
-  const consumptionWhPerKm = (usableCapacityKwh * 1000) / nominal * terrain
+  const consumptionWhPerKm = (usableCapacityKwh * 1000) / nominal
   return {
     soc_percent: soc,
     usable_capacity_kwh: usableCapacityKwh,

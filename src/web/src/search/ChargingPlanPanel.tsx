@@ -19,7 +19,7 @@ import {
 } from '../vehicle/telemetryProfile'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 import { RoutePreferenceFields } from './RoutePreferenceFields'
-import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
+import { RevePlanningFields, revePlanningForPreset, routePlanningMinKw, type RevePlanningOptions } from './RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
 import { useActiveTrip } from '../hooks/useActiveTrip'
@@ -68,6 +68,7 @@ export function ChargingPlanPanel({
   const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
     revePlanningForPreset(vehicleProfile.presetId),
   )
+  const effectiveMinKw = routePlanningMinKw(revePlanning, minKw ?? 100)
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<ChargingPlanResponse | null>(null)
@@ -217,7 +218,7 @@ export function ChargingPlanPanel({
         consumptionWhPerKm: vehicleQuery.consumption_wh_per_km,
         terrainFactor: vehicleQuery.terrain_factor,
         reserveSocPercent: vehicleQuery.reserve_soc_percent,
-        minKw,
+        minKw: effectiveMinKw,
         maxKw,
         corridorKm: emergencyMode ? undefined : corridorKm,
         limit: 15,
@@ -237,7 +238,7 @@ export function ChargingPlanPanel({
         origin,
         dest: emergencyMode ? null : destination!,
         vehicleQuery,
-        minKw,
+        minKw: effectiveMinKw,
         maxKw,
         corridorKm,
         emergencyMode,
@@ -283,7 +284,7 @@ export function ChargingPlanPanel({
     avoidTolls,
     gpsLocation,
     maxKw,
-    minKw,
+    effectiveMinKw,
     onResults,
     onSelectStation,
     resolveSimulationOrigin,
@@ -318,7 +319,7 @@ export function ChargingPlanPanel({
       origin: gpsLocation,
       dest: emergencyMode ? null : destPoint,
       vehicleQuery,
-      minKw,
+        minKw: effectiveMinKw,
       maxKw,
       corridorKm,
       emergencyMode,
@@ -338,7 +339,7 @@ export function ChargingPlanPanel({
     enMarchaSettings.autoFollow,
     gpsLocation,
     gpsStatus,
-    minKw,
+    effectiveMinKw,
     maxKw,
     originMode,
     resolveVehicleQuery,
@@ -367,7 +368,7 @@ export function ChargingPlanPanel({
       origin,
       dest: emergencyMode ? null : destPoint,
       vehicleQuery,
-      minKw,
+        minKw: effectiveMinKw,
       maxKw,
       corridorKm,
       emergencyMode,
@@ -387,7 +388,7 @@ export function ChargingPlanPanel({
     emergencyMode,
     enMarchaSettings.autoFollow,
     maxKw,
-    minKw,
+    effectiveMinKw,
     originMode,
     resolveVehicleQuery,
     routePreference,

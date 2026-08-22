@@ -82,9 +82,38 @@ def vehicle_energy_from_telemetry(
         usable_capacity_kwh=usable_capacity_kwh,
         telemetry=telemetry,
     )
-    # Consumo coherente con capacidad útil y autonomía nominal TeslaMate al 100 %
-    consumption_wh_per_km = (capacity * 1000.0 / rated_km) * terrain
+    # Consumo base al 100 % (Wh/km); terrain_factor se aplica una sola vez en VehicleEnergyProfile.
+    consumption_wh_per_km = capacity * 1000.0 / rated_km
     return soc, capacity, consumption_wh_per_km, reserve_soc_percent
+
+
+def live_consumption_wh_per_km(
+    telemetry: VehicleTelemetry,
+    capacity_kwh: float,
+    *,
+    soc_percent: float | None = None,
+) -> float | None:
+    """Consumo instantáneo estimado (solo alerta), no para el motor del plan."""
+    est_km = telemetry.est_battery_range_km
+    soc = telemetry.battery_level_pct if soc_percent is None else soc_percent
+    if est_km is None or est_km <= 0 or capacity_kwh <= 0 or soc <= 0:
+        return None
+    energy_kwh = capacity_kwh * soc / 100.0
+    wh_per_km = energy_kwh * 1000.0 / est_km
+    if wh_per_km < 80 or wh_per_km > 400:
+        return None
+    return round(wh_per_km, 2)
+
+
+def consumption_divergence_pct(live_wh_per_km: float, planned_wh_per_km: float) -> float | None:
+    if live_wh_per_km <= 0 or planned_wh_per_km <= 0:
+        return None
+    return round(((live_wh_per_km - planned_wh_per_km) / planned_wh_per_km) * 100.0, 1)
+
+
+def is_city_driving(car_id: int) -> bool:
+    """Sin muestras de velocidad recientes, no suponemos conducción urbana."""
+    return False
 
 
 def planning_range_km(

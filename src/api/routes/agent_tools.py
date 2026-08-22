@@ -74,6 +74,7 @@ def agent_trip_advice(
     max_charge_soc_pct: Annotated[float, Query(ge=20, le=100)] = 80.0,
     exclude_slow_chargers: Annotated[bool, Query()] = False,
     consumption_kwh_per_100km: Annotated[float | None, Query(gt=0, le=50)] = None,
+    teslamate_car_id: Annotated[int | None, Query(ge=1)] = None,
 ) -> TripAdviceResponse:
     """Plan de carga + narrativa para Dify / Cursor CLI (números del motor, texto orientativo)."""
     if not settings.charging_agent_enabled:
@@ -113,6 +114,7 @@ def agent_trip_advice(
         max_charge_soc_pct=max_charge_soc_pct,
         exclude_slow_chargers=exclude_slow_chargers,
         consumption_kwh_per_100km=consumption_kwh_per_100km,
+        teslamate_car_id=teslamate_car_id,
     )
     plan = charging_plan_to_response(built)
     summary, bullets = build_agent_narration(plan)

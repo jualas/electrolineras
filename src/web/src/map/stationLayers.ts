@@ -2,6 +2,7 @@ import type maplibregl from 'maplibre-gl'
 
 import { navigationPopupHtml } from '../navigation/externalMaps'
 import { dynamicStatusClassName, formatDynamicStatusLabel } from '../stations/dynamicDisplay'
+import { formatDurationMinutes } from '../utils/duration'
 
 type FeatureCollection = {
   type: 'FeatureCollection'
@@ -458,7 +459,7 @@ function formatChargeLine(
       : ''
   const chargeText =
     chargeMinutes !== null && chargeMinutes !== undefined && Number(chargeMinutes) > 0
-      ? ` · ~${Number(chargeMinutes).toFixed(0)} min carga`
+      ? ` · ~${formatDurationMinutes(Number(chargeMinutes))} carga`
       : ''
   const classText = classification ? escapeHtml(classification) : 'planificada'
   return `<p class="station-popup__charge">${orderText}${classText}${socText}${departureText}${chargeText}</p>`

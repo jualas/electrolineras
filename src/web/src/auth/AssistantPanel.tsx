@@ -12,7 +12,7 @@ import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
 import { getTerrainFactor, getVehiclePreset, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
 import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
-import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
+import { RevePlanningFields, revePlanningForPreset, routePlanningMinKw, type RevePlanningOptions } from '../search/RevePlanningFields'
 import type { RoutePreference } from '../api/types'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
 import {
@@ -177,7 +177,7 @@ export function AssistantPanel({
         excludeSlowChargers: revePlanning.excludeSlowChargers,
         consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
         vehiclePresetId: vehicleProfile.presetId,
-        minKw: revePlanning.excludeSlowChargers ? 50 : 100,
+        minKw: routePlanningMinKw(revePlanning),
       })
       setAdvice((prev) =>
         prev
@@ -244,7 +244,7 @@ export function AssistantPanel({
         excludeSlowChargers: revePlanning.excludeSlowChargers,
         consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
         vehiclePresetId: vehicleProfile.presetId,
-        minKw: revePlanning.excludeSlowChargers ? 50 : 100,
+        minKw: routePlanningMinKw(revePlanning),
       })
       setAdvice(result)
       onPlanResults(result.plan)

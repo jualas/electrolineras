@@ -10,6 +10,7 @@ import { StationNavActions } from '../components/navigation/StationNavActions'
 import { StationDynamicBadge } from '../stations/StationDynamicBadge'
 import { StationExternalReviews } from '../stations/StationExternalReviews'
 import { summarizeConnectors } from '../stations/connectorDisplay'
+import { formatDurationMinutes } from '../utils/duration'
 
 type ChargingStopListProps = {
   stops: ChargingPlanStopResult[]
@@ -64,7 +65,7 @@ export function ChargingStopList({
               {showRouteDeviation && (
                 <>
                   · +{item.deviation_km.toFixed(1)} km desvío
-                  {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
+                  {item.extra_minutes > 0 && <> · +{formatDurationMinutes(item.extra_minutes)}</>}
                 </>
               )}
             </p>

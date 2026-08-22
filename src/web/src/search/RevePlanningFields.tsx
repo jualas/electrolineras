@@ -128,7 +128,7 @@ export function RevePlanningFields({
               onChange({ ...options, excludeSlowChargers: event.target.checked })
             }
           />
-          <span>Excluir carga lenta (AC / &lt;50 kW) del plan</span>
+          <span>Excluir carga lenta del plan (mín. 100 kW DC en ruta)</span>
         </label>
       </div>
       <p className="panel-hint reve-planning__hint">
@@ -137,6 +137,16 @@ export function RevePlanningFields({
       </p>
     </details>
   )
+}
+
+export function routePlanningMinKw(
+  options: RevePlanningOptions,
+  mapMinKw: number = 100,
+): number {
+  if (options.excludeSlowChargers) {
+    return Math.max(mapMinKw, 100)
+  }
+  return mapMinKw
 }
 
 export function revePlanningToQueryParams(options: RevePlanningOptions): Record<string, string> {

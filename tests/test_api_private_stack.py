@@ -48,6 +48,69 @@ def test_private_stack_requires_token_when_enabled(private_client: TestClient) -
         settings.private_api_token = original_token
 
 
+@patch("api.routes.private_stack.fetch_consumption_profile")
+def test_private_consumption_profile(mock_profile, private_client: TestClient) -> None:
+    from api.integrations.consumption_profile_service import (
+        ConsumptionBinStats,
+        ConsumptionProfile,
+    )
+
+    mock_profile.return_value = ConsumptionProfile(
+        bins={
+            "highway": ConsumptionBinStats(
+                bin="highway",
+                wh_per_km=134.5,
+                kwh_per_100km=13.45,
+                sample_count=24,
+                total_distance_km=3200.0,
+            ),
+            "mixed": ConsumptionBinStats(
+                bin="mixed",
+                wh_per_km=140.0,
+                kwh_per_100km=14.0,
+                sample_count=10,
+                total_distance_km=900.0,
+            ),
+            "conventional": ConsumptionBinStats(
+                bin="conventional",
+                wh_per_km=130.0,
+                kwh_per_100km=13.0,
+                sample_count=8,
+                total_distance_km=500.0,
+            ),
+            "mountain": ConsumptionBinStats(
+                bin="mountain",
+                wh_per_km=None,
+                kwh_per_100km=None,
+                sample_count=0,
+                total_distance_km=0.0,
+            ),
+        },
+        lookback_days=0,
+        car_id=1,
+        source="historical",
+        available=True,
+        note="test",
+    )
+
+    original_enabled = settings.private_stack_enabled
+    original_token = settings.private_api_token
+    settings.private_stack_enabled = True
+    settings.private_api_token = "test-private-token-min-32-chars-long"
+    try:
+        response = private_client.get(
+            "/api/v1/private/consumption-profile",
+            headers={"X-Private-Token": "test-private-token-min-32-chars-long"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["available"] is True
+        assert payload["bins"]["highway"]["kwh_per_100km"] == 13.45
+    finally:
+        settings.private_stack_enabled = original_enabled
+        settings.private_api_token = original_token
+
+
 @patch("api.routes.private_stack.fetch_vehicle_telemetry")
 def test_private_vehicle_state(mock_fetch, private_client: TestClient) -> None:
     from api.integrations.teslamate import VehicleTelemetry

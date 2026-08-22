@@ -122,6 +122,7 @@ def vehicle_profile_from_inputs(
     min_destination_soc_pct: float = 10.0,
     min_stop_arrival_soc_pct: float = 10.0,
     max_charge_soc_pct: float = 80.0,
+    teslamate_car_id: int | None = None,
 ) -> VehicleEnergyProfile:
     if usable_capacity_kwh <= 0:
         raise HTTPException(status_code=422, detail="usable_capacity_kwh debe ser mayor que 0")
@@ -145,6 +146,7 @@ def vehicle_profile_from_inputs(
         min_destination_soc_pct=min_destination_soc_pct,
         min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
         max_charge_soc_pct=max_charge_soc_pct,
+        teslamate_car_id=teslamate_car_id,
     )
 
 
@@ -153,8 +155,8 @@ def resolve_planning_min_kw(
     *,
     exclude_slow_chargers: bool,
 ) -> float | None:
-    """REVE: excluir AC / cargadores <50 kW del corredor de planificación."""
-    slow_floor = 50.0 if exclude_slow_chargers else 0.0
+    """Eleva el mínimo del corredor cuando se excluye carga lenta (viaje en ruta)."""
+    slow_floor = settings.route_planning_dc_min_kw if exclude_slow_chargers else 0.0
     if min_kw is None:
         return slow_floor if exclude_slow_chargers else None
     return max(min_kw, slow_floor)
@@ -169,6 +171,25 @@ def resolve_consumption_wh_per_km(
             raise HTTPException(status_code=422, detail="consumption_kwh_per_100km debe ser mayor que 0")
         return consumption_kwh_per_100km * 10.0
     return consumption_wh_per_km
+
+
+def resolve_planning_terrain_factor(
+    terrain_factor: float,
+    *,
+    route_preference: RoutePreference,
+    route_distance_km: float,
+    route_duration_minutes: float,
+) -> float:
+    """En autopista larga el consumo real se acerca al nominal TeslaMate (REVE/Tesla nav)."""
+    if route_preference != "fastest" or route_duration_minutes <= 0 or route_distance_km <= 0:
+        return terrain_factor
+    avg_speed_kmh = route_distance_km / (route_duration_minutes / 60.0)
+    if avg_speed_kmh < 78.0:
+        return terrain_factor
+    if avg_speed_kmh >= 85.0:
+        return 1.0
+    blend = (avg_speed_kmh - 78.0) / 10.0
+    return max(1.0, 1.0 + (terrain_factor - 1.0) * (1.0 - blend))
 
 
 def _enrich_with_destination_stay(
@@ -251,6 +272,7 @@ def build_charging_plan(
     max_charge_soc_pct: float = 80.0,
     exclude_slow_chargers: bool = False,
     consumption_kwh_per_100km: float | None = None,
+    teslamate_car_id: int | None = None,
 ) -> ChargingPlanBuildResult:
     if min_kw is not None and max_kw is not None and min_kw > max_kw:
         raise HTTPException(status_code=422, detail="min_kw no puede ser mayor que max_kw")
@@ -270,6 +292,7 @@ def build_charging_plan(
         min_destination_soc_pct=min_destination_soc_pct,
         min_stop_arrival_soc_pct=min_stop_arrival_soc_pct,
         max_charge_soc_pct=max_charge_soc_pct,
+        teslamate_car_id=teslamate_car_id,
     )
     planning_min_kw = resolve_planning_min_kw(min_kw, exclude_slow_chargers=exclude_slow_chargers)
     countries = parse_country_list(country)
@@ -362,7 +385,20 @@ def build_charging_plan(
         ) from exc
 
     polyline = RoutePolyline(osrm_route.coordinates)
-    west, south, east, north = polyline.bbox_expanded(corridor_km * 1000)
+    planning_corridor_km = corridor_km
+    if route_preference == "conventional":
+        planning_corridor_km = max(corridor_km, settings.route_conventional_corridor_km_default)
+    route_distance_km = osrm_route.distance_m / 1000.0
+    route_duration_minutes = osrm_route.duration_s / 60.0
+    planning_terrain = resolve_planning_terrain_factor(
+        terrain_factor,
+        route_preference=route_preference,
+        route_distance_km=route_distance_km,
+        route_duration_minutes=route_duration_minutes,
+    )
+    if abs(planning_terrain - vehicle.terrain_factor) > 1e-6:
+        vehicle = replace(vehicle, terrain_factor=planning_terrain)
+    west, south, east, north = polyline.bbox_expanded(planning_corridor_km * 1000)
     candidates = repo.search(
         west=west,
         south=south,
@@ -376,13 +412,12 @@ def build_charging_plan(
     )
 
     wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
-    route_distance_km = osrm_route.distance_m / 1000.0
     corridor_ranking = rank_stations_for_charging_plan(
         polyline,
         candidates,
         origin_lat=origin_lat,
         origin_lon=origin_lon,
-        corridor_m=corridor_km * 1000,
+        corridor_m=planning_corridor_km * 1000,
         behind_margin_m=behind_margin_km * 1000,
         wrong_side_penalty_m=wrong_side_penalty_m,
         average_speed_mps=osrm_route.average_speed_mps,
