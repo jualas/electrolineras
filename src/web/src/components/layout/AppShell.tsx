@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Menu, X } from 'lucide-react'
 
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
@@ -264,7 +265,7 @@ export function AppShell() {
               aria-controls="app-side-panel"
               aria-label={panelOpen ? 'Ocultar panel' : 'Mostrar búsqueda y filtros'}
             >
-              {panelOpen ? '✕' : '☰'}
+              {panelOpen ? <X size={18} aria-hidden /> : <Menu size={18} aria-hidden />}
             </button>
             <div className="map-top-bar__brand">
               <span className="map-top-bar__title">Electrolineras</span>

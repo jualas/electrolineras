@@ -7,9 +7,9 @@ import {
   formatClassificationLabel,
 } from '../charging/classificationDisplay'
 import { StationNavActions } from '../components/navigation/StationNavActions'
+import { ConnectorChips } from '../stations/ConnectorChips'
 import { StationDynamicBadge } from '../stations/StationDynamicBadge'
 import { StationExternalReviews } from '../stations/StationExternalReviews'
-import { summarizeConnectors } from '../stations/connectorDisplay'
 
 type ChargingStopListProps = {
   stops: ChargingPlanStopResult[]
@@ -62,15 +62,13 @@ export function ChargingStopList({
             <span className={classificationClassName(item.classification, 'charging-class')}>
               {formatClassificationLabel(item.classification)} · {item.soc_arrival_pct.toFixed(0)} % SOC
             </span>
-            <p className="route-result__meta">
-              <strong>{summarizeConnectors(item.station.connectors)}</strong>
-              {showRouteDeviation && (
-                <>
-                  · +{item.deviation_km.toFixed(1)} km desvío
-                  {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
-                </>
-              )}
-            </p>
+            {showRouteDeviation && (
+              <p className="route-result__meta">
+                +{item.deviation_km.toFixed(1)} km desvío
+                {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
+              </p>
+            )}
+            <ConnectorChips connectors={item.station.connectors} />
             <StationDynamicBadge
               status={item.station.dynamic_status}
               priceEurKwh={item.station.dynamic_price_eur_kwh}

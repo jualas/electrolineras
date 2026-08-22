@@ -1,3 +1,5 @@
+import { X } from 'lucide-react'
+
 import type { GeocodeResult } from '../api/types'
 import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
 
@@ -34,7 +36,7 @@ export function MapFloatingSearch({
           onClick={onClear}
           aria-label="Limpiar búsqueda"
         >
-          ✕
+          <X size={16} aria-hidden />
         </button>
       )}
     </div>

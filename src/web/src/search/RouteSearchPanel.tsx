@@ -8,7 +8,7 @@ import { routeExportSpecFromChargingPlan } from '../charging/planRouteStops'
 import { StationNavActions } from '../components/navigation/StationNavActions'
 import { StationDynamicBadge } from '../stations/StationDynamicBadge'
 import { StationExternalReviews } from '../stations/StationExternalReviews'
-import { summarizeConnectors } from '../stations/connectorDisplay'
+import { ConnectorChips } from '../stations/ConnectorChips'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
 import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
 import { ChargingPlanResults } from './ChargingPlanResults'
@@ -457,11 +457,11 @@ export function RouteSearchPanel({
                     </div>
                   </div>
                   <p className="route-result__meta">
-                    <strong>{summarizeConnectors(item.station.connectors)}</strong>
-                    · +{item.deviation_km.toFixed(1)} km desvío
+                    +{item.deviation_km.toFixed(1)} km desvío
                     {item.extra_minutes > 0 && <> · +{item.extra_minutes.toFixed(0)} min</>}
                     {item.wrong_side && <span className="route-result__warn"> · sentido contrario</span>}
                   </p>
+                  <ConnectorChips connectors={item.station.connectors} />
                 <StationDynamicBadge
                   status={item.station.dynamic_status}
                   priceEurKwh={item.station.dynamic_price_eur_kwh}

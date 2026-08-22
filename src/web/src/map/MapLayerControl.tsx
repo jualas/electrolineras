@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Layers } from 'lucide-react'
 
 import { trafficLayerAvailable } from './mapTrafficLayer'
 
@@ -30,8 +31,9 @@ export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
         aria-controls="map-layer-menu"
         onClick={() => setOpen((current) => !current)}
         title="Capas del mapa"
+        aria-label="Capas del mapa"
       >
-        Capas
+        <Layers size={18} aria-hidden />
       </button>
       {open && (
         <div id="map-layer-menu" className="map-layer-control__menu" role="group" aria-label="Capas del mapa">
