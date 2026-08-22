@@ -17,7 +17,7 @@ from api.routing.charging_plan import (
     estimate_charging_reach_km,
     estimate_range_km,
 )
-from api.routing.corridor import RoutePolyline, rank_stations_along_route, rank_stations_along_route_for_planning
+from api.routing.corridor import RoutePolyline, rank_stations_for_charging_plan
 from api.routing.destination_stay import analyze_destination_stay, append_destination_strategy
 from api.routing.osrm import (
     RoutePreference,
@@ -377,7 +377,7 @@ def build_charging_plan(
 
     wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
     route_distance_km = osrm_route.distance_m / 1000.0
-    planning_matches = rank_stations_along_route_for_planning(
+    corridor_ranking = rank_stations_for_charging_plan(
         polyline,
         candidates,
         origin_lat=origin_lat,
@@ -387,18 +387,10 @@ def build_charging_plan(
         wrong_side_penalty_m=wrong_side_penalty_m,
         average_speed_mps=osrm_route.average_speed_mps,
         route_distance_km=route_distance_km,
+        display_limit=limit * 3,
     )
-    matches = rank_stations_along_route(
-        polyline,
-        candidates,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-        corridor_m=corridor_km * 1000,
-        behind_margin_m=behind_margin_km * 1000,
-        wrong_side_penalty_m=wrong_side_penalty_m,
-        average_speed_mps=osrm_route.average_speed_mps,
-        limit=limit * 3,
-    )
+    planning_matches = corridor_ranking.planning
+    matches = corridor_ranking.display
 
     origin_projection = polyline.project_point(origin_lat, origin_lon)
     origin_position_km = origin_projection.route_position_m / 1000.0
