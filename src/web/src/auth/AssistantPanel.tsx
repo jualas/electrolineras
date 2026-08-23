@@ -9,10 +9,10 @@ import {
   planningRangeFromNominal,
 } from '../vehicle/telemetryProfile'
 import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
-import { getTerrainFactor, getVehiclePreset, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
+import { getTerrainFactor, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
 import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
-import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
+import { revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
 import type { RoutePreference } from '../api/types'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
 import {
@@ -129,7 +129,6 @@ export function AssistantPanel({
   }
 
   const terrain = getTerrainFactor(vehicleProfile.terrainFactorId)
-  const vehiclePreset = getVehiclePreset(vehicleProfile.presetId)
   const nominalKm = vehicle != null ? nominalRangeKm(vehicle) : null
   const planningSocPercent =
     vehicle != null && simulateDeparture ? departureSoc : vehicle?.battery_level_pct ?? 0
@@ -145,11 +144,6 @@ export function AssistantPanel({
     nominalKm != null && planningSocPercent > 0
       ? chargingReachFromNominal(nominalKm, planningSocPercent)
       : null
-  const consumptionWhPerKm =
-    nominalKm != null && nominalKm > 0
-      ? (vehiclePreset.usableCapacityKwh * 1000) / nominalKm
-      : vehiclePreset.referenceWhPerKm
-
   const runMapPlan = async () => {
     if (!destination) {
       setPlanError('Selecciona un destino de la lista')
@@ -404,22 +398,6 @@ export function AssistantPanel({
           }
         }}
         disabled={busy}
-      />
-
-      <RevePlanningFields
-        options={revePlanning}
-        consumptionWhPerKm={consumptionWhPerKm}
-        disabled={busy}
-        onChange={(value) => {
-          setRevePlanning(value)
-          if (advice?.plan) {
-            recalcOnPreferenceRef.current = true
-          } else {
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
-          }
-        }}
       />
 
       <label className="assistant-panel__option">

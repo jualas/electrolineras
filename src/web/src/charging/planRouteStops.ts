@@ -2,6 +2,7 @@ import type { ChargingPlanResponse, ChargingPlanStopResult, PlannedRouteStopResu
 import type { MapCoords, RouteExportSpec } from '../navigation/externalMaps'
 import { googleMapsRouteUrl } from '../navigation/externalMaps'
 import { chargingPlanStopToFeature, plannedRouteStopToFeature } from '../api/chargingPlanFeature'
+import { DEFAULT_REVE_PLANNING } from '../search/RevePlanningFields'
 
 const GOOGLE_MAPS_MAX_WAYPOINTS = 8
 
@@ -20,9 +21,12 @@ export function isChargingPlanComplete(plan: ChargingPlanResponse): boolean {
   if (plan.warnings.some((warning) => warning.includes('No hay cargador alcanzable'))) {
     return false
   }
+  // El backend planifica para llegar con min_destination_soc_pct (10 % por defecto,
+  // ver DEFAULT_REVE_PLANNING); comprobar contra un umbral más alto aquí marcaba como
+  // "incompleto" planes que ya cumplían el objetivo real del optimizador.
   if (
     plan.projected_soc_at_destination_with_plan != null &&
-    plan.projected_soc_at_destination_with_plan < 20
+    plan.projected_soc_at_destination_with_plan < DEFAULT_REVE_PLANNING.minDestinationSocPct
   ) {
     return false
   }
