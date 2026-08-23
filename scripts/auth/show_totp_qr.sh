@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Genera QR TOTP para Microsoft Authenticator (lee PRIVATE_TOTP_SECRET del .env prod).
+# Genera QR TOTP para Microsoft Authenticator (lee PRIVATE_AUTH_USERS del .env prod).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../" && pwd)"

@@ -1,45 +1,47 @@
-# Autenticación zona privada (TOTP)
+# Autenticación zona privada (TOTP multiusuario)
 
-Última actualización: 2026-06-23
+Última actualización: 2026-08-23
 
 ## Modelo
 
 Un solo sitio (`electro.jualas.es`), un solo Docker:
 
-- **Mapa / plan manual** → sin login.
-- **Pestaña Asistente** → usuario + código TOTP (Microsoft Authenticator).
-- Sesión en cookie `httpOnly` (7 días por defecto).
+- **Mapa / plan de carga / planificador de ruta** → sin login (públicos).
+- **Pestaña Asistente** (coche real vía TeslaMate) → usuario + código TOTP
+  (Microsoft Authenticator u otra app compatible).
+- **Multiusuario**: cada persona tiene su propio usuario y su propio secreto
+  TOTP (un código de Authenticator distinto por miembro de la familia), no una
+  cuenta compartida. `PRIVATE_AUTH_USERS` guarda `usuario:SECRETO` por persona,
+  separados por comas.
+- Sesión en cookie `httpOnly` (7 días por defecto); recuerda qué usuario inició sesión.
 - **Dify / Cursor CLI** → opcional `PRIVATE_API_TOKEN` (Bearer) sin TOTP.
 
 Compatible con [Microsoft Authenticator](https://www.microsoft.com/security/mobile-authenticator-app): escaneas la clave TOTP al configurar (RFC 6238), igual que Tesla/Meta en modo «otra cuenta».
 
 ## Configuración inicial
 
+Añadir un usuario (uno por miembro de la familia):
+
 ```bash
 cd /mnt/datos/Proyectos/Electrolineras
-./scripts/auth/setup_private_auth.sh
+PYTHONPATH=src .venv/bin/python scripts/auth/setup_private_auth.py \
+  --username <nombre> --apply /mnt/datos/docker/electrolineras/.env
 ```
 
-(El script usa `.venv` del proyecto; si no existe: `python3 -m venv .venv && .venv/bin/pip install -e .`)
+(Si no existe `.venv`: `python3 -m venv .venv && .venv/bin/pip install -e .`)
 
-Alternativa manual:
+1. Repite el comando con `--username` distinto para cada persona; `--apply`
+   añade cada una a `PRIVATE_AUTH_USERS` sin borrar las demás.
+2. El script genera un PNG escaneable (`img/totp-setup-qr.png` por defecto).
+   Requiere `qrencode` en el sistema (`sudo apt install qrencode`).
+3. `PYTHONPATH=src .venv/bin/python scripts/auth/setup_private_auth.py --list --apply <.env>`
+   lista los usuarios ya configurados.
+4. Si algo quedó duplicado: `PYTHONPATH=src .venv/bin/python scripts/auth/dedupe_env_auth.py`
 
-```bash
-PYTHONPATH=src .venv/bin/python scripts/auth/setup_private_auth.py
-```
-
-1. Elige usuario (por defecto `electrolineras`) o pasa `--username tu_nombre`.
-2. Copia las líneas al `.env` de producción (`/mnt/datos/docker/electrolineras/.env`).
-3. **Sustituye** las variables existentes; no pegues un segundo bloque (docker-compose usa la última línea y el Authenticator quedaría desincronizado).
-4. El script ya escapa el hash bcrypt para **docker-compose** (`$` → `$$`). Si pegas un hash manual, duplica cada `$`.
-5. Si duplicaste por error: `PYTHONPATH=src .venv/bin/python scripts/auth/dedupe_env_auth.py`
-6. El script genera un PNG escaneable (`img/totp-setup-qr.png` por defecto). Requiere `qrencode` en el sistema (`sudo apt install qrencode`).
-
-**Regenerar solo el QR** (sin cambiar contraseña ni secreto) a partir del `.env` de producción:
+**Regenerar solo el QR** de un usuario existente (sin cambiar su secreto):
 
 ```bash
-./scripts/auth/show_totp_qr.sh
-# → img/totp-authenticator-qr.png
+PYTHONPATH=src .venv/bin/python scripts/auth/show_totp_qr.py --username <nombre> --env-file <.env>
 # Microsoft Authenticator → Agregar cuenta → Otra cuenta → Escanear código QR
 ```
 
@@ -49,12 +51,14 @@ Producción:
 PRIVATE_STACK_ENABLED=true
 SESSION_SECRET=<del script>
 SESSION_COOKIE_SECURE=true
-PRIVATE_AUTH_USERNAME=electrolineras
-PRIVATE_TOTP_SECRET=<del script>
+PRIVATE_AUTH_USERS=usuario1:SECRETO1,usuario2:SECRETO2
 CHARGING_AGENT_ENABLED=true
 ```
 
-`PRIVATE_AUTH_PASSWORD_HASH` ya no se usa (login solo usuario + TOTP). Puedes borrarlo del `.env` si quedó de una instalación antigua.
+`PRIVATE_AUTH_USERNAME` / `PRIVATE_TOTP_SECRET` son el formato mono-usuario
+anterior; se mantienen como *fallback* solo si `PRIVATE_AUTH_USERS` está vacío.
+`PRIVATE_AUTH_PASSWORD_HASH` ya no se usa (login solo usuario + TOTP). Puedes
+borrarlo del `.env` si quedó de una instalación antigua.
 
 Reinicia el contenedor:
 

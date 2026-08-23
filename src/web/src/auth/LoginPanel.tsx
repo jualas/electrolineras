@@ -1,19 +1,14 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 
 import { useAuth } from './AuthContext'
+import { getLastUsername } from './lastUsername'
 
 export function LoginPanel() {
-  const { login, loginUsername } = useAuth()
-  const [username, setUsername] = useState(loginUsername ?? 'electrolineras')
+  const { login } = useAuth()
+  const [username, setUsername] = useState(getLastUsername)
   const [totpCode, setTotpCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-
-  useEffect(() => {
-    if (loginUsername) {
-      setUsername(loginUsername)
-    }
-  }, [loginUsername])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()

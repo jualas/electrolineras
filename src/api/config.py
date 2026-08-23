@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     private_stack_enabled: bool = False
     private_api_token: str = ""
     private_auth_password_hash: str = ""  # obsoleto; login solo usuario + TOTP
+    # Multiusuario: "usuario1:SECRETO1,usuario2:SECRETO2". Generar con
+    # scripts/auth/setup_private_auth.py --username <nombre> --apply .env
+    private_auth_users: str = ""
+    # Legacy (pre-multiusuario): usados como fallback si private_auth_users está vacío.
     private_auth_username: str = "electrolineras"
     private_totp_secret: str = ""
     session_secret: str = ""
@@ -78,6 +82,25 @@ class Settings(BaseSettings):
     dify_api_base_url: str = ""
     dify_trip_workflow_api_key: str = ""
     dify_timeout_seconds: float = 90.0
+
+    def auth_users(self) -> list[tuple[str, str]]:
+        pairs: list[tuple[str, str]] = []
+        for chunk in self.private_auth_users.split(","):
+            chunk = chunk.strip()
+            if not chunk or ":" not in chunk:
+                continue
+            username, secret = chunk.split(":", 1)
+            username = username.strip()
+            secret = secret.strip()
+            if username and secret:
+                pairs.append((username, secret))
+        if pairs:
+            return pairs
+        legacy_username = self.private_auth_username.strip()
+        legacy_secret = self.private_totp_secret.strip()
+        if legacy_username and legacy_secret:
+            return [(legacy_username, legacy_secret)]
+        return []
 
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

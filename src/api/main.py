@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 def _warn_if_auth_misconfigured() -> None:
-    if not settings.private_stack_enabled or not private_totp_auth_configured():
+    if not settings.private_stack_enabled:
         return
-    if not settings.private_auth_username.strip():
-        logger.warning("PRIVATE_AUTH_USERNAME vacío; el login TOTP no estará disponible.")
+    if not private_totp_auth_configured():
+        logger.warning("PRIVATE_AUTH_USERS vacío; el login TOTP no estará disponible.")
 
 
 def create_app() -> FastAPI:

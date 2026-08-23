@@ -2,22 +2,21 @@ from __future__ import annotations
 
 import pyotp
 
-from api.config import settings
+# Secreto inválido fijo: se usa para verificar un código igualmente cuando el
+# usuario no existe, así el tiempo de respuesta no delata qué usuarios hay.
+_DUMMY_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 
-def verify_totp_code(code: str) -> bool:
-    secret = settings.private_totp_secret.strip()
-    if not secret or not code:
-        return False
+def verify_totp_code(secret: str | None, code: str) -> bool:
     normalized = code.strip().replace(" ", "")
     if not normalized.isdigit() or len(normalized) != 6:
         return False
-    totp = pyotp.TOTP(secret)
-    return totp.verify(normalized, valid_window=2)
+    totp = pyotp.TOTP(secret or _DUMMY_SECRET)
+    result = totp.verify(normalized, valid_window=2)
+    return result if secret else False
 
 
-def build_provisioning_uri(account_name: str = "electrolineras") -> str:
-    secret = settings.private_totp_secret.strip()
-    if not secret:
-        raise ValueError("PRIVATE_TOTP_SECRET no configurado")
+def build_provisioning_uri(secret: str, account_name: str) -> str:
+    if not secret.strip():
+        raise ValueError("Secreto TOTP vacío")
     return pyotp.TOTP(secret).provisioning_uri(name=account_name, issuer_name="Electrolineras")
