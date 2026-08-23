@@ -5,6 +5,7 @@ import pytest
 from api.integrations.telemetry_energy import (
     charging_reach_km,
     current_range_from_nominal,
+    nominal_range_km,
     planning_range_km,
     vehicle_energy_from_telemetry,
 )
@@ -32,9 +33,16 @@ def test_build_car_model_label() -> None:
     assert build_car_model_label("3", "SR+") == "Model 3 SR+"
 
 
-def test_current_range_from_nominal() -> None:
+def test_nominal_range_normalizes_to_100_pct_soc() -> None:
+    # TeslaMate publica rated_battery_range_km al SOC actual (75 %), no al 100 %.
     telemetry = _telemetry()
-    assert round(current_range_from_nominal(telemetry), 1) == round(305.12 * 0.75, 1)
+    assert round(nominal_range_km(telemetry), 2) == round(305.12 * 100 / 75, 2)
+
+
+def test_current_range_from_nominal() -> None:
+    # Al normalizar y volver a escalar por el mismo SOC, coincide con el valor crudo de TeslaMate.
+    telemetry = _telemetry()
+    assert round(current_range_from_nominal(telemetry), 1) == round(305.12, 1)
 
 
 def test_planning_range_from_nominal() -> None:
@@ -52,7 +60,7 @@ def test_vehicle_energy_ignores_est_uses_nominal() -> None:
     assert capacity == 57.0
     assert reserve == 10.0
     range_km = capacity * (soc - reserve) / 100 / (consumption / 1000)
-    assert round(range_km) == round(planning_range_km(305.12, soc, reserve))
+    assert round(range_km) == round(planning_range_km(nominal_range_km(telemetry), soc, reserve))
 
 
 def test_vehicle_energy_requires_rated() -> None:

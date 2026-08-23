@@ -5,10 +5,19 @@ from api.routing.dc_charge_curve import GENERIC_DC_PROFILE, resolve_dc_profile
 
 
 def nominal_range_km(telemetry: VehicleTelemetry) -> float | None:
-    """Autonomía nominal al 100 % (rated_battery_range_km en TeslaMate)."""
+    """Autonomía nominal al 100 %.
+
+    TeslaMate publica `rated_battery_range_km` a la autonomía del SOC actual (modo
+    «Rated» del cuadro), no normalizada al 100 %. Se divide por el SOC actual para
+    obtener la autonomía al 100 % que asumen `current_range_from_nominal`,
+    `planning_range_km` y el consumo derivado en `vehicle_energy_from_telemetry`.
+    Al depender del SOC en vivo, la autonomía nominal se ajusta sola si la batería
+    pierde capacidad con el tiempo, en vez de quedar fija a un valor de preset.
+    """
     rated = telemetry.rated_battery_range_km
-    if rated is not None and rated > 0:
-        return rated
+    soc = telemetry.usable_battery_level_pct or telemetry.battery_level_pct
+    if rated is not None and rated > 0 and soc is not None and soc > 0:
+        return rated * 100.0 / soc
     return None
 
 
