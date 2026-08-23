@@ -14,8 +14,13 @@ def build_provisioning_uri(secret: str, account: str = "electrolineras") -> str:
     )
 
 
-def render_totp_qr(uri: str, output_path: Path, *, module_size: int = 8) -> Path:
-    """Genera PNG escaneable con qrencode (debe estar instalado en el sistema)."""
+def render_totp_qr(uri: str, output_path: Path, *, module_size: int = 10) -> Path:
+    """Genera PNG escaneable con qrencode (debe estar instalado en el sistema).
+
+    Nivel de corrección de errores alto (-l H) y PNG32 (color de verdad, no
+    indexado a 1 bit) para que sobreviva a recompresiones/redimensionados de
+    apps de mensajería sin dejar de ser legible por la cámara.
+    """
     qrencode = shutil.which("qrencode")
     if not qrencode:
         raise RuntimeError(
@@ -26,7 +31,15 @@ def render_totp_qr(uri: str, output_path: Path, *, module_size: int = 8) -> Path
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     subprocess.run(
-        [qrencode, "-o", str(output_path), "-s", str(module_size), uri],
+        [
+            qrencode,
+            "-o", str(output_path),
+            "-s", str(module_size),
+            "-m", "6",
+            "-l", "H",
+            "-t", "PNG32",
+            uri,
+        ],
         check=True,
         capture_output=True,
         text=True,
