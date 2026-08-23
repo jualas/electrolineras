@@ -86,14 +86,14 @@ O dejar `VITE_API_URL` vacío en el entorno del build. El cliente llama `/api/v1
 Generar stack privado (TOTP + sesión):
 
 ```bash
-.venv/bin/python scripts/auth/setup_private_auth.py
+.venv/bin/python scripts/auth/setup_private_auth.py --username <tu_usuario> --apply .env
 ```
 
 | Variable | Cuándo |
 |----------|--------|
 | `SESSION_SECRET` | `PRIVATE_STACK_ENABLED=true` |
-| `PRIVATE_AUTH_USERNAME` | Usuario del asistente (p. ej. `electrolineras`) |
-| `PRIVATE_TOTP_SECRET` | Microsoft Authenticator |
+| `PRIVATE_AUTH_USERS` | Multiusuario: `usuario1:SECRETO1,usuario2:SECRETO2` (un miembro por par, generado por el script) |
+| `PRIVATE_AUTH_USERNAME` / `PRIVATE_TOTP_SECRET` | **Obsoletos** — formato mono-usuario anterior, se mantienen solo como fallback si `PRIVATE_AUTH_USERS` está vacío |
 | `PRIVATE_AUTH_PASSWORD_HASH` | **Obsoleto** — ya no se usa |
 | `PRIVATE_API_TOKEN` | Automatización / agente |
 | `DIFY_TRIP_WORKFLOW_API_KEY` | Guía IA (solo LAN) |
@@ -117,7 +117,7 @@ Detalle auth: [`PHASE3_AUTH.md`](PHASE3_AUTH.md).
 
 | Síntoma | Causa | Solución |
 |---------|-------|----------|
-| Login TOTP siempre falla | Usuario distinto al `.env` o reloj del móvil | `PRIVATE_AUTH_USERNAME` (default `electrolineras`); sincroniza hora |
+| Login TOTP siempre falla | Usuario no está en `PRIVATE_AUTH_USERS` o reloj del móvil desincronizado | `scripts/auth/setup_private_auth.py --list --apply .env` para ver usuarios; sincroniza hora |
 | CORS en prod | Origen incorrecto | Añadir `https://electro.jualas.es` |
 | OSRM timeout | URL pública saturada | OSRM local en compose OSRM |
 | `.env.production.example` no en git | `.gitignore` | Ya corregido con `!.env.production.example` |

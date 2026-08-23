@@ -15,15 +15,21 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(secret, salt=SESSION_SALT)
 
 
-def create_session_value() -> str:
-    return _serializer().dumps({"private": True})
+def create_session_value(username: str) -> str:
+    return _serializer().dumps({"private": True, "username": username})
+
+
+def decode_session(value: str) -> dict | None:
+    if not value or not settings.session_secret.strip():
+        return None
+    try:
+        data = _serializer().loads(value, max_age=settings.auth_session_max_age_seconds)
+    except (BadSignature, SignatureExpired):
+        return None
+    if isinstance(data, dict) and data.get("private") is True:
+        return data
+    return None
 
 
 def verify_session_value(value: str) -> bool:
-    if not value or not settings.session_secret.strip():
-        return False
-    try:
-        data = _serializer().loads(value, max_age=settings.auth_session_max_age_seconds)
-        return isinstance(data, dict) and data.get("private") is True
-    except (BadSignature, SignatureExpired):
-        return False
+    return decode_session(value) is not None

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import Header, HTTPException, Request
 
-from api.auth.session import SESSION_COOKIE_NAME, verify_session_value
+from api.auth.session import SESSION_COOKIE_NAME, decode_session, verify_session_value
 from api.config import settings
 
 
@@ -13,7 +13,7 @@ def _configured_private_token() -> str:
 
 
 def private_totp_auth_configured() -> bool:
-    return bool(settings.private_totp_secret.strip() and settings.private_auth_username.strip())
+    return bool(settings.auth_users())
 
 
 def private_stack_configured() -> bool:
@@ -25,6 +25,14 @@ def private_stack_configured() -> bool:
 def session_authenticated(request: Request) -> bool:
     cookie = request.cookies.get(SESSION_COOKIE_NAME)
     return bool(cookie and verify_session_value(cookie))
+
+
+def session_username(request: Request) -> str | None:
+    cookie = request.cookies.get(SESSION_COOKIE_NAME)
+    if not cookie:
+        return None
+    data = decode_session(cookie)
+    return data.get("username") if data else None
 
 
 def require_private_access(

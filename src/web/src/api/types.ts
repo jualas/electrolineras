@@ -349,7 +349,6 @@ export type TripGuideResponse = TripAdviceResponse & {
 export type AuthConfigResponse = {
   private_stack_enabled: boolean
   login_enabled: boolean
-  login_username?: string | null
   token_fallback_enabled: boolean
 }
 
@@ -357,4 +356,5 @@ export type AuthSessionResponse = {
   authenticated: boolean
   private_stack_enabled: boolean
   login_enabled: boolean
+  username?: string | null
 }

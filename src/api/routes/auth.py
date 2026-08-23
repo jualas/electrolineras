@@ -3,8 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from api.auth.credentials import verify_login_username
-from api.auth.private_access import private_totp_auth_configured, session_authenticated
+from api.auth.credentials import find_user_secret
+from api.auth.private_access import (
+    private_totp_auth_configured,
+    session_authenticated,
+    session_username,
+)
 from api.auth.session import SESSION_COOKIE_NAME, create_session_value
 from api.auth.totp import verify_totp_code
 from api.config import settings
@@ -27,7 +31,6 @@ def auth_config() -> AuthConfigResponse:
     return AuthConfigResponse(
         private_stack_enabled=settings.private_stack_enabled,
         login_enabled=settings.private_stack_enabled and private_totp_auth_configured(),
-        login_username=settings.private_auth_username.strip() or None,
         token_fallback_enabled=bool(
             settings.private_api_token.strip() or settings.agent_api_token.strip()
         ),
@@ -36,10 +39,12 @@ def auth_config() -> AuthConfigResponse:
 
 @router.get("/session")
 def auth_session(request: Request) -> AuthSessionResponse:
+    authenticated = session_authenticated(request)
     return AuthSessionResponse(
-        authenticated=session_authenticated(request),
+        authenticated=authenticated,
         private_stack_enabled=settings.private_stack_enabled,
         login_enabled=settings.private_stack_enabled and private_totp_auth_configured(),
+        username=session_username(request) if authenticated else None,
     )
 
 
@@ -52,12 +57,12 @@ def auth_login(body: LoginRequest, response: Response) -> LoginResponse:
     if not settings.session_secret.strip():
         raise HTTPException(status_code=503, detail="Falta SESSION_SECRET en el servidor")
 
-    username_ok = verify_login_username(body.username)
-    totp_ok = verify_totp_code(body.totp_code)
-    if not username_ok or not totp_ok:
+    secret = find_user_secret(body.username)
+    totp_ok = verify_totp_code(secret, body.totp_code)
+    if not totp_ok:
         raise HTTPException(status_code=401, detail="Usuario o código incorrectos")
 
-    token = create_session_value()
+    token = create_session_value(body.username.strip())
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,

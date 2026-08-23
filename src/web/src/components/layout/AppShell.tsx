@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
+import { useAuth } from '../../auth/AuthContext'
 import { routeChargingStops, type RouteChargingStop } from '../../charging/planRouteStops'
 import { MapStationFilters, type MapStationFilterState } from '../../filters/MapStationFilters'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
@@ -40,6 +41,7 @@ const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
 
 export function AppShell() {
   const { theme, toggleTheme } = useTheme()
+  const { privateStackEnabled, authenticated, username, logout } = useAuth()
   const [mode, setMode] = useState<SearchMode>(defaultNavMode)
   const [panelOpen, setPanelOpen] = useState(false)
   const [apiOk, setApiOk] = useState(false)
@@ -288,6 +290,16 @@ export function AppShell() {
                 </button>
               ))}
             </nav>
+            {privateStackEnabled && authenticated ? (
+              <button
+                type="button"
+                className="map-logout-btn"
+                onClick={() => void logout()}
+                title={username ? `Cerrar sesión (${username})` : 'Cerrar sesión'}
+              >
+                Salir
+              </button>
+            ) : null}
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </header>
 
