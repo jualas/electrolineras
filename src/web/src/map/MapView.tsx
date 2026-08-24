@@ -651,7 +651,7 @@ export function MapView({
       'bottom-right',
     )
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-left')
     popupRef.current = new maplibregl.Popup({
       closeButton: true,
       closeOnClick: false,

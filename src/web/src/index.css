@@ -416,6 +416,26 @@ button {
   filter: invert(1) brightness(1.6);
 }
 
+.maplibregl-ctrl-bottom-left {
+  left: 0;
+  right: auto;
+  bottom: 0;
+  max-width: min(100%, calc(100% - 5.5rem));
+}
+
+.maplibregl-ctrl-attrib {
+  margin: 0;
+  padding: 0.15rem 0.45rem;
+  max-width: 100%;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  font-size: 0.65rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 0;
+}
+
 .map-station-filters__toggles {
   display: grid;
   gap: 0.35rem;
