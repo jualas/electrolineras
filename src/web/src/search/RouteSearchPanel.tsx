@@ -371,7 +371,6 @@ export function RouteSearchPanel({
             }
           }}
           disabled={status === 'loading'}
-          comparisonPlan={status === 'ready' ? lastResponse : null}
         />
 
         <div className="route-form__actions">

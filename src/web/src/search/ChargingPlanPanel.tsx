@@ -4,7 +4,7 @@ import { fetchChargingPlan } from '../api/chargingPlan'
 import type { ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
 import { geocodePlace } from '../api/route'
 import { VehicleTelemetryStrip } from '../components/vehicle/VehicleTelemetryStrip'
-import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
+import type { VehiclePresetId } from '../vehicle/vehiclePresets'
 import { getTerrainFactor } from '../vehicle/vehiclePresets'
 import { VehicleProfilePanel } from '../components/vehicle/VehicleProfilePanel'
 import { VehicleProfileFields } from '../components/vehicle/VehicleProfileFields'
@@ -36,7 +36,6 @@ type ChargingPlanPanelProps = {
   onVehiclePresetChange: (presetId: VehiclePresetId) => void
   onVehicleSocChange: (socPercent: number) => void
   onVehicleConsumptionChange: (consumptionWhPerKm: number) => void
-  onVehicleTerrainChange: (terrainFactorId: TerrainFactorId) => void
   minKw?: number
   maxKw?: number
   onResults: (response: ChargingPlanResponse | null) => void
@@ -50,7 +49,6 @@ export function ChargingPlanPanel({
   onVehiclePresetChange,
   onVehicleSocChange,
   onVehicleConsumptionChange,
-  onVehicleTerrainChange,
   minKw,
   maxKw,
   onResults,
@@ -487,7 +485,6 @@ export function ChargingPlanPanel({
         onPresetChange={onVehiclePresetChange}
         onSocChange={onVehicleSocChange}
         onConsumptionChange={onVehicleConsumptionChange}
-        onTerrainChange={onVehicleTerrainChange}
         socReadOnly={telemetrySocLocked}
         socSourceLabel={telemetrySocLocked ? 'TeslaMate en vivo' : undefined}
       />
@@ -504,14 +501,13 @@ export function ChargingPlanPanel({
 
       {!carTelemetryAvailable && (
         <details className="vehicle-advanced">
-          <summary>Consumo y terreno (avanzado)</summary>
+          <summary>Consumo (avanzado)</summary>
           <div className="vehicle-advanced__body">
             <VehicleProfileFields
               profile={vehicleProfile}
               onPresetChange={onVehiclePresetChange}
               onSocChange={onVehicleSocChange}
               onConsumptionChange={onVehicleConsumptionChange}
-              onTerrainChange={onVehicleTerrainChange}
               variant="advanced"
             />
           </div>
@@ -699,7 +695,6 @@ export function ChargingPlanPanel({
                 }
               }}
               disabled={status === 'loading'}
-              comparisonPlan={status === 'ready' ? lastResponse : null}
             />
           </>
         )}

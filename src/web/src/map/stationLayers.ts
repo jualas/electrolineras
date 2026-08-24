@@ -8,7 +8,8 @@ type FeatureCollection = {
   features: unknown[]
 }
 
-export type StationMapMode = 'browse' | 'overlay' | 'none'
+/** 'both': ruta/plan superpuesta sobre el mapa de estaciones (estilo REVE, sin modo "Mapa" aparte). */
+export type StationMapMode = 'browse' | 'overlay' | 'both' | 'none'
 
 /** Fuente clusterizada para exploración (modo mapa). */
 export const STATIONS_BROWSE_SOURCE_ID = 'stations-browse'
@@ -128,8 +129,8 @@ function setLayersVisibility(map: maplibregl.Map, layerIds: readonly string[], v
 }
 
 export function setStationMapMode(map: maplibregl.Map, mode: StationMapMode): void {
-  const browseVisible = mode === 'browse'
-  const overlayVisible = mode === 'overlay'
+  const browseVisible = mode === 'browse' || mode === 'both'
+  const overlayVisible = mode === 'overlay' || mode === 'both'
   setLayersVisibility(map, BROWSE_CLUSTER_LAYERS, browseVisible)
   setLayersVisibility(map, BROWSE_POINT_LAYERS, browseVisible)
   setLayersVisibility(map, OVERLAY_LAYERS, overlayVisible)
@@ -323,13 +324,14 @@ export function setStationData(map: maplibregl.Map, data: FeatureCollection): vo
 }
 
 export function interactiveStationLayers(mode: StationMapMode): string[] {
-  if (mode === 'browse') {
-    return [POINT_LAYER_ID, CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID]
+  const layers: string[] = []
+  if (mode === 'browse' || mode === 'both') {
+    layers.push(POINT_LAYER_ID, CLUSTER_LAYER_ID, CLUSTER_COUNT_LAYER_ID)
   }
-  if (mode === 'overlay') {
-    return [OVERLAY_POINT_LAYER_ID, PLANNED_STOP_CIRCLE_LAYER_ID, PLANNED_STOP_LABEL_LAYER_ID]
+  if (mode === 'overlay' || mode === 'both') {
+    layers.push(OVERLAY_POINT_LAYER_ID, PLANNED_STOP_CIRCLE_LAYER_ID, PLANNED_STOP_LABEL_LAYER_ID)
   }
-  return []
+  return layers
 }
 
 export function mapShowsStationGlyphs(map: maplibregl.Map, mode: StationMapMode): boolean {

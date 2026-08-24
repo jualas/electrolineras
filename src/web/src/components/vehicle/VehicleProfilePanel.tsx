@@ -1,5 +1,5 @@
 import type { VehicleProfile } from '../../vehicle/vehicleProfile'
-import type { TerrainFactorId, VehiclePresetId } from '../../vehicle/vehiclePresets'
+import type { VehiclePresetId } from '../../vehicle/vehiclePresets'
 import { VehicleProfileFields } from './VehicleProfileFields'
 
 type VehicleProfilePanelProps = {
@@ -7,7 +7,6 @@ type VehicleProfilePanelProps = {
   onPresetChange: (presetId: VehiclePresetId) => void
   onSocChange: (socPercent: number) => void
   onConsumptionChange: (consumptionWhPerKm: number) => void
-  onTerrainChange: (terrainFactorId: TerrainFactorId) => void
   variant?: 'full' | 'compact' | 'advanced'
   className?: string
   socReadOnly?: boolean
@@ -19,7 +18,6 @@ export function VehicleProfilePanel({
   onPresetChange,
   onSocChange,
   onConsumptionChange,
-  onTerrainChange,
   variant = 'full',
   className,
   socReadOnly,
@@ -35,7 +33,6 @@ export function VehicleProfilePanel({
         onPresetChange={onPresetChange}
         onSocChange={onSocChange}
         onConsumptionChange={onConsumptionChange}
-        onTerrainChange={onTerrainChange}
         variant="advanced"
       />
     )
@@ -52,7 +49,6 @@ export function VehicleProfilePanel({
         onPresetChange={onPresetChange}
         onSocChange={onSocChange}
         onConsumptionChange={onConsumptionChange}
-        onTerrainChange={onTerrainChange}
         variant={variant}
         socReadOnly={socReadOnly}
         socSourceLabel={socSourceLabel}

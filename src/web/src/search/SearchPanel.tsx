@@ -2,13 +2,12 @@ import { AssistantPanel } from '../auth/AssistantPanel'
 import { useAuth } from '../auth/AuthContext'
 import type { AlongRouteResponse, ChargingPlanResponse, Station } from '../api/types'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
-import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
+import type { VehiclePresetId } from '../vehicle/vehiclePresets'
 import type { MapStationFilterState } from '../filters/MapStationFilters'
 import { ChargingPlanPanel } from './ChargingPlanPanel'
-import { MapSearchPanel } from './MapSearchPanel'
 import { RouteSearchPanel } from './RouteSearchPanel'
 
-export type SearchMode = 'map' | 'charge' | 'route' | 'assistant'
+export type SearchMode = 'charge' | 'route' | 'assistant'
 
 type SearchPanelProps = {
   mode: SearchMode
@@ -16,7 +15,6 @@ type SearchPanelProps = {
   onVehiclePresetChange: (presetId: VehiclePresetId) => void
   onVehicleSocChange: (socPercent: number) => void
   onVehicleConsumptionChange: (consumptionWhPerKm: number) => void
-  onVehicleTerrainChange: (terrainFactorId: TerrainFactorId) => void
   minKw?: number
   maxKw?: number
   mapStationFilters?: MapStationFilterState
@@ -37,7 +35,6 @@ export function SearchPanel({
   onVehiclePresetChange,
   onVehicleSocChange,
   onVehicleConsumptionChange,
-  onVehicleTerrainChange,
   minKw,
   maxKw,
   onRouteResults,
@@ -65,7 +62,6 @@ export function SearchPanel({
           onVehiclePresetChange={onVehiclePresetChange}
           onVehicleSocChange={onVehicleSocChange}
           onVehicleConsumptionChange={onVehicleConsumptionChange}
-          onVehicleTerrainChange={onVehicleTerrainChange}
           minKw={minKw}
           maxKw={maxKw}
           onResults={onChargePlanResults}
@@ -80,7 +76,6 @@ export function SearchPanel({
       <AssistantPanel
         vehicleProfile={vehicleProfile}
         onVehicleSocChange={onVehicleSocChange}
-        onVehicleTerrainChange={onVehicleTerrainChange}
         onPlanResults={onChargePlanResults}
         onPlanStateChange={onChargePlanSearchStateChange}
         onSelectStation={onChargePlanSelectStation}
@@ -96,7 +91,6 @@ export function SearchPanel({
         onVehiclePresetChange={onVehiclePresetChange}
         onVehicleSocChange={onVehicleSocChange}
         onVehicleConsumptionChange={onVehicleConsumptionChange}
-        onVehicleTerrainChange={onVehicleTerrainChange}
         minKw={minKw}
         maxKw={maxKw}
         onResults={onChargePlanResults}
@@ -122,5 +116,5 @@ export function SearchPanel({
     )
   }
 
-  return <MapSearchPanel />
+  return null
 }

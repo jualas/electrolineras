@@ -10,9 +10,7 @@ import {
 } from '../../vehicle/vehicleProfile'
 import {
   getVehiclePreset,
-  TERRAIN_FACTORS,
   VEHICLE_PRESETS,
-  type TerrainFactorId,
   type VehiclePresetId,
 } from '../../vehicle/vehiclePresets'
 
@@ -21,7 +19,6 @@ type VehicleProfileFieldsProps = {
   onPresetChange: (presetId: VehiclePresetId) => void
   onSocChange: (socPercent: number) => void
   onConsumptionChange: (consumptionWhPerKm: number) => void
-  onTerrainChange: (terrainFactorId: TerrainFactorId) => void
   variant?: 'full' | 'compact' | 'advanced' | 'assistant'
   socReadOnly?: boolean
   socSourceLabel?: string
@@ -32,7 +29,6 @@ export function VehicleProfileFields({
   onPresetChange,
   onSocChange,
   onConsumptionChange,
-  onTerrainChange,
   variant = 'full',
   socReadOnly = false,
   socSourceLabel,
@@ -67,25 +63,6 @@ export function VehicleProfileFields({
             {preset.usableCapacityKwh} kWh útil
           </p>
         </div>
-
-        <div className="vehicle-panel__terrain">
-          <span className="field__label">Terreno</span>
-          <div className="chip-row" role="list" aria-label="Factor de terreno">
-            {TERRAIN_FACTORS.map((terrain) => (
-              <button
-                key={terrain.id}
-                type="button"
-                role="listitem"
-                className={`chip ${profile.terrainFactorId === terrain.id ? 'chip--active' : ''}`}
-                onClick={() => onTerrainChange(terrain.id)}
-                aria-pressed={profile.terrainFactorId === terrain.id}
-                title={terrain.hint}
-              >
-                {terrain.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </>
     )
   }
@@ -106,7 +83,7 @@ export function VehicleProfileFields({
 
       {assistant && (
         <p className="panel-hint">
-          SOC y posición desde TeslaMate (arriba). Aquí ajustas modelo, consumo y terreno para el cálculo.
+          SOC y posición desde TeslaMate (arriba). Aquí ajustas modelo y consumo para el cálculo.
         </p>
       )}
 
@@ -179,25 +156,6 @@ export function VehicleProfileFields({
               Referencia {preset.referenceWhPerKm} Wh/km · {preset.ratedRangeKm} km al 100 % ·{' '}
               {preset.usableCapacityKwh} kWh útil
             </p>
-          </div>
-
-          <div className="vehicle-panel__terrain">
-            <span className="field__label">Terreno</span>
-            <div className="chip-row" role="list" aria-label="Factor de terreno">
-              {TERRAIN_FACTORS.map((terrain) => (
-                <button
-                  key={terrain.id}
-                  type="button"
-                  role="listitem"
-                  className={`chip ${profile.terrainFactorId === terrain.id ? 'chip--active' : ''}`}
-                  onClick={() => onTerrainChange(terrain.id)}
-                  aria-pressed={profile.terrainFactorId === terrain.id}
-                  title={terrain.hint}
-                >
-                  {terrain.label}
-                </button>
-              ))}
-            </div>
           </div>
         </>
       )}

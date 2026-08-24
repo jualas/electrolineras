@@ -196,7 +196,16 @@ export function ChargingPlanResults({
         ) : plan.reachable_without_stop ? (
           <p className="route-message">Con el SOC actual llegas al destino sin parar a cargar.</p>
         ) : (
-          <p className="route-message">No hay paradas en el corredor alcanzables con el SOC actual.</p>
+          <>
+            <p className="route-message">No hay paradas en el corredor alcanzables con el SOC actual.</p>
+            {plan.warnings.length > 0 && (
+              <ul className="charge-warnings" aria-label="Alertas del plan">
+                {plan.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </>
     )
