@@ -12,6 +12,9 @@ type PlaceAutocompleteProps = {
   onSelect: (place: GeocodeResult) => void
   disabled?: boolean
   variant?: 'default' | 'floating'
+  /** Si `value` coincide con esta etiqueta (p. ej. "Mi casa"), ya apunta a un punto fijo
+   *  resuelto de antemano: no busca sugerencias hasta que el usuario escriba otra cosa. */
+  anchorLabel?: string
 }
 
 export function PlaceAutocomplete({
@@ -23,6 +26,7 @@ export function PlaceAutocomplete({
   onSelect,
   disabled = false,
   variant = 'default',
+  anchorLabel,
 }: PlaceAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([])
   const [open, setOpen] = useState(false)
@@ -37,7 +41,7 @@ export function PlaceAutocomplete({
     }
 
     const trimmed = value.trim()
-    if (trimmed.length < 2) {
+    if (trimmed.length < 2 || trimmed === anchorLabel) {
       setSuggestions([])
       setOpen(false)
       setLoading(false)
@@ -71,7 +75,7 @@ export function PlaceAutocomplete({
         window.clearTimeout(debounceRef.current)
       }
     }
-  }, [value])
+  }, [value, anchorLabel])
 
   const handleBlur = () => {
     blurTimeoutRef.current = window.setTimeout(() => setOpen(false), 150)

@@ -4,7 +4,7 @@ import { fetchChargingPlan } from '../api/chargingPlan'
 import type { ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
 import { geocodePlace } from '../api/route'
 import { VehicleTelemetryStrip } from '../components/vehicle/VehicleTelemetryStrip'
-import type { TerrainFactorId, VehiclePresetId } from '../vehicle/vehiclePresets'
+import type { VehiclePresetId } from '../vehicle/vehiclePresets'
 import { getTerrainFactor } from '../vehicle/vehiclePresets'
 import { VehicleProfilePanel } from '../components/vehicle/VehicleProfilePanel'
 import { VehicleProfileFields } from '../components/vehicle/VehicleProfileFields'
@@ -19,7 +19,8 @@ import {
 } from '../vehicle/telemetryProfile'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
 import { RoutePreferenceFields } from './RoutePreferenceFields'
-import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
+import { HOME_LOCATION } from './homeLocation'
+import { revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
 import { useActiveTrip } from '../hooks/useActiveTrip'
@@ -35,7 +36,6 @@ type ChargingPlanPanelProps = {
   onVehiclePresetChange: (presetId: VehiclePresetId) => void
   onVehicleSocChange: (socPercent: number) => void
   onVehicleConsumptionChange: (consumptionWhPerKm: number) => void
-  onVehicleTerrainChange: (terrainFactorId: TerrainFactorId) => void
   minKw?: number
   maxKw?: number
   onResults: (response: ChargingPlanResponse | null) => void
@@ -49,7 +49,6 @@ export function ChargingPlanPanel({
   onVehiclePresetChange,
   onVehicleSocChange,
   onVehicleConsumptionChange,
-  onVehicleTerrainChange,
   minKw,
   maxKw,
   onResults,
@@ -71,9 +70,9 @@ export function ChargingPlanPanel({
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<ChargingPlanResponse | null>(null)
-  const [manualOriginText, setManualOriginText] = useState('')
+  const [manualOriginText, setManualOriginText] = useState(HOME_LOCATION.label)
   const [manualOriginPoint, setManualOriginPoint] = useState<{ label: string; lat: number; lon: number } | null>(
-    null,
+    HOME_LOCATION,
   )
   const lastSearchKeyRef = useRef<string | null>(null)
   const recalcOnPreferenceRef = useRef(false)
@@ -486,7 +485,6 @@ export function ChargingPlanPanel({
         onPresetChange={onVehiclePresetChange}
         onSocChange={onVehicleSocChange}
         onConsumptionChange={onVehicleConsumptionChange}
-        onTerrainChange={onVehicleTerrainChange}
         socReadOnly={telemetrySocLocked}
         socSourceLabel={telemetrySocLocked ? 'TeslaMate en vivo' : undefined}
       />
@@ -501,19 +499,20 @@ export function ChargingPlanPanel({
         />
       )}
 
-      <details className="vehicle-advanced">
-        <summary>Consumo y terreno (avanzado)</summary>
-        <div className="vehicle-advanced__body">
-          <VehicleProfileFields
-            profile={vehicleProfile}
-            onPresetChange={onVehiclePresetChange}
-            onSocChange={onVehicleSocChange}
-            onConsumptionChange={onVehicleConsumptionChange}
-            onTerrainChange={onVehicleTerrainChange}
-            variant="advanced"
-          />
-        </div>
-      </details>
+      {!carTelemetryAvailable && (
+        <details className="vehicle-advanced">
+          <summary>Consumo (avanzado)</summary>
+          <div className="vehicle-advanced__body">
+            <VehicleProfileFields
+              profile={vehicleProfile}
+              onPresetChange={onVehiclePresetChange}
+              onSocChange={onVehicleSocChange}
+              onConsumptionChange={onVehicleConsumptionChange}
+              variant="advanced"
+            />
+          </div>
+        </details>
+      )}
 
       <p className="panel-hint charge-panel__hint">
         {useCarOrigin
@@ -603,6 +602,7 @@ export function ChargingPlanPanel({
             placeholder="Ciudad o dirección de salida"
             onChange={handleManualOriginChange}
             onSelect={handleManualOriginSelect}
+            anchorLabel={HOME_LOCATION.label}
           />
         ) : (
           <>
@@ -630,6 +630,7 @@ export function ChargingPlanPanel({
               placeholder="Solo si el GPS falla"
               onChange={handleManualOriginChange}
               onSelect={handleManualOriginSelect}
+              anchorLabel={HOME_LOCATION.label}
             />
           </>
         )}
@@ -694,23 +695,7 @@ export function ChargingPlanPanel({
                 }
               }}
               disabled={status === 'loading'}
-              comparisonPlan={status === 'ready' ? lastResponse : null}
             />
-
-            <RevePlanningFields
-              options={revePlanning}
-              consumptionWhPerKm={vehicleProfile.consumptionWhPerKm}
-              disabled={status === 'loading'}
-              onChange={(value) => {
-                setRevePlanning(value)
-                if (status === 'ready' && lastResponse && !emergencyMode) {
-                  recalcOnPreferenceRef.current = true
-                } else {
-                  lastSearchKeyRef.current = null
-                }
-              }}
-            />
-
           </>
         )}
 
@@ -762,6 +747,8 @@ export function ChargingPlanPanel({
             plan={lastResponse}
             selectedStationId={selectedStationId}
             onSelectStation={onSelectStation}
+            originLabel={originLabel}
+            destinationLabel={emergencyMode ? undefined : destPoint?.label ?? replanDestination?.label}
           />
 
           {activeTrip && !emergencyMode ? (

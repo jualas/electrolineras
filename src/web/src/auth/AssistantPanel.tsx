@@ -9,10 +9,10 @@ import {
   planningRangeFromNominal,
 } from '../vehicle/telemetryProfile'
 import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
-import { getTerrainFactor, getVehiclePreset, TERRAIN_FACTORS, type TerrainFactorId } from '../vehicle/vehiclePresets'
+import { getTerrainFactor } from '../vehicle/vehiclePresets'
 import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
-import { RevePlanningFields, revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
+import { revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
 import type { RoutePreference } from '../api/types'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
 import {
@@ -29,7 +29,6 @@ import type { VehicleProfile } from '../vehicle/vehicleProfile'
 type AssistantPanelProps = {
   vehicleProfile: VehicleProfile
   onVehicleSocChange: (socPercent: number) => void
-  onVehicleTerrainChange: (terrainFactorId: TerrainFactorId) => void
   onPlanResults: (response: import('../api/types').ChargingPlanResponse | null) => void
   onPlanStateChange?: (status: 'idle' | 'loading' | 'ready' | 'error') => void
   onSelectStation?: (station: import('../api/types').Station | null) => void
@@ -39,13 +38,12 @@ type AssistantPanelProps = {
 export function AssistantPanel({
   vehicleProfile,
   onVehicleSocChange,
-  onVehicleTerrainChange,
   onPlanResults,
   onPlanStateChange,
   onSelectStation,
   selectedStationId,
 }: AssistantPanelProps) {
-  const { loading, authenticated, loginEnabled, logout, privateStackEnabled } = useAuth()
+  const { loading, authenticated, loginEnabled, privateStackEnabled } = useAuth()
   const [destination, setDestination] = useState<GeocodeResult | null>(null)
   const [destinationText, setDestinationText] = useState('')
   const [advice, setAdvice] = useState<TripGuideResponse | null>(null)
@@ -106,7 +104,7 @@ export function AssistantPanel({
 
   if (!privateStackEnabled) {
     return (
-      <section className="assistant-panel">
+      <section className="panel search-panel assistant-panel">
         <p className="assistant-panel__muted">
           Zona privada desactivada en el servidor (<code>PRIVATE_STACK_ENABLED</code>).
         </p>
@@ -116,7 +114,7 @@ export function AssistantPanel({
 
   if (!loginEnabled) {
     return (
-      <section className="assistant-panel">
+      <section className="panel search-panel assistant-panel">
         <p className="assistant-panel__muted">
           Falta configurar TOTP en el servidor. Ver <code>scripts/auth/setup_private_auth.py</code>.
         </p>
@@ -129,7 +127,6 @@ export function AssistantPanel({
   }
 
   const terrain = getTerrainFactor(vehicleProfile.terrainFactorId)
-  const vehiclePreset = getVehiclePreset(vehicleProfile.presetId)
   const nominalKm = vehicle != null ? nominalRangeKm(vehicle) : null
   const planningSocPercent =
     vehicle != null && simulateDeparture ? departureSoc : vehicle?.battery_level_pct ?? 0
@@ -145,11 +142,6 @@ export function AssistantPanel({
     nominalKm != null && planningSocPercent > 0
       ? chargingReachFromNominal(nominalKm, planningSocPercent)
       : null
-  const consumptionWhPerKm =
-    nominalKm != null && nominalKm > 0
-      ? (vehiclePreset.usableCapacityKwh * 1000) / nominalKm
-      : vehiclePreset.referenceWhPerKm
-
   const runMapPlan = async () => {
     if (!destination) {
       setPlanError('Selecciona un destino de la lista')
@@ -268,14 +260,9 @@ export function AssistantPanel({
   }, [routePreference, avoidTolls, revePlanning, busy, advice?.plan, destination])
 
   return (
-    <section className="assistant-panel">
-      <div className="assistant-panel__header">
-        <h2 className="assistant-panel__title">Asistente (coche)</h2>
-        <button type="button" className="assistant-panel__logout" onClick={() => void logout()}>
-          Salir
-        </button>
-      </div>
-      <p className="assistant-panel__hint">
+    <section className="panel search-panel assistant-panel">
+      <h2>Asistente (coche)</h2>
+      <p className="panel-hint">
         Datos en vivo desde TeslaMate (SOC, autonomía del cuadro y modelo). El plan usa esos valores, no presets
         genéricos.
       </p>
@@ -287,22 +274,10 @@ export function AssistantPanel({
         onRefresh={() => void loadVehicle()}
       />
 
-      {vehicle && nominalKm != null && (
-        <ul className="assistant-vehicle__stats assistant-vehicle__stats--extra">
-          {planKm != null && (
-            <li>
-              Plan reserva {DEFAULT_RESERVE_SOC_PERCENT} %: ~{planKm} km
-              {reachKm != null && <> · hasta cargador ≥5 %: ~{reachKm} km</>}
-            </li>
-          )}
-          {vehicle.est_battery_range_km != null &&
-            nominalKm != null &&
-            Math.abs(vehicle.est_battery_range_km - (nominalKm * vehicle.battery_level_pct) / 100) > 15 && (
-              <li className="assistant-panel__muted">
-                MQTT est_battery_range_km: ~{vehicle.est_battery_range_km.toFixed(0)} km (no usado en el plan)
-              </li>
-            )}
-        </ul>
+      {vehicle && planKm != null && (
+        <p className="charge-vehicle-summary">
+          ~{planKm} km de plan{reachKm != null && <> · hasta cargador ~{reachKm} km</>}
+        </p>
       )}
 
       {vehicle && nominalKm != null && (
@@ -332,142 +307,110 @@ export function AssistantPanel({
         />
       )}
 
-      <div className="assistant-profile-sync">
-        <p className="panel-hint">
-          Terreno ajusta el plan si esperas más consumo (sierra, frío). El plan usa el SOC al salir si simulas
-          carga; si no, el nivel actual del coche.
-        </p>
-        <div className="vehicle-panel__terrain">
-          <span className="field__label">Terreno</span>
-          <div className="chip-row" role="list" aria-label="Factor de terreno">
-            {TERRAIN_FACTORS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="listitem"
-                className={`chip ${vehicleProfile.terrainFactorId === item.id ? 'chip--active' : ''}`}
-                onClick={() => onVehicleTerrainChange(item.id)}
-                aria-pressed={vehicleProfile.terrainFactorId === item.id}
-                title={item.hint}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <PlaceAutocomplete
-        id="assistant-dest"
-        label="Destino"
-        placeholder="Ciudad o lugar"
-        value={destinationText}
-        onChange={(text) => {
-          setDestinationText(text)
-          setDestination(null)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
-        }}
-        onSelect={(place) => {
-          setDestinationText(place.label)
-          setDestination(place)
-          setAdvice(null)
-          onPlanResults(null)
-          onPlanStateChange?.('idle')
-        }}
-      />
-
-      <RoutePreferenceFields
-        routePreference={routePreference}
-        avoidTolls={avoidTolls}
-        variant="assistant"
-        comparisonPlan={advice?.plan ?? null}
-        onRoutePreferenceChange={(value) => {
-          setRoutePreference(value)
-          if (advice?.plan) {
-            recalcOnPreferenceRef.current = true
-          } else {
+      <form className="route-form" onSubmit={(event) => event.preventDefault()}>
+        <PlaceAutocomplete
+          id="assistant-dest"
+          label="Destino"
+          placeholder="Ciudad o lugar"
+          value={destinationText}
+          onChange={(text) => {
+            setDestinationText(text)
+            setDestination(null)
             setAdvice(null)
             onPlanResults(null)
             onPlanStateChange?.('idle')
-          }
-        }}
-        onAvoidTollsChange={(value) => {
-          setAvoidTolls(value)
-          if (advice?.plan) {
-            recalcOnPreferenceRef.current = true
-          } else {
+          }}
+          onSelect={(place) => {
+            setDestinationText(place.label)
+            setDestination(place)
             setAdvice(null)
             onPlanResults(null)
             onPlanStateChange?.('idle')
-          }
-        }}
-        disabled={busy}
-      />
-
-      <RevePlanningFields
-        options={revePlanning}
-        consumptionWhPerKm={consumptionWhPerKm}
-        disabled={busy}
-        onChange={(value) => {
-          setRevePlanning(value)
-          if (advice?.plan) {
-            recalcOnPreferenceRef.current = true
-          } else {
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
-          }
-        }}
-      />
-
-      <label className="assistant-panel__option">
-        <input
-          type="checkbox"
-          checked={culturalPoi}
-          onChange={(e) => setCulturalPoi(e.target.checked)}
+          }}
         />
-        Incluir ideas culturales y gastronomía en la guía
-      </label>
 
-      <label className="field" htmlFor="assistant-ai-note">
-        <span className="field__label">Pregunta o nota para la IA (opcional)</span>
-        <textarea
-          id="assistant-ai-note"
-          className="assistant-ai-note"
-          rows={3}
-          placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
-          value={aiNote}
-          onChange={(e) => setAiNote(e.target.value)}
+        <RoutePreferenceFields
+          routePreference={routePreference}
+          avoidTolls={avoidTolls}
+          variant="assistant"
+          onRoutePreferenceChange={(value) => {
+            setRoutePreference(value)
+            if (advice?.plan) {
+              recalcOnPreferenceRef.current = true
+            } else {
+              setAdvice(null)
+              onPlanResults(null)
+              onPlanStateChange?.('idle')
+            }
+          }}
+          onAvoidTollsChange={(value) => {
+            setAvoidTolls(value)
+            if (advice?.plan) {
+              recalcOnPreferenceRef.current = true
+            } else {
+              setAdvice(null)
+              onPlanResults(null)
+              onPlanStateChange?.('idle')
+            }
+          }}
           disabled={busy}
         />
-      </label>
 
-      <div className="assistant-ai-actions">
-        <button
-          type="button"
-          className="assistant-ai-actions__map"
-          disabled={busy || !destination}
-          onClick={() => void runMapPlan()}
-        >
-          {loadingPlan ? 'Calculando mapa…' : 'Planificar en mapa'}
-        </button>
-        <button
-          type="button"
-          className="assistant-ai-actions__ia auth-form__submit"
-          disabled={busy || !destination}
-          onClick={() => void runAiGuide()}
-        >
-          {loadingGuide ? 'Generando guía IA…' : 'Guía de viaje con IA'}
-        </button>
-      </div>
-      <p className="assistant-panel__hint assistant-panel__hint--actions">
-        El mapa es rápido (motor local). La guía IA usa Dify + Cursor y puede tardar 1–2 minutos.
-      </p>
+        <label className="field field--checkbox">
+          <input
+            type="checkbox"
+            checked={culturalPoi}
+            onChange={(e) => setCulturalPoi(e.target.checked)}
+          />
+          <span>Incluir ideas culturales y gastronomía en la guía</span>
+        </label>
 
-      {planError && <p className="auth-form__error">{planError}</p>}
-      {guideError && <p className="auth-form__error">{guideError}</p>}
+        <label className="field" htmlFor="assistant-ai-note">
+          <span className="field__label">Pregunta o nota para la IA (opcional)</span>
+          <textarea
+            id="assistant-ai-note"
+            className="assistant-ai-note"
+            rows={3}
+            placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
+            value={aiNote}
+            onChange={(e) => setAiNote(e.target.value)}
+            disabled={busy}
+          />
+        </label>
+
+        <div className="route-form__actions">
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={busy || !destination}
+            onClick={() => void runAiGuide()}
+          >
+            {loadingGuide ? 'Generando guía IA…' : 'Guía de viaje con IA'}
+          </button>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={busy || !destination}
+            onClick={() => void runMapPlan()}
+          >
+            {loadingPlan ? 'Calculando mapa…' : 'Solo plan en mapa (rápido)'}
+          </button>
+        </div>
+        <p className="panel-hint">
+          El mapa es rápido (motor local). La guía IA usa Dify + Cursor y puede tardar 1–2 minutos.
+        </p>
+      </form>
+
+      {planError && (
+        <p className="route-message route-message--error" role="alert">
+          {planError}
+        </p>
+      )}
+      {guideError && (
+        <p className="route-message route-message--error" role="alert">
+          {guideError}
+        </p>
+      )}
 
       {advice && (
         <div className="assistant-advice">
@@ -510,6 +453,8 @@ export function AssistantPanel({
             selectedStationId={selectedStationId}
             onSelectStation={onSelectStation}
             variant="assistant"
+            originLabel="Tu coche"
+            destinationLabel={destination?.label}
           />
         </div>
       )}

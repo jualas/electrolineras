@@ -5,13 +5,11 @@ import { chargingPlanRouteMapFeatures, routeChargingStops, routeMapFitPoints, ty
 import { alongRouteToFeatures } from '../api/route'
 import { fetchStationsGeoJSON } from '../api/stations'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station, StationFeature } from '../api/types'
-import type { ThemeMode } from '../hooks/useTheme'
 import {
   clearCityOverlay,
   ensureCityLayers,
   setCityReference,
   setCityRadiusCircle,
-  updateCityLayerTheme,
 } from './cityLayers'
 import {
   activeRouteGeometry,
@@ -26,7 +24,6 @@ import {
   setRouteComparisonLines,
   setRouteEndpoints,
   setRangeCircle,
-  updateRouteLayerTheme,
 } from './routeLayers'
 import {
   CLUSTER_COUNT_LAYER_ID,
@@ -47,7 +44,6 @@ import {
   stationPopupHtml,
   STATIONS_BROWSE_SOURCE_ID,
   updatePlannedStopSelection,
-  updateStationLayerTheme,
   type StationMapMode,
 } from './stationLayers'
 import {
@@ -85,7 +81,6 @@ function getMapUiPadding(): maplibregl.PaddingOptions {
 
 type MapViewProps = {
   className?: string
-  theme: ThemeMode
   loadStations?: boolean
   minKw?: number
   maxKw?: number
@@ -193,7 +188,6 @@ function handleClusterClick(
 
 export function MapView({
   className,
-  theme,
   loadStations = true,
   minKw,
   maxKw,
@@ -226,7 +220,6 @@ export function MapView({
   const coverageBoundsRef = useRef<MapBounds | null>(null)
   const lastLoadedZoomRef = useRef<number | null>(null)
   const stationMapModeRef = useRef<StationMapMode>('browse')
-  const themeRef = useRef(theme)
   const loadStationsRef = useRef(loadStations)
   const mapFocusPlaceRef = useRef(mapFocusPlace)
   const stationFiltersRef = useRef({
@@ -249,7 +242,6 @@ export function MapView({
   const scheduleLoadRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
   const applyActiveOverlayRef = useRef<(map: maplibregl.Map) => void>(() => undefined)
 
-  themeRef.current = theme
   loadStationsRef.current = loadStations
   mapFocusPlaceRef.current = mapFocusPlace
   stationFiltersRef.current = {
@@ -325,7 +317,7 @@ export function MapView({
       if (!place) {
         return
       }
-      ensureCityLayers(map, themeRef.current)
+      ensureCityLayers(map)
       setCityReference(map, place)
       setCityRadiusCircle(map, null, null)
     },
@@ -334,27 +326,36 @@ export function MapView({
 
   const paintBrowseStations = useCallback(
     (map: maplibregl.Map, features: StationFeature[]) => {
-      ensureStationLayers(map, themeRef.current)
-      clearOverlayStationData(map)
-      setStationMapModeState(map, 'browse')
+      ensureStationLayers(map)
+      // Si hay una ruta/plan activo, sus paradas se superponen al mapa de estaciones
+      // (estilo REVE) en vez de sustituirlo: no se toca la capa overlay ni el badge.
+      const hasOverlay = Boolean(routeDataRef.current || chargePlanDataRef.current)
+      if (!hasOverlay) {
+        clearOverlayStationData(map)
+      }
+      setStationMapModeState(map, hasOverlay ? 'both' : 'browse')
       const visibleBounds = boundsFromMap(map)
       const toRender = featuresForViewport(features, visibleBounds, VIEWPORT_RENDER_PADDING)
       setBrowseStationData(map, {
         type: 'FeatureCollection',
         features: toRender,
       })
-      setStationCount(countFeaturesInBounds(features, visibleBounds))
-      setLoadState(features.length > 0 ? 'ready' : 'idle')
-      setOverlayMode('map')
+      if (!hasOverlay) {
+        setStationCount(countFeaturesInBounds(features, visibleBounds))
+        setLoadState(features.length > 0 ? 'ready' : 'idle')
+        setOverlayMode('map')
+      }
     },
     [setStationMapModeState],
   )
 
   const paintOverlayStations = useCallback(
-    (map: maplibregl.Map, features: StationFeature[], mode: 'route' | 'charge') => {
-      ensureStationLayers(map, themeRef.current)
-      clearBrowseStationData(map)
-      setStationMapModeState(map, 'overlay')
+    (map: maplibregl.Map, features: StationFeature[], mode: 'route' | 'charge', keepBrowse: boolean) => {
+      ensureStationLayers(map)
+      if (!keepBrowse) {
+        clearBrowseStationData(map)
+      }
+      setStationMapModeState(map, keepBrowse ? 'both' : 'overlay')
       setOverlayStationData(map, {
         type: 'FeatureCollection',
         features,
@@ -369,8 +370,8 @@ export function MapView({
     [setStationMapModeState],
   )
 
-  const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse, chargePlan?: ChargingPlanResponse | null) => {
-    ensureRouteLayers(map, themeRef.current)
+  const applyRouteOverlay = useCallback((map: maplibregl.Map, data: AlongRouteResponse, chargePlan: ChargingPlanResponse | null | undefined, keepBrowse: boolean) => {
+    ensureRouteLayers(map)
     clearCityOverlay(map)
     const variantGeometries = routeVariantGeometriesFromResponse(data)
     const preference = data.route_preference ?? chargePlan?.route_preference ?? 'fastest'
@@ -403,11 +404,11 @@ export function MapView({
             ),
             ...routeFeatures,
           ]
-    paintOverlayStations(map, overlayFeatures, 'route')
+    paintOverlayStations(map, overlayFeatures, 'route', keepBrowse)
   }, [paintOverlayStations])
 
-  const applyChargePlanOverlay = useCallback((map: maplibregl.Map, data: ChargingPlanResponse) => {
-    ensureRouteLayers(map, themeRef.current)
+  const applyChargePlanOverlay = useCallback((map: maplibregl.Map, data: ChargingPlanResponse, keepBrowse: boolean) => {
+    ensureRouteLayers(map)
     clearCityOverlay(map)
     const variantGeometries = routeVariantGeometriesFromResponse(data)
     const preference = data.route_preference ?? 'fastest'
@@ -427,7 +428,7 @@ export function MapView({
     setRouteEndpoints(map, data.origin, data.destination)
     setRangeCircle(map, data.origin, data.charging_reach_km)
     const features = chargingPlanRouteMapFeatures(data)
-    paintOverlayStations(map, features, 'charge')
+    paintOverlayStations(map, features, 'charge', keepBrowse)
   }, [paintOverlayStations])
 
   const clearSearchOverlays = useCallback((map: maplibregl.Map) => {
@@ -450,20 +451,29 @@ export function MapView({
 
   const applyActiveOverlay = useCallback(
     (map: maplibregl.Map) => {
-      if (loadStationsRef.current) {
+      const keepBrowse = loadStationsRef.current
+
+      if (keepBrowse) {
         if (loadedFeaturesRef.current.length > 0) {
           paintStationsOnMap(map, loadedFeaturesRef.current)
         } else {
           scheduleLoadRef.current(map, true)
         }
-        return
       }
+
       if (routeDataRef.current) {
-        applyRouteOverlay(map, routeDataRef.current, routeChargePlanDataRef.current)
+        applyRouteOverlay(map, routeDataRef.current, routeChargePlanDataRef.current, keepBrowse)
         return
       }
       if (chargePlanDataRef.current) {
-        applyChargePlanOverlay(map, chargePlanDataRef.current)
+        applyChargePlanOverlay(map, chargePlanDataRef.current, keepBrowse)
+        return
+      }
+      if (keepBrowse) {
+        // Sin ruta/plan activo: solo limpiar restos de una ruta anterior (línea,
+        // extremos, círculo de alcance), el mapa de estaciones ya lo dejó listo arriba.
+        clearRouteOverlay(map)
+        clearCityOverlay(map)
         return
       }
       clearSearchOverlays(map)
@@ -525,8 +535,11 @@ export function MapView({
         loadedFeaturesRef.current.length > 0 &&
         !shouldFetchStations(coverageBoundsRef.current, visibleBounds, lastLoadedZoomRef.current, zoom)
       ) {
-        setStationCount(inView)
-        setLoadState(inView > 0 || loadedFeaturesRef.current.length > 0 ? 'ready' : 'idle')
+        const hasOverlay = Boolean(routeDataRef.current || chargePlanDataRef.current)
+        if (!hasOverlay) {
+          setStationCount(inView)
+          setLoadState(inView > 0 || loadedFeaturesRef.current.length > 0 ? 'ready' : 'idle')
+        }
         lastLoadedZoomRef.current = zoom
         if (inView > 0 && !mapShowsStationGlyphs(map, 'browse')) {
           paintBrowseStations(map, loadedFeaturesRef.current)
@@ -633,8 +646,12 @@ export function MapView({
       attributionControl: false,
     })
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
-    map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
+    map.addControl(
+      new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }),
+      'bottom-right',
+    )
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), 'bottom-left')
     popupRef.current = new maplibregl.Popup({
       closeButton: true,
       closeOnClick: false,
@@ -685,9 +702,9 @@ export function MapView({
       enhancePlaceLabels(map)
       ensureReliefLayers(map)
       ensureTrafficLayer(map)
-      ensureStationLayers(map, themeRef.current)
-      ensureRouteLayers(map, themeRef.current)
-      ensureCityLayers(map, themeRef.current)
+      ensureStationLayers(map)
+      ensureRouteLayers(map)
+      ensureCityLayers(map)
       const layers = mapLayersRef.current
       setShadowVisible(map, true)
       if (layers) {
@@ -720,7 +737,7 @@ export function MapView({
       })
       if (hit.length === 0) {
         popupRef.current?.remove()
-        if (mode === 'overlay' && selectedPlannedStopOrderRef.current != null) {
+        if ((mode === 'overlay' || mode === 'both') && selectedPlannedStopOrderRef.current != null) {
           onPlannedStopSelectRef.current?.(null)
         }
       }
@@ -754,27 +771,15 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) {
-      return
-    }
-    updateStationLayerTheme(map, theme)
-    updateRouteLayerTheme(map, theme)
-    updateCityLayerTheme(map, theme)
-  }, [theme])
-
-  useEffect(() => {
-    const map = mapRef.current
     if (!map) {
       return
     }
     runWhenMapReady(map, (readyMap) => {
-      if (loadStations) {
-        if (loadedFeaturesRef.current.length === 0) {
-          coverageBoundsRef.current = null
-          lastLoadedZoomRef.current = null
-        }
-        scheduleLoad(readyMap, loadedFeaturesRef.current.length === 0)
-        return
+      // applyActiveOverlay ya decide si (re)pinta el mapa de estaciones, aplica la
+      // ruta/plan activo, o ambos a la vez (estilo REVE): nunca hay que elegir uno u otro.
+      if (loadStations && loadedFeaturesRef.current.length === 0) {
+        coverageBoundsRef.current = null
+        lastLoadedZoomRef.current = null
       }
       applyActiveOverlay(readyMap)
     })

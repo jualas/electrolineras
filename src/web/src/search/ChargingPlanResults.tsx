@@ -1,74 +1,122 @@
+import { Battery, Clock, Euro, Navigation2, Share2, Zap } from 'lucide-react'
+
 import type { ChargingPlanResponse, PlannedRouteStopResult } from '../api/types'
 import { RouteExportActions } from '../components/navigation/RouteExportActions'
 import {
   classificationClassName,
   formatClassificationLabel,
 } from '../charging/classificationDisplay'
+import { formatDurationHm, formatEsNumber } from '../charging/formatTrip'
 import { routeExportSpecFromChargingPlan, routeChargingStops, isChargingPlanComplete } from '../charging/planRouteStops'
+import { canShareLocation, googleMapsRouteUrl, shareRoute } from '../navigation/externalMaps'
+import type { RouteExportSpec } from '../navigation/externalMaps'
 import { avoidTollsLabel, formatRouteAlternativesKm } from './RoutePreferenceFields'
 import { ChargingStopList } from './ChargingStopList'
+import { RevePlanTimeline } from './RevePlanTimeline'
+import { ReveStatRow } from './ReveStatRow'
 
 type ChargingPlanResultsProps = {
   plan: ChargingPlanResponse
   selectedStationId?: string | null
   onSelectStation?: (station: import('../api/types').Station | null) => void
   variant?: 'full' | 'assistant'
+  originLabel?: string | null
+  destinationLabel?: string | null
 }
 
 /** Estrategias de «cargar antes de salir» — no forman parte del relato de la ruta. */
 const ORIGIN_NOISE_STRATEGY_IDS = new Set(['charge_at_origin'])
 
-function plannedStopDistanceLabel(stop: PlannedRouteStopResult): string {
-  const drive =
-    stop.leg_driving_minutes != null && stop.leg_driving_minutes > 0
-      ? ` · ~${stop.leg_driving_minutes.toFixed(0)} min conducción`
-      : ''
-  const energy =
-    stop.leg_energy_kwh != null && stop.leg_energy_kwh > 0
-      ? ` · ${stop.leg_energy_kwh.toFixed(1)} kWh`
-      : ''
-  const cost =
-    stop.estimated_charge_cost_eur != null
-      ? ` · ~${stop.estimated_charge_cost_eur.toFixed(2)} €`
-      : ''
-  return `${stop.distance_from_origin_km.toFixed(0)} km · tramo ${stop.leg_distance_km.toFixed(0)} km${drive}${energy} · ${stop.soc_arrival_pct.toFixed(0)}→${stop.soc_departure_pct.toFixed(0)} % · ~${stop.charge_minutes.toFixed(0)} min carga${cost}`
-}
+function ReveRouteSummaryCard({
+  summary,
+  distanceKm,
+  originLabel,
+  destinationLabel,
+  routeExport,
+}: {
+  summary: NonNullable<ChargingPlanResponse['route_trip_summary']>
+  distanceKm?: number | null
+  originLabel?: string | null
+  destinationLabel?: string | null
+  routeExport: RouteExportSpec | null
+}) {
+  const googleUrl = routeExport
+    ? googleMapsRouteUrl({
+        origin: routeExport.origin,
+        destination: routeExport.destination,
+        waypoints: routeExport.waypoints,
+      })
+    : null
+  const shareAvailable = routeExport != null && canShareLocation()
 
-function compactStopDistanceLabel(stop: PlannedRouteStopResult): string {
-  return `km ${stop.distance_from_origin_km.toFixed(0)} · llegada ${stop.soc_arrival_pct.toFixed(0)} % · carga ${stop.charge_minutes.toFixed(0)} min → ${stop.soc_departure_pct.toFixed(0)} % · ${stop.station.max_power_kw.toFixed(0)} kW`
-}
-
-function TripSummaryBox({ summary }: { summary: NonNullable<ChargingPlanResponse['route_trip_summary']> }) {
   return (
-    <div className="reve-trip-summary" aria-label="Resumen del viaje">
-      <p className="reve-trip-summary__title">Resumen del viaje</p>
-      <ul className="reve-trip-summary__stats">
-        <li>
-          <strong>{summary.total_duration_minutes.toFixed(0)} min</strong> total
-        </li>
-        <li>
-          <strong>{summary.driving_duration_minutes.toFixed(0)} min</strong> conducción
-        </li>
-        <li>
-          <strong>{summary.total_charge_minutes.toFixed(0)} min</strong> recarga
-        </li>
-        <li>
-          <strong>{summary.stop_count}</strong> parada{summary.stop_count === 1 ? '' : 's'}
-        </li>
-        <li>
-          <strong>{summary.total_energy_kwh.toFixed(0)} kWh</strong> consumo
-        </li>
+    <div className="reve-route-summary" aria-label="Resumen del viaje">
+      <div className="reve-route-summary__head">
+        <div className="reve-route-summary__headline">
+          {originLabel && destinationLabel && (
+            <p className="reve-route-summary__route">
+              {originLabel} a {destinationLabel}
+            </p>
+          )}
+          <p className="reve-route-summary__duration">{formatDurationHm(summary.total_duration_minutes)}</p>
+          <p className="reve-route-summary__subline">
+            {distanceKm != null && `${formatEsNumber(distanceKm, 2)} km  -  `}
+            {summary.stop_count} parada{summary.stop_count === 1 ? '' : 's'}
+          </p>
+        </div>
+        <div className="reve-route-summary__actions">
+          {shareAvailable && (
+            <button
+              type="button"
+              className="reve-icon-btn"
+              title="Compartir ruta"
+              onClick={() => void shareRoute(routeExport, 'full')}
+            >
+              <Share2 size={18} aria-hidden />
+            </button>
+          )}
+          {googleUrl && (
+            <a
+              className="reve-icon-btn"
+              title="Iniciar navegación"
+              href={googleUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Navigation2 size={18} aria-hidden />
+            </a>
+          )}
+        </div>
+      </div>
+
+      <div className="reve-route-summary__divider" />
+
+      <div className="reve-route-summary__stats">
+        <ReveStatRow
+          icon={<Clock size={16} aria-hidden />}
+          label="Tiempo de recarga estimado"
+          value={`${summary.total_charge_minutes.toFixed(0)} min`}
+        />
         {summary.projected_destination_soc_pct != null && (
-          <li>
-            <strong>{summary.projected_destination_soc_pct.toFixed(0)} %</strong> al destino
-          </li>
+          <ReveStatRow
+            icon={<Battery size={16} aria-hidden />}
+            label="% de batería al llegar al destino"
+            value={`${summary.projected_destination_soc_pct.toFixed(0)}%`}
+          />
         )}
+        <ReveStatRow
+          icon={<Zap size={16} aria-hidden />}
+          label="Consumo estimado"
+          value={`${formatEsNumber(summary.total_energy_kwh, 2)} kWh`}
+        />
         {summary.estimated_charge_cost_eur != null && (
-          <li>
-            <strong>~{summary.estimated_charge_cost_eur.toFixed(2)} €</strong> carga est.
-          </li>
+          <ReveStatRow
+            icon={<Euro size={16} aria-hidden />}
+            label="Coste estimado de recarga"
+            value={`~${formatEsNumber(summary.estimated_charge_cost_eur, 2)} €`}
+          />
         )}
-      </ul>
+      </div>
     </div>
   )
 }
@@ -78,6 +126,8 @@ export function ChargingPlanResults({
   selectedStationId,
   onSelectStation,
   variant = 'full',
+  originLabel,
+  destinationLabel,
 }: ChargingPlanResultsProps) {
   const assistant = variant === 'assistant'
   const plannedStops = plan.planned_stops ?? []
@@ -92,10 +142,20 @@ export function ChargingPlanResults({
     plannedStops.length === 0 && !plan.reachable_without_stop ? routeChargingStops(plan) : []
   const displayStops = plannedStops.length > 0 ? routeStops : corridorFallbackStops
   const hasDisplayStops = displayStops.length > 0
+  const resolvedOriginLabel = originLabel ?? 'Tu ubicación'
 
   if (compactPlan && plan.mode === 'route') {
     return (
       <>
+        {tripSummary && (
+          <ReveRouteSummaryCard
+            summary={tripSummary}
+            distanceKm={plan.route_distance_km}
+            originLabel={originLabel}
+            destinationLabel={destinationLabel}
+            routeExport={routeExport}
+          />
+        )}
         {hasDisplayStops ? (
           <>
             <h3 className="charge-section-title">
@@ -112,34 +172,56 @@ export function ChargingPlanResults({
                 Plan incompleto: no llegarías con batería suficiente. Revisa corredor o filtros kW.
               </p>
             )}
-            <ChargingStopList
-              stops={displayStops}
-              selectedStationId={selectedStationId}
-              onSelectStation={onSelectStation}
-              ariaLabel={
-                plannedStops.length > 0 ? 'Paradas planificadas en la ruta' : 'Candidatos de carga en ruta'
-              }
-              showRouteDeviation={false}
-              distanceLabel={(item) =>
-                plannedStops.length > 0
-                  ? compactStopDistanceLabel(item as PlannedRouteStopResult)
-                  : `${item.distance_from_origin_km.toFixed(0)} km · ${item.soc_arrival_pct.toFixed(0)} % SOC`
-              }
-            />
+            {plannedStops.length > 0 ? (
+              <RevePlanTimeline
+                originLabel={resolvedOriginLabel}
+                originSocPct={plan.vehicle.soc_percent}
+                stops={displayStops as PlannedRouteStopResult[]}
+                selectedStationId={selectedStationId}
+                onSelectStation={onSelectStation}
+              />
+            ) : (
+              <ChargingStopList
+                stops={displayStops}
+                selectedStationId={selectedStationId}
+                onSelectStation={onSelectStation}
+                ariaLabel="Candidatos de carga en ruta"
+                showRouteDeviation={false}
+                distanceLabel={(item) =>
+                  `${item.distance_from_origin_km.toFixed(0)} km · ${item.soc_arrival_pct.toFixed(0)} % SOC`
+                }
+              />
+            )}
           </>
         ) : plan.reachable_without_stop ? (
           <p className="route-message">Con el SOC actual llegas al destino sin parar a cargar.</p>
         ) : (
-          <p className="route-message">No hay paradas en el corredor alcanzables con el SOC actual.</p>
+          <>
+            <p className="route-message">No hay paradas en el corredor alcanzables con el SOC actual.</p>
+            {plan.warnings.length > 0 && (
+              <ul className="charge-warnings" aria-label="Alertas del plan">
+                {plan.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
-        {tripSummary && <TripSummaryBox summary={tripSummary} />}
       </>
     )
   }
 
   return (
     <>
-      {tripSummary && plan.mode === 'route' && <TripSummaryBox summary={tripSummary} />}
+      {tripSummary && plan.mode === 'route' && (
+        <ReveRouteSummaryCard
+          summary={tripSummary}
+          distanceKm={plan.route_distance_km}
+          originLabel={originLabel}
+          destinationLabel={destinationLabel}
+          routeExport={routeExport}
+        />
+      )}
 
       {plan.warnings.length > 0 && (!assistant || !planComplete) && (
         <ul className="charge-warnings" aria-label="Alertas del plan">
@@ -249,21 +331,31 @@ export function ChargingPlanResults({
                   Revisa alertas arriba, amplía corredor o baja el filtro kW.
                 </p>
               )}
-              <p className="panel-hint charge-section-hint">
-                Paradas en orden de viaje (pausa ~2 h DGT, máx. 3 h). Pins numerados en el mapa.
-              </p>
-              <ChargingStopList
-                stops={routeStops}
-                selectedStationId={selectedStationId}
-                onSelectStation={onSelectStation}
-                ariaLabel="Paradas planificadas en la ruta"
-                showRouteDeviation
-                distanceLabel={(item) =>
-                  plannedStops.length > 0
-                    ? plannedStopDistanceLabel(item as PlannedRouteStopResult)
-                    : `${item.distance_from_origin_km.toFixed(0)} km · ${item.soc_arrival_pct.toFixed(0)} % SOC`
-                }
-              />
+              {plannedStops.length > 0 ? (
+                <RevePlanTimeline
+                  originLabel={resolvedOriginLabel}
+                  originSocPct={plan.vehicle.soc_percent}
+                  stops={routeStops as PlannedRouteStopResult[]}
+                  selectedStationId={selectedStationId}
+                  onSelectStation={onSelectStation}
+                />
+              ) : (
+                <>
+                  <p className="panel-hint charge-section-hint">
+                    Paradas en orden de viaje (pausa ~2 h DGT, máx. 3 h). Pins numerados en el mapa.
+                  </p>
+                  <ChargingStopList
+                    stops={routeStops}
+                    selectedStationId={selectedStationId}
+                    onSelectStation={onSelectStation}
+                    ariaLabel="Paradas planificadas en la ruta"
+                    showRouteDeviation
+                    distanceLabel={(item) =>
+                      `${item.distance_from_origin_km.toFixed(0)} km · ${item.soc_arrival_pct.toFixed(0)} % SOC`
+                    }
+                  />
+                </>
+              )}
             </>
           ) : plan.reachable_without_stop ? (
             <p className="route-message">Con el SOC actual llegas al destino sin parar a cargar.</p>

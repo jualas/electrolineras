@@ -2,12 +2,20 @@ import type { VehicleTelemetryResult } from '../api/types'
 import { DEFAULT_RESERVE_SOC_PERCENT } from './vehicleProfile'
 import { getVehiclePreset } from './vehiclePresets'
 
+/**
+ * TeslaMate reporta `rated_battery_range_km` a la autonomía actual (SOC actual), como el
+ * modo «Rated» del cuadro — no normalizado al 100 %. Hay que dividir por el SOC actual para
+ * obtener la autonomía nominal al 100 % que asumen el resto de cálculos (plan, alcance, etc.).
+ * Así, si la batería pierde capacidad con el tiempo, la autonomía nominal baja con ella en vez
+ * de quedarse fija en el valor de un preset estático.
+ */
 export function nominalRangeKm(telemetry: VehicleTelemetryResult): number | null {
   const rated = telemetry.rated_battery_range_km
-  if (rated == null || rated <= 0) {
+  const soc = telemetry.usable_battery_level_pct ?? telemetry.battery_level_pct
+  if (rated == null || rated <= 0 || soc == null || soc <= 0) {
     return null
   }
-  return rated
+  return (rated * 100) / soc
 }
 
 /** Autonomía instantánea = nominal × SOC (TeslaMate «Autonomía nominal» × %). */

@@ -24,14 +24,14 @@ export function LoginPanel() {
   }
 
   return (
-    <section className="auth-panel">
-      <h2 className="auth-panel__title">Zona privada</h2>
-      <p className="auth-panel__hint">
+    <section className="panel search-panel auth-panel">
+      <h2>Zona privada</h2>
+      <p className="panel-hint">
         Usuario y código de 6 dígitos de Microsoft Authenticator (u otro TOTP). Sin contraseña aparte.
       </p>
-      <form className="auth-form" onSubmit={handleSubmit}>
-        <label className="auth-form__field">
-          <span>Usuario</span>
+      <form className="route-form" onSubmit={handleSubmit}>
+        <label className="field">
+          <span className="field__label">Usuario</span>
           <input
             type="text"
             autoComplete="username"
@@ -42,8 +42,8 @@ export function LoginPanel() {
             required
           />
         </label>
-        <label className="auth-form__field">
-          <span>Código Authenticator</span>
+        <label className="field">
+          <span className="field__label">Código Authenticator</span>
           <input
             type="text"
             inputMode="numeric"
@@ -55,8 +55,12 @@ export function LoginPanel() {
             required
           />
         </label>
-        {error && <p className="auth-form__error" role="alert">{error}</p>}
-        <button type="submit" className="auth-form__submit" disabled={submitting}>
+        {error && (
+          <p className="route-message route-message--error" role="alert">
+            {error}
+          </p>
+        )}
+        <button type="submit" className="btn btn--primary" disabled={submitting}>
           {submitting ? 'Entrando…' : 'Entrar'}
         </button>
       </form>

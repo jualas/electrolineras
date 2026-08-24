@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Menu, X } from 'lucide-react'
 
 import { checkApiHealth } from '../../api/client'
 import type { AlongRouteResponse, ChargingPlanResponse, GeocodeResult, MapBounds, Station } from '../../api/types'
@@ -7,7 +8,6 @@ import { routeChargingStops, type RouteChargingStop } from '../../charging/planR
 import { MapStationFilters, type MapStationFilterState } from '../../filters/MapStationFilters'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
-import { useTheme } from '../../hooks/useTheme'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
 import type { MapLayerToggles } from '../../map/MapLayerControl'
 import { MapView } from '../../map/MapView'
@@ -19,7 +19,6 @@ import {
   isNavModeEnabled,
 } from '../../navigation/appModes'
 import { SearchPanel, type SearchMode } from '../../search/SearchPanel'
-import { ThemeToggle } from './ThemeToggle'
 import { VehicleProfilePanel } from '../vehicle/VehicleProfilePanel'
 
 const DEFAULT_MAP_LAYERS: MapLayerToggles = {
@@ -40,7 +39,6 @@ const MODE_DEFAULT_PRESET: Partial<Record<SearchMode, 'trip' | 'slow'>> = {
 }
 
 export function AppShell() {
-  const { theme, toggleTheme } = useTheme()
   const { privateStackEnabled, authenticated, username, logout } = useAuth()
   const [mode, setMode] = useState<SearchMode>(defaultNavMode)
   const [panelOpen, setPanelOpen] = useState(false)
@@ -63,7 +61,6 @@ export function AppShell() {
     setPresetId: setVehiclePresetId,
     setSocPercent: setVehicleSoc,
     setConsumptionWhPerKm: setVehicleConsumption,
-    setTerrainFactorId: setVehicleTerrain,
   } = useVehicleProfile()
   useEffect(() => {
     checkApiHealth().then(setApiOk)
@@ -94,16 +91,9 @@ export function AppShell() {
       setChargePlanData(null)
       setChargePlanSearching(false)
     }
-    if (nextMode !== 'map') {
-      setMapFocusPlace(null)
-      setMapSearchText('')
-    }
-    if (nextMode === 'assistant') {
-      setPanelOpen(true)
-    }
     setSelectedStation(null)
     setSelectedPlannedStopOrder(null)
-    setPanelOpen(nextMode !== 'map')
+    setPanelOpen(true)
   }
 
   const activeChargePlan = useCallback((): ChargingPlanResponse | null => {
@@ -224,21 +214,20 @@ export function AppShell() {
   }, [])
 
   return (
-    <div className={`app-shell${mode === 'map' ? ' app-shell--map-search' : ''}`}>
+    <div className="app-shell app-shell--map-search">
       <MapView
         className="app-map"
-        theme={theme}
-        loadStations={mode === 'map'}
-        minKw={mode === 'map' ? apiQuery.minKw : apiQuery.minKw}
-        maxKw={mode === 'map' ? apiQuery.maxKw : apiQuery.maxKw}
-        publicOpenOnly={mode === 'map'}
-        adHocOnly={mode === 'map' ? mapStationFilters.adHocOnly : false}
-        availableOnly={mode === 'map' ? mapStationFilters.availableOnly : false}
-        maxPriceEurKwh={mode === 'map' ? mapStationFilters.maxPriceEurKwh : null}
-        connectorTypes={mode === 'map' ? mapStationFilters.connectorTypes : []}
-        mapLayers={mode === 'map' ? mapLayers : undefined}
-        onMapLayersChange={mode === 'map' ? setMapLayers : undefined}
-        showLayerControl={mode === 'map'}
+        loadStations
+        minKw={apiQuery.minKw}
+        maxKw={apiQuery.maxKw}
+        publicOpenOnly
+        adHocOnly={mapStationFilters.adHocOnly}
+        availableOnly={mapStationFilters.availableOnly}
+        maxPriceEurKwh={mapStationFilters.maxPriceEurKwh}
+        connectorTypes={mapStationFilters.connectorTypes}
+        mapLayers={mapLayers}
+        onMapLayersChange={setMapLayers}
+        showLayerControl
         routeData={mode === 'route' ? routeData : null}
         routeChargePlanData={mode === 'route' ? routeChargePlanData : null}
         routeSearching={mode === 'route' && routeSearching}
@@ -248,10 +237,10 @@ export function AppShell() {
         chargePlanSearching={
           (mode === 'assistant' || (CHARGE_PLAN_NAV_ENABLED && mode === 'charge')) && chargePlanSearching
         }
-        focusStation={mode !== 'map' ? selectedStation : null}
-        selectedPlannedStopOrder={mode !== 'map' ? selectedPlannedStopOrder : null}
-        onPlannedStopSelect={mode !== 'map' ? handlePlannedStopSelect : undefined}
-        mapFocusPlace={mode === 'map' ? mapFocusPlace : null}
+        focusStation={selectedStation}
+        selectedPlannedStopOrder={selectedPlannedStopOrder}
+        onPlannedStopSelect={handlePlannedStopSelect}
+        mapFocusPlace={mapFocusPlace}
         onRegisterMapBounds={handleRegisterMapBounds}
       />
 
@@ -266,7 +255,7 @@ export function AppShell() {
               aria-controls="app-side-panel"
               aria-label={panelOpen ? 'Ocultar panel' : 'Mostrar búsqueda y filtros'}
             >
-              {panelOpen ? '✕' : '☰'}
+              {panelOpen ? <X size={18} aria-hidden /> : <Menu size={18} aria-hidden />}
             </button>
             <div className="map-top-bar__brand">
               <span className="map-top-bar__title">Electrolineras</span>
@@ -277,19 +266,21 @@ export function AppShell() {
                 {apiOk ? '●' : '○'}
               </span>
             </div>
-            <nav className="map-mode-tabs" aria-label="Modo de búsqueda">
-              {APP_NAV_MODES.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`map-mode-tab ${mode === item.id ? 'map-mode-tab--active' : ''}`}
-                  onClick={() => handleModeChange(item.id)}
-                  aria-pressed={mode === item.id}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </nav>
+            {APP_NAV_MODES.length > 1 && (
+              <nav className="map-mode-tabs" aria-label="Modo de búsqueda">
+                {APP_NAV_MODES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`map-mode-tab ${mode === item.id ? 'map-mode-tab--active' : ''}`}
+                    onClick={() => handleModeChange(item.id)}
+                    aria-pressed={mode === item.id}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            )}
             {privateStackEnabled && authenticated ? (
               <button
                 type="button"
@@ -300,18 +291,15 @@ export function AppShell() {
                 Salir
               </button>
             ) : null}
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </header>
 
-          {mode === 'map' && (
-            <MapFloatingSearch
-              value={mapSearchText}
-              focusPlace={mapFocusPlace}
-              onChange={handleMapSearchTextChange}
-              onSelect={handleMapFocusPlace}
-              onClear={clearMapSearch}
-            />
-          )}
+          <MapFloatingSearch
+            value={mapSearchText}
+            focusPlace={mapFocusPlace}
+            onChange={handleMapSearchTextChange}
+            onSelect={handleMapFocusPlace}
+            onClear={clearMapSearch}
+          />
         </div>
 
         {panelOpen && (
@@ -334,7 +322,6 @@ export function AppShell() {
             onVehiclePresetChange={setVehiclePresetId}
             onVehicleSocChange={setVehicleSoc}
             onVehicleConsumptionChange={setVehicleConsumption}
-            onVehicleTerrainChange={setVehicleTerrain}
             minKw={apiQuery.minKw}
             maxKw={apiQuery.maxKw}
             mapStationFilters={mapStationFilters}
@@ -348,34 +335,20 @@ export function AppShell() {
             onChargePlanSearchStateChange={handleChargePlanSearchStateChange}
             selectedStationId={selectedStation?.id ?? null}
           />
-          {mode === 'map' && (
-            <>
-              <PowerFilterPanel
-                filter={filter}
-                onPresetChange={setPreset}
-                onCustomRangeChange={setCustomRange}
-              />
-              <MapStationFilters filter={mapStationFilters} onChange={setMapStationFilters} />
-            </>
-          )}
-          {mode !== 'map' &&
-            mode !== 'assistant' &&
-            !(CHARGE_PLAN_NAV_ENABLED && mode === 'charge') && (
+          {mode !== 'assistant' && !(CHARGE_PLAN_NAV_ENABLED && mode === 'charge') && (
             <VehicleProfilePanel
               profile={vehicleProfile}
               onPresetChange={setVehiclePresetId}
               onSocChange={setVehicleSoc}
               onConsumptionChange={setVehicleConsumption}
-              onTerrainChange={setVehicleTerrain}
             />
           )}
-          {mode !== 'map' && (
-            <PowerFilterPanel
-              filter={filter}
-              onPresetChange={setPreset}
-              onCustomRangeChange={setCustomRange}
-            />
-          )}
+          <PowerFilterPanel
+            filter={filter}
+            onPresetChange={setPreset}
+            onCustomRangeChange={setCustomRange}
+          />
+          <MapStationFilters filter={mapStationFilters} onChange={setMapStationFilters} />
         </aside>
       </div>
     </div>

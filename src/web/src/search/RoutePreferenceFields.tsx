@@ -8,7 +8,6 @@ type RoutePreferenceFieldsProps = {
   disabled?: boolean
   /** Asistente: texto más explícito sobre autovía vs peaje */
   variant?: 'default' | 'assistant'
-  comparisonPlan?: RouteAlternativesKm | null
 }
 
 export function RoutePreferenceFields({
@@ -18,7 +17,6 @@ export function RoutePreferenceFields({
   onAvoidTollsChange,
   disabled = false,
   variant = 'default',
-  comparisonPlan = null,
 }: RoutePreferenceFieldsProps) {
   const fastestHint =
     variant === 'assistant'
@@ -81,29 +79,8 @@ export function RoutePreferenceFields({
         />
         <span>Evitar autopistas de peaje (sin telepeaje)</span>
       </label>
-      {comparisonPlan && hasRouteComparison(comparisonPlan) ? (
-        <p className="route-comparison-legend" role="note">
-          En el mapa: línea <strong>sólida</strong> = ruta del plan (
-          {routePreferenceLabel(comparisonPlan.route_preference)}). Líneas <strong>discontinuas</strong> = otras
-          opciones (rápida, directa o sin autovía). Cambiar tipo recalcula paradas.
-        </p>
-      ) : null}
     </fieldset>
   )
-}
-
-function hasRouteComparison(plan: RouteAlternativesKm): boolean {
-  const fastest = plan.route_fastest_distance_km ?? plan.route_distance_km
-  const conventional = plan.route_conventional_distance_km
-  if (
-    conventional != null &&
-    fastest != null &&
-    Math.abs(conventional - fastest) >= 1
-  ) {
-    return true
-  }
-  const shortest = plan.route_shortest_distance_km ?? plan.route_distance_km
-  return shortest != null && fastest != null && Math.abs(shortest - fastest) >= 1
 }
 
 export function routePreferenceLabel(preference: RoutePreference | null | undefined): string {
