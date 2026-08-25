@@ -148,26 +148,38 @@ export function AssistantPanel({
       : null
   const destination = stops[stops.length - 1]?.point ?? null
 
-  const resolveDestination = async (): Promise<GeocodeResult> => {
-    const last = stops[stops.length - 1]
-    if (!last) {
-      throw new Error('Indica un destino')
+  const resolveItinerary = async (): Promise<{
+    destination: GeocodeResult
+    viaPoints: Array<{ lat: number; lon: number }>
+  }> => {
+    const nextStops = [...stops]
+    const resolved: GeocodeResult[] = []
+    for (let index = 0; index < nextStops.length; index += 1) {
+      const stop = nextStops[index]
+      if (stop.point) {
+        resolved.push(stop.point)
+        continue
+      }
+      const trimmed = stop.text.trim()
+      if (!trimmed) {
+        if (index === nextStops.length - 1) {
+          throw new Error('Indica un destino')
+        }
+        continue
+      }
+      const geocoded = await geocodePlace(trimmed)
+      const point = { label: geocoded.label, lat: geocoded.lat, lon: geocoded.lon }
+      nextStops[index] = { ...stop, text: point.label, point }
+      resolved.push(point)
     }
-    if (last.point) {
-      return last.point
-    }
-    const trimmed = last.text.trim()
-    if (!trimmed) {
+    setStops(nextStops)
+    if (resolved.length === 0) {
       throw new Error('Selecciona un destino de la lista')
     }
-    const geocoded = await geocodePlace(trimmed)
-    const point = { label: geocoded.label, lat: geocoded.lat, lon: geocoded.lon }
-    setStops((prev) =>
-      prev.map((stop, index) =>
-        index === prev.length - 1 ? { ...stop, text: point.label, point } : stop,
-      ),
-    )
-    return point
+    return {
+      destination: resolved[resolved.length - 1],
+      viaPoints: resolved.slice(0, -1).map((point) => ({ lat: point.lat, lon: point.lon })),
+    }
   }
 
   const clearPlanState = () => {
@@ -177,13 +189,14 @@ export function AssistantPanel({
   }
 
   const runMapPlan = async () => {
-    let dest: GeocodeResult
+    let itinerary: { destination: GeocodeResult; viaPoints: Array<{ lat: number; lon: number }> }
     try {
-      dest = await resolveDestination()
+      itinerary = await resolveItinerary()
     } catch (err) {
       setPlanError(err instanceof Error ? err.message : 'Indica un destino')
       return
     }
+    const dest = itinerary.destination
     setLoadingPlan(true)
     setPlanError(null)
     onPlanStateChange?.('loading')
@@ -192,6 +205,7 @@ export function AssistantPanel({
       const result = await fetchTripAdviceFromCar({
         destLat: dest.lat,
         destLon: dest.lon,
+        viaPoints: itinerary.viaPoints,
         terrainFactor: terrain.factor,
         reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
         localMobilityKm: 40,
@@ -240,13 +254,14 @@ export function AssistantPanel({
   }
 
   const runAiGuide = async () => {
-    let dest: GeocodeResult
+    let itinerary: { destination: GeocodeResult; viaPoints: Array<{ lat: number; lon: number }> }
     try {
-      dest = await resolveDestination()
+      itinerary = await resolveItinerary()
     } catch (err) {
       setGuideError(err instanceof Error ? err.message : 'Indica un destino')
       return
     }
+    const dest = itinerary.destination
     setLoadingGuide(true)
     setGuideError(null)
     setPlanError(null)
@@ -259,6 +274,7 @@ export function AssistantPanel({
         destLat: dest.lat,
         destLon: dest.lon,
         destLabel: dest.label,
+        viaPoints: itinerary.viaPoints,
         terrainFactor: terrain.factor,
         reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
         localMobilityKm: 40,
@@ -403,7 +419,7 @@ export function AssistantPanel({
             Itinerario: {vehicleOrigin?.label ?? 'vehículo'}
             {viaLabels.map((label) => ` → ${label}`).join('')}
             {` → ${stops[stops.length - 1]?.point?.label ?? (stops[stops.length - 1]?.text || 'destino')}`}
-            . El plan de carga se calcula hasta el destino final.
+            . El plan de carga pasa por todas las paradas.
           </p>
         )}
 

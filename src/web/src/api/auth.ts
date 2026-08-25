@@ -30,6 +30,7 @@ export async function fetchVehicleState(): Promise<import('../api/types').Vehicl
 export async function fetchTripAdviceFromCar(params: {
   destLat: number
   destLon: number
+  viaPoints?: Array<{ lat: number; lon: number }>
   terrainFactor?: number
   reserveSocPercent?: number
   localMobilityKm?: number
@@ -53,6 +54,10 @@ export async function fetchTripAdviceFromCar(params: {
     dest_lat: String(params.destLat),
     dest_lon: String(params.destLon),
   })
+  for (const point of params.viaPoints ?? []) {
+    query.append('via_lat', String(point.lat))
+    query.append('via_lon', String(point.lon))
+  }
   if (params.terrainFactor != null) {
     query.set('terrain_factor', String(params.terrainFactor))
   }
@@ -133,6 +138,7 @@ export async function fetchTripGuideFromCar(params: {
   destLat: number
   destLon: number
   destLabel?: string
+  viaPoints?: Array<{ lat: number; lon: number }>
   terrainFactor?: number
   reserveSocPercent?: number
   localMobilityKm?: number
@@ -159,6 +165,10 @@ export async function fetchTripGuideFromCar(params: {
     dest_lat: String(params.destLat),
     dest_lon: String(params.destLon),
   })
+  for (const point of params.viaPoints ?? []) {
+    query.append('via_lat', String(point.lat))
+    query.append('via_lon', String(point.lon))
+  }
   if (params.destLabel) {
     query.set('dest_label', params.destLabel)
   }

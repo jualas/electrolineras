@@ -10,7 +10,7 @@ from api.auth.private_access import require_private_access
 from api.charging_plan_service import build_charging_plan
 from api.config import settings
 from api.dependencies import get_repository
-from api.routes.charging_plan import charging_plan_to_response
+from api.routes.charging_plan import charging_plan_to_response, parse_via_waypoints
 from api.schemas import (
     MAX_CORRIDOR_KM,
     MAX_ROUTE_RESULTS_LIMIT,
@@ -41,6 +41,14 @@ def agent_trip_advice(
     adjusted_min_pct: Annotated[float, Query(ge=0, le=50)] = 10.0,
     dest_lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
     dest_lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    via_lat: Annotated[
+        list[float] | None,
+        Query(description="Latitudes de paradas intermedias (mismo orden que via_lon)"),
+    ] = None,
+    via_lon: Annotated[
+        list[float] | None,
+        Query(description="Longitudes de paradas intermedias (mismo orden que via_lat)"),
+    ] = None,
     min_kw: Annotated[float, Query(ge=0)] = 100.0,
     max_kw: Annotated[float | None, Query(ge=0)] = None,
     country: Annotated[str | None, Query()] = None,
@@ -79,6 +87,7 @@ def agent_trip_advice(
     if not settings.charging_agent_enabled:
         raise HTTPException(status_code=503, detail="Asistente de viaje desactivado (CHARGING_AGENT_ENABLED)")
 
+    waypoints = parse_via_waypoints(via_lat, via_lon)
     built = build_charging_plan(
         repo,
         origin_lat=origin_lat,
@@ -92,6 +101,7 @@ def agent_trip_advice(
         adjusted_min_pct=adjusted_min_pct,
         dest_lat=dest_lat,
         dest_lon=dest_lon,
+        waypoints=waypoints or None,
         min_kw=min_kw,
         max_kw=max_kw,
         country=country,

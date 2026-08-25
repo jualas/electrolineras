@@ -26,6 +26,26 @@ from db.repository import StationRepository
 router = APIRouter(prefix="/api/v1", tags=["charging-plan"])
 
 
+def parse_via_waypoints(
+    via_lat: list[float] | None,
+    via_lon: list[float] | None,
+) -> list[tuple[float, float]]:
+    via_lats = via_lat or []
+    via_lons = via_lon or []
+    if len(via_lats) != len(via_lons):
+        raise HTTPException(
+            status_code=422,
+            detail="via_lat y via_lon deben tener la misma longitud",
+        )
+    for lat in via_lats:
+        if lat < -90 or lat > 90:
+            raise HTTPException(status_code=422, detail="via_lat fuera de rango")
+    for lon in via_lons:
+        if lon < -180 or lon > 180:
+            raise HTTPException(status_code=422, detail="via_lon fuera de rango")
+    return list(zip(via_lats, via_lons, strict=True))
+
+
 def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanResponse:
     return _to_response(
         mode=built.mode,
@@ -324,20 +344,7 @@ def stations_charging_plan(
 ) -> ChargingPlanResponse:
     resolved_capacity = battery_capacity_kwh if battery_capacity_kwh is not None else usable_capacity_kwh
     resolved_soc = departure_soc_pct if departure_soc_pct is not None else soc_percent
-    via_lats = via_lat or []
-    via_lons = via_lon or []
-    if len(via_lats) != len(via_lons):
-        raise HTTPException(
-            status_code=422,
-            detail="via_lat y via_lon deben tener la misma longitud",
-        )
-    for lat in via_lats:
-        if lat < -90 or lat > 90:
-            raise HTTPException(status_code=422, detail="via_lat fuera de rango")
-    for lon in via_lons:
-        if lon < -180 or lon > 180:
-            raise HTTPException(status_code=422, detail="via_lon fuera de rango")
-    waypoints = list(zip(via_lats, via_lons, strict=True))
+    waypoints = parse_via_waypoints(via_lat, via_lon)
     built = build_charging_plan(
         repo,
         origin_lat=origin_lat,

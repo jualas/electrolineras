@@ -18,3 +18,19 @@ def test_geodesic_path_round_trip_not_zero() -> None:
     assert geodesic_path_km(*home, *home) == 0.0
     loop_km = geodesic_path_km(*home, *home, waypoints=[murcia])
     assert loop_km > 80
+
+
+def test_user_itinerary_ship_to_cantos_to_cuenca_to_cartagena_path() -> None:
+    """Repro Asistente: origen≈destino Cartagena con vías Madrid/Cuenca."""
+    origin = (37.625, -0.996)
+    tres_cantos = (40.6008, -3.7081)
+    villaconejos = (40.4167, -2.3167)
+    dest = (37.625, -1.01)
+    path = osrm_coordinates_path(
+        *origin,
+        *dest,
+        waypoints=[tres_cantos, villaconejos],
+    )
+    assert path.count(";") == 3
+    loop_km = geodesic_path_km(*origin, *dest, waypoints=[tres_cantos, villaconejos])
+    assert loop_km > 500
