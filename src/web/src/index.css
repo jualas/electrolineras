@@ -723,6 +723,65 @@ button {
   font-weight: 650;
 }
 
+.collapsible-panel {
+  padding: 0;
+}
+
+.collapsible-panel__summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.75rem 1rem;
+}
+
+.collapsible-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-panel__summary::after {
+  content: '';
+  position: absolute;
+  right: 1rem;
+  top: 1.05rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--color-text-muted);
+  border-bottom: 2px solid var(--color-text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.collapsible-panel {
+  position: relative;
+}
+
+.collapsible-panel[open] > .collapsible-panel__summary::after {
+  top: 1.2rem;
+  transform: rotate(-135deg);
+}
+
+.collapsible-panel__title {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  padding-right: 1.25rem;
+}
+
+.collapsible-panel__meta {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  padding-right: 1.25rem;
+}
+
+.collapsible-panel__body {
+  padding: 0 1rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
 .panel-hint {
   margin: 0 0 0.75rem;
   font-size: 0.8125rem;
