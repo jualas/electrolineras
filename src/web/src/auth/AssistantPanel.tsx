@@ -10,8 +10,13 @@ import {
 } from '../vehicle/telemetryProfile'
 import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
 import { getTerrainFactor } from '../vehicle/vehiclePresets'
-import { PlaceAutocomplete } from '../search/PlaceAutocomplete'
+import { geocodePlace } from '../api/route'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
+import {
+  ItineraryFields,
+  createEmptyStop,
+  type ItineraryStopDraft,
+} from '../search/ItineraryFields'
 import { revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
 import type { RoutePreference } from '../api/types'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
@@ -44,8 +49,7 @@ export function AssistantPanel({
   selectedStationId,
 }: AssistantPanelProps) {
   const { loading, authenticated, loginEnabled, privateStackEnabled } = useAuth()
-  const [destination, setDestination] = useState<GeocodeResult | null>(null)
-  const [destinationText, setDestinationText] = useState('')
+  const [stops, setStops] = useState<ItineraryStopDraft[]>(() => [createEmptyStop()])
   const [advice, setAdvice] = useState<TripGuideResponse | null>(null)
   const [planError, setPlanError] = useState<string | null>(null)
   const [loadingPlan, setLoadingPlan] = useState(false)
@@ -142,9 +146,42 @@ export function AssistantPanel({
     nominalKm != null && planningSocPercent > 0
       ? chargingReachFromNominal(nominalKm, planningSocPercent)
       : null
+  const destination = stops[stops.length - 1]?.point ?? null
+
+  const resolveDestination = async (): Promise<GeocodeResult> => {
+    const last = stops[stops.length - 1]
+    if (!last) {
+      throw new Error('Indica un destino')
+    }
+    if (last.point) {
+      return last.point
+    }
+    const trimmed = last.text.trim()
+    if (!trimmed) {
+      throw new Error('Selecciona un destino de la lista')
+    }
+    const geocoded = await geocodePlace(trimmed)
+    const point = { label: geocoded.label, lat: geocoded.lat, lon: geocoded.lon }
+    setStops((prev) =>
+      prev.map((stop, index) =>
+        index === prev.length - 1 ? { ...stop, text: point.label, point } : stop,
+      ),
+    )
+    return point
+  }
+
+  const clearPlanState = () => {
+    setAdvice(null)
+    onPlanResults(null)
+    onPlanStateChange?.('idle')
+  }
+
   const runMapPlan = async () => {
-    if (!destination) {
-      setPlanError('Selecciona un destino de la lista')
+    let dest: GeocodeResult
+    try {
+      dest = await resolveDestination()
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : 'Indica un destino')
       return
     }
     setLoadingPlan(true)
@@ -153,8 +190,8 @@ export function AssistantPanel({
     onPlanResults(null)
     try {
       const result = await fetchTripAdviceFromCar({
-        destLat: destination.lat,
-        destLon: destination.lon,
+        destLat: dest.lat,
+        destLon: dest.lon,
         terrainFactor: terrain.factor,
         reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
         localMobilityKm: 40,
@@ -203,8 +240,11 @@ export function AssistantPanel({
   }
 
   const runAiGuide = async () => {
-    if (!destination) {
-      setGuideError('Selecciona un destino de la lista')
+    let dest: GeocodeResult
+    try {
+      dest = await resolveDestination()
+    } catch (err) {
+      setGuideError(err instanceof Error ? err.message : 'Indica un destino')
       return
     }
     setLoadingGuide(true)
@@ -216,9 +256,9 @@ export function AssistantPanel({
     }
     try {
       const result = await fetchTripGuideFromCar({
-        destLat: destination.lat,
-        destLon: destination.lon,
-        destLabel: destination.label,
+        destLat: dest.lat,
+        destLon: dest.lon,
+        destLabel: dest.label,
         terrainFactor: terrain.factor,
         reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
         localMobilityKm: 40,
@@ -258,6 +298,20 @@ export function AssistantPanel({
     recalcOnPreferenceRef.current = false
     void runMapPlan()
   }, [routePreference, avoidTolls, revePlanning, busy, advice?.plan, destination])
+
+  const vehicleOrigin =
+    vehicle != null
+      ? {
+          label: vehicle.display_name?.trim() || 'Ubicación del vehículo',
+          lat: vehicle.lat,
+          lon: vehicle.lon,
+        }
+      : null
+  const viaLabels = stops
+    .slice(0, -1)
+    .map((stop) => stop.point?.label ?? stop.text.trim())
+    .filter(Boolean)
+  const hasDestinationInput = stops.some((stop) => stop.point != null || stop.text.trim().length > 0)
 
   return (
     <section className="panel search-panel assistant-panel">
@@ -308,26 +362,50 @@ export function AssistantPanel({
       )}
 
       <form className="route-form" onSubmit={(event) => event.preventDefault()}>
-        <PlaceAutocomplete
-          id="assistant-dest"
-          label="Destino"
-          placeholder="Ciudad o lugar"
-          value={destinationText}
-          onChange={(text) => {
-            setDestinationText(text)
-            setDestination(null)
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
+        <ItineraryFields
+          originText={vehicleOrigin?.label ?? 'Ubicación del vehículo'}
+          originPoint={vehicleOrigin}
+          vehicleOrigin={vehicleOrigin}
+          originSource="car"
+          onOriginChange={() => undefined}
+          onOriginSelect={() => undefined}
+          onUseVehicleOrigin={vehicleOrigin ? () => clearPlanState() : undefined}
+          stops={stops}
+          onStopChange={(id, text) => {
+            setStops((prev) =>
+              prev.map((stop) => (stop.id === id ? { ...stop, text, point: null } : stop)),
+            )
+            clearPlanState()
           }}
-          onSelect={(place) => {
-            setDestinationText(place.label)
-            setDestination(place)
-            setAdvice(null)
-            onPlanResults(null)
-            onPlanStateChange?.('idle')
+          onStopSelect={(id, place) => {
+            setStops((prev) =>
+              prev.map((stop) =>
+                stop.id === id
+                  ? { ...stop, text: place.label, point: { label: place.label, lat: place.lat, lon: place.lon } }
+                  : stop,
+              ),
+            )
+            clearPlanState()
           }}
+          onAddStop={() => {
+            setStops((prev) => [...prev, createEmptyStop()])
+            clearPlanState()
+          }}
+          onRemoveStop={(id) => {
+            setStops((prev) => (prev.length <= 1 ? prev : prev.filter((stop) => stop.id !== id)))
+            clearPlanState()
+          }}
+          disabled={busy || vehicle == null}
         />
+
+        {viaLabels.length > 0 && (
+          <p className="panel-hint">
+            Itinerario: {vehicleOrigin?.label ?? 'vehículo'}
+            {viaLabels.map((label) => ` → ${label}`).join('')}
+            {` → ${stops[stops.length - 1]?.point?.label ?? (stops[stops.length - 1]?.text || 'destino')}`}
+            . El plan de carga se calcula hasta el destino final.
+          </p>
+        )}
 
         <RoutePreferenceFields
           routePreference={routePreference}
@@ -338,9 +416,7 @@ export function AssistantPanel({
             if (advice?.plan) {
               recalcOnPreferenceRef.current = true
             } else {
-              setAdvice(null)
-              onPlanResults(null)
-              onPlanStateChange?.('idle')
+              clearPlanState()
             }
           }}
           onAvoidTollsChange={(value) => {
@@ -348,9 +424,7 @@ export function AssistantPanel({
             if (advice?.plan) {
               recalcOnPreferenceRef.current = true
             } else {
-              setAdvice(null)
-              onPlanResults(null)
-              onPlanStateChange?.('idle')
+              clearPlanState()
             }
           }}
           disabled={busy}
@@ -382,7 +456,7 @@ export function AssistantPanel({
           <button
             type="button"
             className="btn btn--primary"
-            disabled={busy || !destination}
+            disabled={busy || vehicle == null || !hasDestinationInput}
             onClick={() => void runAiGuide()}
           >
             {loadingGuide ? 'Generando guía IA…' : 'Guía de viaje con IA'}
@@ -390,7 +464,7 @@ export function AssistantPanel({
           <button
             type="button"
             className="btn btn--secondary"
-            disabled={busy || !destination}
+            disabled={busy || vehicle == null || !hasDestinationInput}
             onClick={() => void runMapPlan()}
           >
             {loadingPlan ? 'Calculando mapa…' : 'Solo plan en mapa (rápido)'}
@@ -426,7 +500,7 @@ export function AssistantPanel({
               <button
                 type="button"
                 className="assistant-guide__refresh"
-                disabled={busy || !destination}
+                disabled={busy || !hasDestinationInput}
                 onClick={() => void runAiGuide()}
               >
                 {loadingGuide ? 'Regenerando…' : 'Actualizar guía IA'}
