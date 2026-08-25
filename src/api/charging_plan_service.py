@@ -449,6 +449,7 @@ def build_charging_plan(
         route_distance_km=route_distance_km,
         route_duration_minutes=osrm_route.duration_s / 60.0,
         corridor_stops=matches,
+        route_preference=route_preference,
     )
 
     computation, destination_stay = _enrich_with_destination_stay(

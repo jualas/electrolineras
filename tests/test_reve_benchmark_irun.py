@@ -39,11 +39,19 @@ IRUN_OSRM = (IRUN_LONG_ROUTE, IRUN_ALTERNATIVES, [], {"fastest": IRUN_LONG_ROUTE
 @pytest.fixture
 def irun_api_client() -> TestClient:
     repo = memory_repo()
+    # Red más densa en el corredor (target 135 min / min progress 0.90 en fastest)
+    # para que el planificador no se quede sin candidatos entre min_leg y alcance SOC.
     repo.upsert_stations(
         [
             sample_station("s1", 38.5, -1.5, kw=200.0, price=0.42),
+            sample_station("m1", 39.0, -1.7, kw=200.0, price=0.42),
+            sample_station("m2", 39.5, -1.85, kw=200.0, price=0.42),
             sample_station("s2", 40.0, -2.01, kw=250.0, price=0.45),
+            sample_station("m3", 40.5, -1.95, kw=200.0, price=0.42),
+            sample_station("m4", 41.0, -1.9, kw=200.0, price=0.42),
             sample_station("s3", 41.2, -1.85, kw=200.0, price=0.40),
+            sample_station("m5", 41.8, -1.82, kw=200.0, price=0.42),
+            sample_station("m6", 42.0, -1.8, kw=200.0, price=0.42),
             sample_station("s4", 42.5, -1.79, kw=300.0, price=0.48),
             sample_station("dest-dc", 43.32, -1.78, kw=150.0, price=0.39),
         ]

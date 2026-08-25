@@ -22,7 +22,7 @@ def test_optimizer_prefers_more_short_stops_over_few_long_ones() -> None:
         min_stop_arrival_soc_pct=10,
         max_charge_soc_pct=80,
     )
-    positions = [200.0, 400.0, 580.0, 720.0]
+    positions = [250.0, 450.0, 620.0, 750.0]
     matches = [
         CorridorMatch(
             station=sample_station(f"s{idx}", 40.0, 0.1 * idx, kw=200.0),
@@ -64,7 +64,8 @@ def test_optimizer_skips_high_soc_micro_stop() -> None:
         min_stop_arrival_soc_pct=10,
         max_charge_soc_pct=80,
     )
-    positions = [198.0, 305.0, 487.0, 672.0]
+    # Ventana válida tras 1.ª parada (~250): min progress ~0.85 y alcance SOC; 320 quedaba fuera por mínimo
+    positions = [250.0, 440.0, 620.0, 780.0]
     matches = [
         CorridorMatch(
             station=sample_station(f"s{idx}", 38.0 + idx * 0.01, -1.5 + idx * 0.1, kw=300.0),
@@ -88,7 +89,7 @@ def test_optimizer_skips_high_soc_micro_stop() -> None:
     assert projected >= 10.0
     assert planned
     kms = [s.distance_from_origin_km for s in planned]
-    assert kms[0] >= 180.0, f"first stop too early: {kms}"
+    assert kms[0] >= 220.0, f"first stop too early: {kms}"
     for stop in planned:
         assert not (
             stop.soc_arrival_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT

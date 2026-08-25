@@ -4,7 +4,7 @@ export type ChargingPreferencesState = {
 }
 
 export const DEFAULT_CHARGING_PREFERENCES: ChargingPreferencesState = {
-  preferredOperators: [],
+  preferredOperators: ['Tesla'],
   maxPriceEurKwh: null,
 }
 

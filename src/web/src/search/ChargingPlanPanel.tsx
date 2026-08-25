@@ -273,6 +273,8 @@ export function ChargingPlanPanel({
         routePreference: emergencyMode ? undefined : routePreference,
         avoidHighways: emergencyMode ? undefined : avoidTolls,
         vehiclePresetId: vehicleQuery.vehicle_preset_id,
+        preferredOperators: DEFAULT_CHARGING_PREFERENCES.preferredOperators,
+        maxPriceEurKwh: DEFAULT_CHARGING_PREFERENCES.maxPriceEurKwh,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,

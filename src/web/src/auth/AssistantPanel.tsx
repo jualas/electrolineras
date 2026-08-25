@@ -18,6 +18,7 @@ import {
   type ItineraryStopDraft,
 } from '../search/ItineraryFields'
 import { revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
+import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import type { RoutePreference } from '../api/types'
 import { ChargingPlanResults } from '../search/ChargingPlanResults'
 import {
@@ -213,6 +214,8 @@ export function AssistantPanel({
         routePreference,
         avoidHighways: avoidTolls,
         departureSocPercent: departureSocParam,
+        preferredOperators: DEFAULT_CHARGING_PREFERENCES.preferredOperators,
+        maxPriceEurKwh: DEFAULT_CHARGING_PREFERENCES.maxPriceEurKwh,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
@@ -285,6 +288,8 @@ export function AssistantPanel({
         routePreference,
         avoidHighways: avoidTolls,
         departureSocPercent: departureSocParam,
+        preferredOperators: DEFAULT_CHARGING_PREFERENCES.preferredOperators,
+        maxPriceEurKwh: DEFAULT_CHARGING_PREFERENCES.maxPriceEurKwh,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,

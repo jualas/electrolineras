@@ -7,6 +7,7 @@ from typing import Literal
 from api.routing.charging_preferences import (
     STRATEGY_PREFERRED_OPERATOR,
     ChargingPreferences,
+    on_route_operator_rank,
     operator_matches,
     rank_stop_tuple,
 )
@@ -198,7 +199,7 @@ def _stop_from_corridor_match(
 def _rank_key(
     stop: ScoredChargingStop,
     preferences: ChargingPreferences | None = None,
-) -> tuple[float, float, float, float, float, float, float]:
+) -> tuple[float, ...]:
     price = stop.station.dynamic_price_eur_kwh
     price_key = price if price is not None else 999.0
     status_penalty = 0.0
@@ -403,8 +404,8 @@ DEFAULT_CHARGE_TARGET_SOC_PCT = 80.0
 DEFAULT_DESTINATION_TARGET_SOC_PCT = 10.0
 MAX_PLANNED_ROUTE_STOPS = 8
 
-# DGT: pausa recomendada ~2 h; máximo ~3 h por confort fisiológico.
-TARGET_DRIVING_LEG_MINUTES = 120.0
+# DGT: pausa recomendada ~2–2:30 h; máximo ~3 h por confort fisiológico.
+TARGET_DRIVING_LEG_MINUTES = 135.0
 MAX_DRIVING_LEG_MINUTES = 180.0
 DEFAULT_AVG_SPEED_KMH = 90.0
 INTERMEDIATE_ARRIVAL_SOC_TARGET = 10.0
@@ -423,11 +424,29 @@ HIGH_ARRIVAL_MICRO_STOP_SOC_PCT = 45.0
 MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT = 44.0
 MIN_FORWARD_PROGRESS_KM = 5.0
 DEVIATION_PENALTY_KM_BUCKET = 5.0
-MIN_LEG_PROGRESS_FRACTION = 0.65
+MIN_LEG_PROGRESS_FRACTION = 0.85
+HIGHWAY_MIN_LEG_PROGRESS_FRACTION = 0.90
 HIGH_SOC_SKIP_ORIGIN_FRACTION = 0.75
 # Por debajo de este SOC se permite cargar junto al punto de salida antes de iniciar el viaje.
 ORIGIN_CHARGE_SOC_THRESHOLD_PCT = 10.0
 MIN_ORIGIN_SKIP_ABSOLUTE_KM = 40.0
+ON_ROUTE_DEVIATION_KM = 2.0
+PREFERRED_ON_ROUTE_TIME_BONUS_MIN = 8.0
+
+
+def min_leg_progress_fraction(route_preference: str | None = None) -> float:
+    """Fracción mínima del tramo ideal antes de permitir una parada."""
+    if route_preference in {"fastest", "shortest"}:
+        return HIGHWAY_MIN_LEG_PROGRESS_FRACTION
+    return MIN_LEG_PROGRESS_FRACTION
+
+
+def asymmetric_distance_to_target_km(stop_km: float, target_stop_km: float) -> float:
+    """Penaliza más llegar demasiado pronto que un poco tarde al target ~2–2:30 h."""
+    delta = stop_km - target_stop_km
+    if delta < 0:
+        return abs(delta) * 1.5
+    return delta
 
 
 def allows_origin_zone_charging(trip_start_soc_pct: float) -> bool:
@@ -487,6 +506,7 @@ def _segment_min_route_km(
     target_leg_km: float,
     max_leg_km: float,
     profile: VehicleEnergyProfile,
+    route_preference: str | None = None,
 ) -> float:
     exclusion_km = origin_exclusion_radius_km(
         target_leg_km,
@@ -494,13 +514,14 @@ def _segment_min_route_km(
         charging_reach_km=estimate_charging_reach_km(profile),
     )
     from_trip_start = current_route_km - trip_start_route_km
+    progress_fraction = min_leg_progress_fraction(route_preference)
 
     if exclusion_km > 0 and from_trip_start < 1.0:
         return trip_start_route_km + exclusion_km
 
-    min_leg_km = target_leg_km * MIN_LEG_PROGRESS_FRACTION
+    min_leg_km = target_leg_km * progress_fraction
     if current_soc >= 70.0:
-        min_leg_km = max(min_leg_km, target_leg_km * 0.8)
+        min_leg_km = max(min_leg_km, target_leg_km * max(0.8, progress_fraction - 0.05))
     min_leg_km = min(min_leg_km, max_leg_km)
     segment_profile = _profile_at_soc(profile, current_soc)
     charging_reach_km = estimate_charging_reach_km(segment_profile)
@@ -717,12 +738,18 @@ def _planned_stop_selection_key(
     target_stop_km: float,
     preferences: ChargingPreferences | None,
 ) -> tuple[float, ...]:
-    distance_to_target = abs(stop.route_distance_km - target_stop_km)
+    distance_to_target = asymmetric_distance_to_target_km(stop.route_distance_km, target_stop_km)
     distance_bucket = round(distance_to_target / 25.0)
     deviation_bucket = round(stop.deviation_km / DEVIATION_PENALTY_KM_BUCKET)
+    on_route_rank = on_route_operator_rank(
+        stop.station.operator,
+        preferences,
+        stop.deviation_km,
+    )
     base = _rank_key(stop, preferences)
     return (
         deviation_bucket,
+        on_route_rank,
         distance_bucket,
         float(CLASSIFICATION_ORDER[stop.classification]),
         charge_minutes,
@@ -798,6 +825,7 @@ def build_planned_route_stops_greedy(
     preferences: ChargingPreferences | None = None,
     route_distance_km: float | None = None,
     route_duration_minutes: float | None = None,
+    route_preference: str | None = None,
 ) -> tuple[list[PlannedRouteStop], list[str], float | None]:
     _ = charge_target_soc_pct  # legacy param; optimal SOC replaces fixed 80 % target
     resolved_destination_soc = (
@@ -856,6 +884,7 @@ def build_planned_route_stops_greedy(
             target_leg_km=target_leg_km,
             max_leg_km=max_leg_km,
             profile=profile,
+            route_preference=route_preference,
         )
         min_leg_km = max(0.0, segment_min_km - current_route_km)
 
@@ -1024,6 +1053,7 @@ def build_planned_route_stops(
     preferences: ChargingPreferences | None = None,
     route_distance_km: float | None = None,
     route_duration_minutes: float | None = None,
+    route_preference: str | None = None,
 ) -> tuple[list[PlannedRouteStop], list[str], float | None]:
     """Plan multi-parada: optimizador global (#6087) con fallback greedy."""
     from api.routing.route_stop_optimizer import optimize_planned_route_stops
@@ -1041,6 +1071,7 @@ def build_planned_route_stops(
         route_distance_km=route_distance_km,
         route_duration_minutes=route_duration_minutes,
         trip_start_route_km=origin_position_km,
+        route_preference=route_preference,
     )
     if optimized is not None:
         return optimized
@@ -1058,6 +1089,7 @@ def build_planned_route_stops(
         preferences=preferences,
         route_distance_km=route_distance_km,
         route_duration_minutes=route_duration_minutes,
+        route_preference=route_preference,
     )
 
 
@@ -1075,6 +1107,7 @@ def build_route_charging_plan(
     route_distance_km: float | None = None,
     route_duration_minutes: float | None = None,
     corridor_stops: list[CorridorMatch] | None = None,
+    route_preference: str | None = None,
 ) -> ChargingPlanComputation:
     range_km = estimate_range_km(profile)
     charging_reach_km = estimate_charging_reach_km(profile)
@@ -1140,6 +1173,7 @@ def build_route_charging_plan(
         preferences=preferences,
         route_distance_km=route_distance_km,
         route_duration_minutes=route_duration_minutes,
+        route_preference=route_preference,
     )
     warnings.extend(planned_warnings)
 

@@ -186,7 +186,7 @@ def test_build_planned_route_stops_multi_hop_cartagena_style() -> None:
 
     destination_km = 741.0
     route_duration_minutes = 420.0  # ~106 km/h media
-    positions_km = [220.0, 440.0, 660.0]
+    positions_km = [250.0, 480.0, 700.0]
     matches = [
         CorridorMatch(
             station=sample_station(f"stop-{idx}", 40.0, 0.1 * idx, kw=150.0, price=0.40 + idx * 0.01),
@@ -234,7 +234,8 @@ def test_planned_stops_monotonic_and_short_charge_strategy() -> None:
         min_stop_arrival_soc_pct=10,
         max_charge_soc_pct=80,
     )
-    positions_km = [180.0, 380.0, 580.0, 760.0]
+    # Tras target 135 min / min progress 0.85: 2.ª parada debe quedar dentro de alcance (~≤460 km)
+    positions_km = [250.0, 440.0, 630.0, 780.0]
     matches = [
         CorridorMatch(
             station=sample_station(f"stop-{idx}", 40.0, 0.1 * idx, kw=200.0),
@@ -392,7 +393,7 @@ def test_faster_charger_preferred_for_similar_position() -> None:
         CorridorMatch(
             station=sample_station("slow", 40.0, 0.1, kw=50.0, price=0.35),
             deviation_m=300,
-            route_position_m=218_000,
+            route_position_m=250_000,
             extra_minutes=2.0,
             behind_route=False,
             wrong_side=False,
@@ -400,7 +401,7 @@ def test_faster_charger_preferred_for_similar_position() -> None:
         CorridorMatch(
             station=sample_station("fast", 40.0, 0.2, kw=250.0, price=0.45),
             deviation_m=350,
-            route_position_m=222_000,
+            route_position_m=255_000,
             extra_minutes=2.5,
             behind_route=False,
             wrong_side=False,
@@ -431,7 +432,7 @@ def test_build_route_charging_plan_includes_planned_stops() -> None:
         CorridorMatch(
             station=sample_station("mid-stop", 40.0, 0.5, kw=150.0, price=0.42),
             deviation_m=500,
-            route_position_m=220_000,
+            route_position_m=250_000,
             extra_minutes=4.0,
             behind_route=False,
             wrong_side=False,
@@ -439,7 +440,7 @@ def test_build_route_charging_plan_includes_planned_stops() -> None:
         CorridorMatch(
             station=sample_station("far-stop", 40.0, 0.8, kw=150.0, price=0.38),
             deviation_m=600,
-            route_position_m=440_000,
+            route_position_m=480_000,
             extra_minutes=5.0,
             behind_route=False,
             wrong_side=False,
@@ -447,7 +448,7 @@ def test_build_route_charging_plan_includes_planned_stops() -> None:
         CorridorMatch(
             station=sample_station("last-stop", 40.0, 0.9, kw=150.0, price=0.36),
             deviation_m=600,
-            route_position_m=660_000,
+            route_position_m=700_000,
             extra_minutes=5.0,
             behind_route=False,
             wrong_side=False,
@@ -482,3 +483,137 @@ def test_build_emergency_charging_plan() -> None:
     assert plan.stops
     assert plan.stops[0].station.id == "close"
     assert any(strategy.id == "charge_at_origin" for strategy in plan.strategies)
+
+
+def test_planned_stops_prefer_two_hour_spacing_over_one_hour() -> None:
+    """En fastest, un candidato ~1 h se descarta frente a uno ~2–2:30 h."""
+    from api.routing.charging_plan import build_planned_route_stops_greedy
+
+    profile = VehicleEnergyProfile(
+        soc_percent=80,
+        usable_capacity_kwh=60,
+        consumption_wh_per_km=150,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        vehicle_preset_id="tesla-model3-sr-2023",
+        max_charge_power_kw=100,
+    )
+    # ~106 km/h → target 135 min ≈ 239 km; min highway 0.90 ≈ 215 km
+    matches = [
+        CorridorMatch(
+            station=sample_station("early", 40.0, 0.1, kw=150.0, operator="Ionity"),
+            deviation_m=200,
+            route_position_m=120_000,
+            extra_minutes=1.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+        CorridorMatch(
+            station=sample_station("target", 40.0, 0.2, kw=150.0, operator="Ionity"),
+            deviation_m=300,
+            route_position_m=240_000,
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+        CorridorMatch(
+            station=sample_station("later", 40.0, 0.3, kw=150.0, operator="Ionity"),
+            deviation_m=300,
+            route_position_m=460_000,
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        ),
+    ]
+    planned, _, _ = build_planned_route_stops_greedy(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=700.0,
+        profile=profile,
+        route_distance_km=700.0,
+        route_duration_minutes=396.0,
+        route_preference="fastest",
+    )
+    assert planned
+    assert planned[0].station.id == "target"
+    assert planned[0].leg_driving_minutes >= 110
+
+
+def test_tesla_on_route_preferred_over_nearby_other_operator() -> None:
+    from api.routing.charging_plan import ScoredChargingStop, _planned_stop_selection_key
+    from api.routing.charging_preferences import ChargingPreferences
+
+    prefs = ChargingPreferences(preferred_operators=("tesla",))
+    tesla = ScoredChargingStop(
+        station=sample_station("tesla-sc", 40.0, 0.1, kw=250.0, operator="Tesla Supercharger"),
+        deviation_km=0.5,
+        route_distance_km=240.0,
+        extra_minutes=1.0,
+        wrong_side=False,
+        distance_from_origin_km=240.0,
+        soc_arrival_pct=18.0,
+        classification="safe",
+    )
+    other = ScoredChargingStop(
+        station=sample_station("ionity", 40.0, 0.11, kw=250.0, operator="Ionity"),
+        deviation_km=0.4,
+        route_distance_km=241.0,
+        extra_minutes=1.0,
+        wrong_side=False,
+        distance_from_origin_km=241.0,
+        soc_arrival_pct=17.5,
+        classification="safe",
+    )
+    key_tesla = _planned_stop_selection_key(
+        tesla,
+        charge_minutes=20.0,
+        target_stop_km=240.0,
+        preferences=prefs,
+    )
+    key_other = _planned_stop_selection_key(
+        other,
+        charge_minutes=20.0,
+        target_stop_km=240.0,
+        preferences=prefs,
+    )
+    assert key_tesla < key_other
+
+
+def test_tesla_high_deviation_loses_to_low_deviation_other() -> None:
+    from api.routing.charging_plan import ScoredChargingStop, _planned_stop_selection_key
+    from api.routing.charging_preferences import ChargingPreferences
+
+    prefs = ChargingPreferences(preferred_operators=("tesla",))
+    tesla = ScoredChargingStop(
+        station=sample_station("tesla-far", 40.0, 0.1, kw=250.0, operator="Tesla"),
+        deviation_km=8.0,
+        route_distance_km=240.0,
+        extra_minutes=8.0,
+        wrong_side=False,
+        distance_from_origin_km=240.0,
+        soc_arrival_pct=18.0,
+        classification="safe",
+    )
+    other = ScoredChargingStop(
+        station=sample_station("ionity-near", 40.0, 0.11, kw=250.0, operator="Ionity"),
+        deviation_km=0.5,
+        route_distance_km=240.0,
+        extra_minutes=1.0,
+        wrong_side=False,
+        distance_from_origin_km=240.0,
+        soc_arrival_pct=18.0,
+        classification="safe",
+    )
+    key_tesla = _planned_stop_selection_key(
+        tesla,
+        charge_minutes=20.0,
+        target_stop_km=240.0,
+        preferences=prefs,
+    )
+    key_other = _planned_stop_selection_key(
+        other,
+        charge_minutes=20.0,
+        target_stop_km=240.0,
+        preferences=prefs,
+    )
+    assert key_other < key_tesla

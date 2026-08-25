@@ -14,7 +14,7 @@ from api.routing.charging_plan import (
     MAX_DRIVING_LEG_MINUTES,
     MAX_PLANNED_ROUTE_STOPS,
     MIN_FORWARD_PROGRESS_KM,
-    MIN_LEG_PROGRESS_FRACTION,
+    PREFERRED_ON_ROUTE_TIME_BONUS_MIN,
     TARGET_DRIVING_LEG_MINUTES,
     PlannedRouteStop,
     VehicleEnergyProfile,
@@ -30,11 +30,12 @@ from api.routing.charging_plan import (
     estimate_charging_reach_km,
     estimate_range_km,
     leg_distance_for_driving_minutes,
+    min_leg_progress_fraction,
     origin_exclusion_radius_km,
     resolve_avg_speed_kmh,
     soc_at_distance_km,
 )
-from api.routing.charging_preferences import ChargingPreferences
+from api.routing.charging_preferences import ChargingPreferences, preferred_on_route_time_bonus_min
 from api.routing.corridor import CorridorMatch
 
 _CANDIDATE_BIN_KM = 35.0
@@ -118,10 +119,12 @@ def _min_leg_km_for_stop(
     max_leg_km: float,
     profile: VehicleEnergyProfile,
     from_soc: float,
+    route_preference: str | None = None,
 ) -> float:
-    min_leg_km = target_leg_km * MIN_LEG_PROGRESS_FRACTION
+    progress = min_leg_progress_fraction(route_preference)
+    min_leg_km = target_leg_km * progress
     if from_soc >= 70.0:
-        min_leg_km = max(min_leg_km, target_leg_km * 0.8)
+        min_leg_km = max(min_leg_km, target_leg_km * max(0.8, progress - 0.05))
     min_leg_km = min(min_leg_km, max_leg_km)
     charging_reach_km = estimate_charging_reach_km(_profile_at_soc(profile, from_soc))
     return min(min_leg_km, charging_reach_km * 0.95)
@@ -142,12 +145,14 @@ def _worth_stop_transition(
     target_leg_km: float,
     max_leg_km: float,
     avg_speed_kmh: float,
+    route_preference: str | None = None,
 ) -> bool:
     min_leg_km = _min_leg_km_for_stop(
         target_leg_km=target_leg_km,
         max_leg_km=max_leg_km,
         profile=profile,
         from_soc=from_soc,
+        route_preference=route_preference,
     )
     return _is_worth_charging_stop(
         arrival_soc_pct=arrival_soc,
@@ -254,11 +259,11 @@ def optimize_planned_route_stops(
     route_distance_km: float | None = None,
     route_duration_minutes: float | None = None,
     trip_start_route_km: float | None = None,
+    route_preference: str | None = None,
 ) -> tuple[list[PlannedRouteStop], list[str], float | None] | None:
     """
     Devuelve el plan de mínimo tiempo total o None si no hay solución factible.
     """
-    _ = preferences  # reservado: pesos finos en expansión futura
     resolved_destination_soc = (
         destination_target_soc_pct
         if destination_target_soc_pct is not None
@@ -290,6 +295,20 @@ def optimize_planned_route_stops(
 
     n = len(candidates)
     best: list[_NodeState | None] = [None] * n
+
+    def _transition_cost(
+        *,
+        drive_min: float,
+        charge_min: float,
+        cand: _RouteCandidate,
+    ) -> float:
+        bonus = preferred_on_route_time_bonus_min(
+            cand.match.station.operator,
+            preferences,
+            cand.deviation_km,
+            bonus_min=PREFERRED_ON_ROUTE_TIME_BONUS_MIN,
+        )
+        return drive_min + charge_min - bonus
 
     # Salida → primera parada
     for j, cand in enumerate(candidates):
@@ -327,10 +346,11 @@ def optimize_planned_route_stops(
             target_leg_km=target_leg_km,
             max_leg_km=max_leg_km,
             avg_speed_kmh=avg_speed_kmh,
+            route_preference=route_preference,
         ):
             continue
         best[j] = _NodeState(
-            time_min=drive_min + charge_min,
+            time_min=_transition_cost(drive_min=drive_min, charge_min=charge_min, cand=cand),
             dep_soc=dep_soc,
             prev=-1,
         )
@@ -378,9 +398,14 @@ def optimize_planned_route_stops(
                     target_leg_km=target_leg_km,
                     max_leg_km=max_leg_km,
                     avg_speed_kmh=avg_speed_kmh,
+                    route_preference=route_preference,
                 ):
                     continue
-                new_time = state_i.time_min + drive_min + charge_min
+                new_time = state_i.time_min + _transition_cost(
+                    drive_min=drive_min,
+                    charge_min=charge_min,
+                    cand=cand_j,
+                )
                 if best[j] is None or new_time < best[j].time_min - 1e-6:
                     best[j] = _NodeState(time_min=new_time, dep_soc=dep_soc, prev=i)
                     updated = True

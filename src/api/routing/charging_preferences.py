@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 STRATEGY_PREFERRED_OPERATOR = "preferred_operator"
+ON_ROUTE_DEVIATION_KM = 2.0
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,41 @@ def operator_preference_rank(
     return 2.0
 
 
+def on_route_operator_rank(
+    station_operator: str | None,
+    preferences: ChargingPreferences | None,
+    deviation_km: float,
+    *,
+    max_on_route_km: float = ON_ROUTE_DEVIATION_KM,
+) -> float:
+    """0 = operador preferido casi en ruta; 1 = resto. Solo aplica con preferencias."""
+    prefs = preferences or ChargingPreferences()
+    if not prefs.preferred_operators:
+        return 0.0
+    if deviation_km <= max_on_route_km and operator_matches(
+        station_operator,
+        prefs.preferred_operators,
+    ):
+        return 0.0
+    return 1.0
+
+
+def preferred_on_route_time_bonus_min(
+    station_operator: str | None,
+    preferences: ChargingPreferences | None,
+    deviation_km: float,
+    *,
+    bonus_min: float = 8.0,
+    max_on_route_km: float = ON_ROUTE_DEVIATION_KM,
+) -> float:
+    """Minutos equivalentes a restar del coste si el preferido está en ruta."""
+    if on_route_operator_rank(station_operator, preferences, deviation_km, max_on_route_km=max_on_route_km) == 0.0:
+        prefs = preferences or ChargingPreferences()
+        if prefs.preferred_operators:
+            return bonus_min
+    return 0.0
+
+
 def price_preference_rank(
     price_eur_kwh: float | None,
     max_price_eur_kwh: float | None,
@@ -70,10 +106,11 @@ def rank_stop_tuple(
     price_key: float,
     station_operator: str | None,
     preferences: ChargingPreferences | None,
-) -> tuple[float, float, float, float, float, float, float]:
+) -> tuple[float, float, float, float, float, float, float, float]:
     prefs = preferences or ChargingPreferences()
     return (
         classification_order,
+        on_route_operator_rank(station_operator, prefs, deviation_km),
         operator_preference_rank(station_operator, prefs.preferred_operators),
         price_preference_rank(
             price_key if price_key < 900 else None,
