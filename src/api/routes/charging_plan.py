@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.charging_plan_service import ChargingPlanBuildResult, build_charging_plan
 from api.config import settings
@@ -219,6 +219,14 @@ def stations_charging_plan(
     ] = 10.0,
     dest_lat: Annotated[float | None, Query(ge=-90, le=90, description="Latitud destino")] = None,
     dest_lon: Annotated[float | None, Query(ge=-180, le=180, description="Longitud destino")] = None,
+    via_lat: Annotated[
+        list[float] | None,
+        Query(description="Latitudes de paradas intermedias (mismo orden que via_lon)"),
+    ] = None,
+    via_lon: Annotated[
+        list[float] | None,
+        Query(description="Longitudes de paradas intermedias (mismo orden que via_lat)"),
+    ] = None,
     min_kw: Annotated[
         float,
         Query(ge=0, description="Potencia mínima (kW); default viaje ≥100"),
@@ -316,6 +324,20 @@ def stations_charging_plan(
 ) -> ChargingPlanResponse:
     resolved_capacity = battery_capacity_kwh if battery_capacity_kwh is not None else usable_capacity_kwh
     resolved_soc = departure_soc_pct if departure_soc_pct is not None else soc_percent
+    via_lats = via_lat or []
+    via_lons = via_lon or []
+    if len(via_lats) != len(via_lons):
+        raise HTTPException(
+            status_code=422,
+            detail="via_lat y via_lon deben tener la misma longitud",
+        )
+    for lat in via_lats:
+        if lat < -90 or lat > 90:
+            raise HTTPException(status_code=422, detail="via_lat fuera de rango")
+    for lon in via_lons:
+        if lon < -180 or lon > 180:
+            raise HTTPException(status_code=422, detail="via_lon fuera de rango")
+    waypoints = list(zip(via_lats, via_lons, strict=True))
     built = build_charging_plan(
         repo,
         origin_lat=origin_lat,
@@ -329,6 +351,7 @@ def stations_charging_plan(
         adjusted_min_pct=adjusted_min_pct,
         dest_lat=dest_lat,
         dest_lon=dest_lon,
+        waypoints=waypoints or None,
         min_kw=min_kw,
         max_kw=max_kw,
         country=country,

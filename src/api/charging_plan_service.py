@@ -24,6 +24,8 @@ from api.routing.osrm import (
     RoutingError,
     fetch_osrm_route,
     fetch_osrm_route_with_alternatives,
+    geodesic_path_km,
+    normalize_waypoints,
 )
 from api.schemas import DestinationStayAdviceResult
 from db.repository import StationRepository
@@ -230,6 +232,7 @@ def build_charging_plan(
     adjusted_min_pct: float = 10.0,
     dest_lat: float | None = None,
     dest_lon: float | None = None,
+    waypoints: list[tuple[float, float]] | None = None,
     min_kw: float | None = 100.0,
     max_kw: float | None = None,
     country: str | None = None,
@@ -258,6 +261,18 @@ def build_charging_plan(
     has_destination = dest_lat is not None and dest_lon is not None
     if (dest_lat is None) ^ (dest_lon is None):
         raise HTTPException(status_code=422, detail="dest_lat y dest_lon deben enviarse juntos o omitirse")
+
+    resolved_waypoints = normalize_waypoints(waypoints)
+    if has_destination and not resolved_waypoints:
+        same_point_km = geodesic_path_km(origin_lat, origin_lon, dest_lat, dest_lon)
+        if same_point_km < 0.2:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Origen y destino son el mismo punto (ruta 0 km). "
+                    "Añade al menos una parada intermedia para un viaje de ida y vuelta."
+                ),
+            )
 
     vehicle = vehicle_profile_from_inputs(
         soc_percent,
@@ -354,6 +369,7 @@ def build_charging_plan(
             dest_lon,
             route_preference=route_preference,
             avoid_highways=avoid_highways,
+            waypoints=resolved_waypoints,
         )
     except RoutingError as exc:
         raise HTTPException(

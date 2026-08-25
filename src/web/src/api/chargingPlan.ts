@@ -7,6 +7,8 @@ export type ChargingPlanQuery = {
   originLon: number
   destLat?: number
   destLon?: number
+  /** Paradas intermedias (ordenadas); el destino final va en destLat/destLon. */
+  viaPoints?: Array<{ lat: number; lon: number }>
   socPercent: number
   usableCapacityKwh: number
   consumptionWhPerKm: number
@@ -46,6 +48,10 @@ export async function fetchChargingPlan(
   if (query.destLat !== undefined && query.destLon !== undefined) {
     params.set('dest_lat', String(query.destLat))
     params.set('dest_lon', String(query.destLon))
+  }
+  for (const point of query.viaPoints ?? []) {
+    params.append('via_lat', String(point.lat))
+    params.append('via_lon', String(point.lon))
   }
   if (query.reserveSocPercent !== undefined) {
     params.set('reserve_soc_percent', String(query.reserveSocPercent))

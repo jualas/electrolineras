@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 import httpx
 
@@ -10,6 +10,8 @@ from api.config import settings
 from db.spatial import haversine_m
 
 RoutePreference = Literal["fastest", "shortest", "conventional"]
+# (lat, lon) — mismo orden que el resto de la API.
+LatLon = tuple[float, float]
 
 
 class RoutingError(Exception):
@@ -77,6 +79,44 @@ def geodesic_distance_km(
     dest_lon: float,
 ) -> float:
     return round(haversine_m(origin_lat, origin_lon, dest_lat, dest_lon) / 1000.0, 2)
+
+
+def normalize_waypoints(waypoints: Sequence[LatLon] | None) -> list[LatLon]:
+    if not waypoints:
+        return []
+    return [(float(lat), float(lon)) for lat, lon in waypoints]
+
+
+def geodesic_path_km(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+    waypoints: Sequence[LatLon] | None = None,
+) -> float:
+    """Suma haversine origen → vías → destino (útil en ida-vuelta A→…→A)."""
+    points: list[LatLon] = [(origin_lat, origin_lon), *normalize_waypoints(waypoints), (dest_lat, dest_lon)]
+    total_m = 0.0
+    for index in range(len(points) - 1):
+        lat1, lon1 = points[index]
+        lat2, lon2 = points[index + 1]
+        total_m += haversine_m(lat1, lon1, lat2, lon2)
+    return round(total_m / 1000.0, 2)
+
+
+def osrm_coordinates_path(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+    waypoints: Sequence[LatLon] | None = None,
+) -> str:
+    """Path OSRM: lon,lat;… (origen, vías opcionales, destino)."""
+    parts = [f"{origin_lon},{origin_lat}"]
+    for lat, lon in normalize_waypoints(waypoints):
+        parts.append(f"{lon},{lat}")
+    parts.append(f"{dest_lon},{dest_lat}")
+    return ";".join(parts)
 
 
 def build_osrm_exclude_param(route_preference: RoutePreference, avoid_highways: bool) -> str | None:
@@ -278,8 +318,9 @@ def _request_osrm_profile_route(
     timeout_s: float,
     exclude: str | None = None,
     alternatives: bool = False,
+    waypoints: Sequence[LatLon] | None = None,
 ) -> list[dict[str, Any]]:
-    path = f"{origin_lon},{origin_lat};{dest_lon},{dest_lat}"
+    path = osrm_coordinates_path(origin_lat, origin_lon, dest_lat, dest_lon, waypoints)
     request_url = f"{base_url.rstrip('/')}/route/v1/{profile}/{path}"
     params: dict[str, str] = {
         "overview": "full",
@@ -319,8 +360,9 @@ def _request_osrm_routes(
     profile: str,
     route_preference: RoutePreference,
     avoid_highways: bool,
+    waypoints: Sequence[LatLon] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], bool]:
-    path = f"{origin_lon},{origin_lat};{dest_lon},{dest_lat}"
+    path = osrm_coordinates_path(origin_lat, origin_lon, dest_lat, dest_lon, waypoints)
     request_url = f"{base_url.rstrip('/')}/route/v1/{profile}/{path}"
     params: dict[str, str] = {
         "overview": "full",
@@ -386,6 +428,7 @@ def _fetch_multi_profile_variants(
     base_url: str,
     timeout_s: float,
     avoid_highways: bool,
+    waypoints: Sequence[LatLon] | None = None,
 ) -> tuple[dict[RoutePreference, _RoutePayload], list[str]]:
     profiles = {
         "fastest": (settings.osrm_base_url, settings.osrm_profile_fastest),
@@ -413,6 +456,7 @@ def _fetch_multi_profile_variants(
             timeout_s=timeout_s,
             exclude=exclude,
             alternatives=request_alternatives,
+            waypoints=waypoints,
         )
         if preference == "fastest":
             route = select_fastest_route_payload(routes)
@@ -465,6 +509,7 @@ def _fetch_fallback_variants(
     profile: str,
     avoid_highways: bool,
     geodesic_km: float,
+    waypoints: Sequence[LatLon] | None = None,
 ) -> tuple[dict[RoutePreference, _RoutePayload], list[str], bool]:
     """Rápida/directa y convencional requieren peticiones OSRM distintas.
 
@@ -484,6 +529,7 @@ def _fetch_fallback_variants(
             profile=profile,
             route_preference="fastest",
             avoid_highways=avoid_highways,
+            waypoints=waypoints,
         )
         return {
             "fastest": _route_payload_from_osrm_routes(
@@ -513,6 +559,7 @@ def _fetch_fallback_variants(
             profile=profile,
             route_preference="conventional",
             avoid_highways=avoid_highways,
+            waypoints=waypoints,
         )
         payload = _route_payload_from_osrm_routes(
             routes,
@@ -553,10 +600,18 @@ def fetch_osrm_route_with_alternatives(
     timeout_s: float | None = None,
     route_preference: RoutePreference = "fastest",
     avoid_highways: bool = False,
+    waypoints: Sequence[LatLon] | None = None,
 ) -> tuple[OsrmRoute, RouteAlternativesSummary, list[str], dict[RoutePreference, OsrmRoute]]:
     resolved_base = base_url or settings.osrm_base_url
     resolved_timeout = timeout_s or settings.osrm_timeout_seconds
-    geodesic_km = geodesic_distance_km(origin_lat, origin_lon, dest_lat, dest_lon)
+    resolved_waypoints = normalize_waypoints(waypoints)
+    geodesic_km = geodesic_path_km(
+        origin_lat,
+        origin_lon,
+        dest_lat,
+        dest_lon,
+        resolved_waypoints,
+    )
     warnings: list[str] = []
 
     if settings.osrm_use_multi_profile:
@@ -569,6 +624,7 @@ def fetch_osrm_route_with_alternatives(
                 base_url=resolved_base,
                 timeout_s=resolved_timeout,
                 avoid_highways=avoid_highways,
+                waypoints=resolved_waypoints,
             )
             warnings.extend(profile_warnings)
         except RoutingError:
@@ -582,6 +638,7 @@ def fetch_osrm_route_with_alternatives(
                 profile=settings.osrm_profile_fastest,
                 avoid_highways=avoid_highways,
                 geodesic_km=geodesic_km,
+                waypoints=resolved_waypoints,
             )
             warnings.extend(fallback_warnings)
             warnings.append(
@@ -598,6 +655,7 @@ def fetch_osrm_route_with_alternatives(
             profile=settings.osrm_profile_fastest,
             avoid_highways=avoid_highways,
             geodesic_km=geodesic_km,
+            waypoints=resolved_waypoints,
         )
         warnings.extend(fallback_warnings)
 
@@ -631,6 +689,7 @@ def fetch_osrm_route(
     timeout_s: float | None = None,
     route_preference: RoutePreference = "fastest",
     avoid_highways: bool = False,
+    waypoints: Sequence[LatLon] | None = None,
 ) -> OsrmRoute:
     route, _alternatives, _warnings, _variant_routes = fetch_osrm_route_with_alternatives(
         origin_lat,
@@ -641,5 +700,6 @@ def fetch_osrm_route(
         timeout_s=timeout_s,
         route_preference=route_preference,
         avoid_highways=avoid_highways,
+        waypoints=waypoints,
     )
     return route

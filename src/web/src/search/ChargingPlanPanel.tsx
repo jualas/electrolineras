@@ -241,9 +241,11 @@ export function ChargingPlanPanel({
       }
 
       let destination: ItineraryPoint | null = null
+      let viaPoints: ItineraryPoint[] = []
       if (!emergencyMode) {
         const resolvedStops = await resolveStops()
         destination = resolvedStops[resolvedStops.length - 1] ?? null
+        viaPoints = resolvedStops.slice(0, -1)
       }
 
       if (!emergencyMode && !destination) {
@@ -256,6 +258,9 @@ export function ChargingPlanPanel({
         originLon: origin.lon,
         destLat: emergencyMode ? undefined : destination!.lat,
         destLon: emergencyMode ? undefined : destination!.lon,
+        viaPoints: emergencyMode
+          ? undefined
+          : viaPoints.map((point) => ({ lat: point.lat, lon: point.lon })),
         socPercent: vehicleQuery.soc_percent,
         usableCapacityKwh: vehicleQuery.usable_capacity_kwh,
         consumptionWhPerKm: vehicleQuery.consumption_wh_per_km,
@@ -714,7 +719,7 @@ export function ChargingPlanPanel({
                 Itinerario: {originLabel}
                 {viaLabels.map((label) => ` → ${label}`).join('')}
                 {` → ${stops[stops.length - 1]?.point?.label ?? (stops[stops.length - 1]?.text || 'destino')}`}
-                . El plan de carga se calcula hasta el destino final.
+                . La ruta pasa por todas las paradas.
               </p>
             )}
 
