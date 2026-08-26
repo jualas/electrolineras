@@ -71,6 +71,18 @@ El script:
 
 Estado del último deploy: `/mnt/datos/docker/electrolineras/.deploy-state`
 
+### 2b. Staging (pruebas antes de prod)
+
+Stack paralelo en **`:8016`** — no toca `electro.jualas.es` / `:8015`.
+
+```bash
+# Desde la rama a validar
+make deploy-staging
+curl -s http://127.0.0.1:8016/health
+```
+
+Documentación completa: [`docs/STAGING.md`](STAGING.md).
+
 ### 3. Rollback
 
 ```bash

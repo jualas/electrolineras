@@ -12,7 +12,7 @@ TARGET="${DEPLOY_COMPOSE_DIR:-/mnt/datos/docker/electrolineras}"
 
 mkdir -p "$TARGET"
 
-for f in docker-compose.yml docker-compose.prod.yml env.example; do
+for f in docker-compose.yml docker-compose.prod.yml docker-compose.staging.yml env.example; do
   src="$REPO/docker/$f"
   if [[ ! -f "$src" ]]; then
     echo "ERROR: falta $src" >&2
@@ -22,5 +22,6 @@ for f in docker-compose.yml docker-compose.prod.yml env.example; do
   echo "→ $TARGET/$f"
 done
 
-echo "Listo. Edita $TARGET/.env y ejecuta:"
-echo "  cd $TARGET && docker compose -f docker-compose.prod.yml up -d --build"
+echo "Listo."
+echo "  Prod:    cd $TARGET && docker compose -f docker-compose.prod.yml up -d --build"
+echo "  Staging: bash $REPO/scripts/deploy/deploy-staging.sh"

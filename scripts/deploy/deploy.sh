@@ -9,6 +9,8 @@
 #   ELECTROLINERAS_REPO, DEPLOY_COMPOSE_DIR, DEPLOY_HEALTH_URL
 #   DEPLOY_COMPOSE_FILE (default: docker-compose.prod.yml si existe)
 #   DEPLOY_SERVICES (default: electrolineras-api electrolineras-nginx)
+#
+# Staging (pruebas, no toca prod): make deploy-staging → docs/STAGING.md
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

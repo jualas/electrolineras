@@ -1,8 +1,9 @@
-.PHONY: install install-dev api web web-build test lint smoke fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt ingest-reve ingest-reve-full test-reve-api cron-install cron-test-es cron-test-reve backup-run backup-verify monitor-check monitor-test env-check-prod env-secure ci-local deploy deploy-rollback docker-build docker-up docker-down docker-sync-prod nominatim-prepare nominatim-up nominatim-logs nominatim-status nominatim-finish-prod nominatim-install-finish-cron nominatim-remove-finish-cron clean
+.PHONY: install install-dev api web web-build test lint smoke fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt ingest-reve ingest-reve-full test-reve-api cron-install cron-test-es cron-test-reve backup-run backup-verify monitor-check monitor-test env-check-prod env-secure ci-local deploy deploy-rollback deploy-staging docker-staging-down docker-build docker-up docker-down docker-sync-prod nominatim-prepare nominatim-up nominatim-logs nominatim-status nominatim-finish-prod nominatim-install-finish-cron nominatim-remove-finish-cron clean
 
 DOCKER_COMPOSE_DIR ?= /mnt/datos/docker/electrolineras
 DOCKER_COMPOSE_FILE ?= docker/docker-compose.prod.yml
 DOCKER_COMPOSE := docker compose -f $(DOCKER_COMPOSE_FILE)
+DOCKER_STAGING_COMPOSE := docker compose -f docker/docker-compose.staging.yml
 
 ENV_FILE ?= .env
 
@@ -107,6 +108,12 @@ deploy:
 
 deploy-rollback:
 	bash scripts/deploy/rollback.sh
+
+deploy-staging:
+	bash scripts/deploy/deploy-staging.sh
+
+docker-staging-down:
+	cd $(DOCKER_COMPOSE_DIR) && docker compose -f docker-compose.staging.yml down
 
 docker-sync-prod:
 	bash scripts/deploy/sync_compose.sh

@@ -1,6 +1,9 @@
 # Despliegue y pruebas
 
-Guía para validar el MVP en desarrollo y exponerlo en producción vía **Cloudflare Tunnel** al minipc (`jualas.es`).
+Guía para validar el MVP y exponerlo en producción vía **Cloudflare Tunnel** al minipc (`jualas.es`).
+
+**Staging (pruebas Docker antes de prod):** [`STAGING.md`](STAGING.md) — puerto **8016**, `make deploy-staging`.  
+**Dev UI (Vite):** `make web` → `:5173` (API `make api` → `:8000`).
 
 ## Dominio recomendado
 

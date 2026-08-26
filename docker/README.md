@@ -6,10 +6,13 @@ Despliegue en el mini PC bajo `/mnt/datos/docker/electrolineras/`.
 
 | Fichero | Uso |
 |---------|-----|
-| `docker-compose.prod.yml` | **Producción recomendada** — API + nginx (SPA + reverse proxy) |
+| `docker-compose.prod.yml` | **Producción** — API + nginx (`:8015` / electro.jualas.es) |
+| `docker-compose.staging.yml` | **Staging** — mismo stack en `:8016` (pruebas antes de prod) |
 | `docker-compose.yml` | Monolito (API sirve estáticos); útil para pruebas rápidas |
 
 OSRM corre aparte en `docker/osrm/` (red Docker externa `osrm_default`).
+
+Staging: ver [`docs/STAGING.md`](../docs/STAGING.md) (`make deploy-staging`).
 
 ## Primera vez
 
