@@ -64,6 +64,8 @@ class ChargingPlanBuildResult:
     preferred_operators: tuple[str, ...] = ()
     max_price_eur_kwh: float | None = None
     exclude_slow_chargers: bool = False
+    route_shortest_duration_minutes: float | None = None
+    route_fastest_duration_minutes: float | None = None
 
 
 def charging_preferences_from_inputs(
@@ -485,6 +487,8 @@ def build_charging_plan(
         geodesic_distance_km=route_alternatives.geodesic_distance_km,
         route_conventional_distance_km=route_alternatives.conventional_distance_km,
         route_conventional_duration_minutes=route_alternatives.conventional_duration_minutes,
+        route_shortest_duration_minutes=route_alternatives.shortest_duration_minutes,
+        route_fastest_duration_minutes=route_alternatives.fastest_duration_minutes,
         shortest_excess_km=route_alternatives.shortest_excess_km,
         route_variants_approximate=route_alternatives.variants_approximate,
         route_geometry=osrm_route.geojson_geometry if include_route else None,

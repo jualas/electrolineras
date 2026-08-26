@@ -99,13 +99,14 @@ def test_optimizer_skips_high_soc_micro_stop() -> None:
 
 
 def test_is_worth_charging_stop_rejects_albacete_pattern() -> None:
+    # Micro-parada: tramo corto + poca carga con llegada alta.
     assert not _is_worth_charging_stop(
         arrival_soc_pct=52.8,
         departure_soc_pct=57.8,
         charge_minutes=5.0,
-        leg_distance_km=198.0,
-        min_leg_km=120.0,
-        stop_route_km=198.0,
+        leg_distance_km=100.0,
+        min_leg_km=200.0,
+        stop_route_km=100.0,
         trip_start_route_km=0.0,
         origin_exclusion_km=180.0,
         trip_start_soc_pct=100.0,
@@ -115,9 +116,9 @@ def test_is_worth_charging_stop_rejects_albacete_pattern() -> None:
         arrival_soc_pct=44.6,
         departure_soc_pct=56.0,
         charge_minutes=7.0,
-        leg_distance_km=232.0,
-        min_leg_km=120.0,
-        stop_route_km=232.0,
+        leg_distance_km=110.0,
+        min_leg_km=200.0,
+        stop_route_km=110.0,
         trip_start_route_km=0.0,
         origin_exclusion_km=180.0,
         trip_start_soc_pct=100.0,
@@ -130,6 +131,19 @@ def test_is_worth_charging_stop_rejects_albacete_pattern() -> None:
         leg_distance_km=280.0,
         min_leg_km=120.0,
         stop_route_km=280.0,
+        trip_start_route_km=0.0,
+        origin_exclusion_km=180.0,
+        trip_start_soc_pct=100.0,
+        avg_speed_kmh=90.0,
+    )
+    # Tramo ya espaciado (~2 h): válido aunque la carga óptima sea corta.
+    assert _is_worth_charging_stop(
+        arrival_soc_pct=55.0,
+        departure_soc_pct=62.0,
+        charge_minutes=8.0,
+        leg_distance_km=200.0,
+        min_leg_km=200.0,
+        stop_route_km=200.0,
         trip_start_route_km=0.0,
         origin_exclusion_km=180.0,
         trip_start_soc_pct=100.0,

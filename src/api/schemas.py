@@ -233,6 +233,8 @@ class ChargingPlanResponse(BaseModel):
     route_fastest_distance_km: float | None = None
     route_conventional_distance_km: float | None = None
     route_conventional_duration_minutes: float | None = None
+    route_shortest_duration_minutes: float | None = None
+    route_fastest_duration_minutes: float | None = None
     shortest_excess_km: float | None = None
     route_variants_approximate: bool = False
     exclude_slow_chargers: bool = False

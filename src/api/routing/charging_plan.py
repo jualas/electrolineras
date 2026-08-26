@@ -414,9 +414,10 @@ DEPARTURE_SOC_BUFFER_PCT = 3.0
 OPTIMAL_CHARGE_CEILING_SOC_PCT = 80.0
 # Punto dulce Tesla/REVE: 10→60-70 % minimiza tiempo total (curva DC LFP/NMC).
 INTERMEDIATE_OPTIMAL_CHARGE_SOC_PCT = 65.0
-# Primer tramo desde 100 %: hasta ~3 h antes de la 1.ª parada.
+# Primer tramo desde SOC alto: mismo objetivo ~2–2:30 h (no estirar a 3 h;
+# si no, la 2.ª parada queda a ~1–1:30 h por alcance de batería).
 FIRST_LEG_FULL_SOC_THRESHOLD_PCT = 95.0
-FIRST_LEG_DRIVING_MINUTES = 180.0
+FIRST_LEG_DRIVING_MINUTES = TARGET_DRIVING_LEG_MINUTES
 MIN_MEANINGFUL_CHARGE_MINUTES = 8.0
 MIN_WORTHWHILE_CHARGE_MINUTES = 12.0
 MIN_WORTHWHILE_SOC_GAIN_PCT = 10.0
@@ -426,6 +427,8 @@ MIN_FORWARD_PROGRESS_KM = 5.0
 DEVIATION_PENALTY_KM_BUCKET = 5.0
 MIN_LEG_PROGRESS_FRACTION = 0.85
 HIGHWAY_MIN_LEG_PROGRESS_FRACTION = 0.90
+# Un tramo cuenta como «suficientemente largo» vs el mínimo de segmento.
+MIN_LEG_ACCEPT_FRACTION = 0.90
 HIGH_SOC_SKIP_ORIGIN_FRACTION = 0.75
 # Por debajo de este SOC se permite cargar junto al punto de salida antes de iniciar el viaje.
 ORIGIN_CHARGE_SOC_THRESHOLD_PCT = 10.0
@@ -458,15 +461,19 @@ def origin_exclusion_radius_km(
     trip_start_soc_pct: float,
     *,
     charging_reach_km: float | None = None,
+    max_leg_km: float | None = None,
 ) -> float:
     """Distancia mínima desde la salida antes de la 1.ª parada (≈2 h DGT si SOC ≥10 %)."""
     if allows_origin_zone_charging(trip_start_soc_pct):
         return 0.0
-    exclusion = max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, target_leg_km)
+    exclusion = max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, target_leg_km * MIN_LEG_ACCEPT_FRACTION)
     if charging_reach_km is not None and charging_reach_km > 0:
         # No exigir parada más lejos de lo que la batería puede alcanzar (TeslaMate / alto consumo).
         max_exclusion = max(0.0, charging_reach_km - 30.0)
         exclusion = min(exclusion, max_exclusion)
+    if max_leg_km is not None and max_leg_km > 0:
+        # Dejar ventana de candidatos antes del techo de 3 h (rutas lentas / shortest).
+        exclusion = min(exclusion, max_leg_km * MIN_LEG_ACCEPT_FRACTION)
     return exclusion
 
 
@@ -512,6 +519,7 @@ def _segment_min_route_km(
         target_leg_km,
         trip_start_soc,
         charging_reach_km=estimate_charging_reach_km(profile),
+        max_leg_km=max_leg_km,
     )
     from_trip_start = current_route_km - trip_start_route_km
     progress_fraction = min_leg_progress_fraction(route_preference)
@@ -547,11 +555,15 @@ def _is_meaningful_charging_stop(
         return False
     if leg_distance_km + 1e-6 < min_leg_km * 0.5:
         return False
-    if leg_distance_km >= min_leg_km * 0.85:
+    # Tramo ya cerca del objetivo de espaciado: válido aunque la carga sea corta.
+    if leg_distance_km + 1e-6 >= min_leg_km * MIN_LEG_ACCEPT_FRACTION:
         return True
-    if charge_minutes >= MIN_MEANINGFUL_CHARGE_MINUTES:
-        return True
-    return departure_soc_pct > arrival_soc_pct + 10.0
+    # Tramo corto: solo si la recarga es sustancial (no bypass por 8 min).
+    soc_gain = departure_soc_pct - arrival_soc_pct
+    return (
+        charge_minutes >= MIN_WORTHWHILE_CHARGE_MINUTES
+        and soc_gain >= MIN_WORTHWHILE_SOC_GAIN_PCT
+    )
 
 
 def _is_worth_charging_stop(
@@ -568,6 +580,20 @@ def _is_worth_charging_stop(
     avg_speed_kmh: float,
 ) -> bool:
     """Descarta micro-paradas (#6098): alta llegada y poca ganancia de carga."""
+    # Si el tramo ya respeta el espaciado (~2 h), no aplicar filtros de micro-parada
+    # (en rutas lentas se llega al ~55 % y la carga óptima puede ser corta).
+    if leg_distance_km + 1e-6 >= min_leg_km * MIN_LEG_ACCEPT_FRACTION:
+        return _is_meaningful_charging_stop(
+            arrival_soc_pct=arrival_soc_pct,
+            departure_soc_pct=departure_soc_pct,
+            charge_minutes=charge_minutes,
+            leg_distance_km=leg_distance_km,
+            min_leg_km=min_leg_km,
+            stop_route_km=stop_route_km,
+            trip_start_route_km=trip_start_route_km,
+            origin_exclusion_km=origin_exclusion_km,
+        )
+
     soc_gain = departure_soc_pct - arrival_soc_pct
     if (
         arrival_soc_pct >= MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT
@@ -579,10 +605,14 @@ def _is_worth_charging_stop(
     if charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES and soc_gain < MIN_WORTHWHILE_SOC_GAIN_PCT:
         return False
     if trip_start_soc_pct >= FIRST_LEG_FULL_SOC_THRESHOLD_PCT:
+        max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
         first_leg_min_km = max(
             origin_exclusion_km,
-            leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES) * 0.9,
+            leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES)
+            * MIN_LEG_ACCEPT_FRACTION,
         )
+        # No empujar la 1.ª parada más allá de la ventana factible ≤3 h.
+        first_leg_min_km = min(first_leg_min_km, max_leg_km * MIN_LEG_ACCEPT_FRACTION)
         from_start = stop_route_km - trip_start_route_km
         if from_start < first_leg_min_km and arrival_soc_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT:
             return False
@@ -853,6 +883,7 @@ def build_planned_route_stops_greedy(
         target_leg_km,
         trip_start_soc,
         charging_reach_km=estimate_charging_reach_km(profile),
+        max_leg_km=max_leg_km,
     )
     allow_origin_zone = allows_origin_zone_charging(trip_start_soc)
 

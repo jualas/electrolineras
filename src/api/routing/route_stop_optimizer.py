@@ -277,6 +277,7 @@ def optimize_planned_route_stops(
         target_leg_km,
         profile.soc_percent,
         charging_reach_km=estimate_charging_reach_km(profile),
+        max_leg_km=max_leg_km,
     )
 
     distance_to_dest = max(0.0, destination_distance_km - origin_position_km)

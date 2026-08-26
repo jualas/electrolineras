@@ -238,6 +238,8 @@ export type ChargingPlanResponse = {
   route_fastest_distance_km?: number | null
   route_conventional_distance_km?: number | null
   route_conventional_duration_minutes?: number | null
+  route_shortest_duration_minutes?: number | null
+  route_fastest_duration_minutes?: number | null
   shortest_excess_km?: number | null
   route_variants_approximate?: boolean
   soc_at_destination_pct: number | null

@@ -392,17 +392,17 @@ def test_faster_charger_preferred_for_similar_position() -> None:
     matches = [
         CorridorMatch(
             station=sample_station("slow", 40.0, 0.1, kw=50.0, price=0.35),
-            deviation_m=300,
+            deviation_m=400,
             route_position_m=250_000,
-            extra_minutes=2.0,
+            extra_minutes=3.0,
             behind_route=False,
             wrong_side=False,
         ),
         CorridorMatch(
             station=sample_station("fast", 40.0, 0.2, kw=250.0, price=0.45),
-            deviation_m=350,
-            route_position_m=255_000,
-            extra_minutes=2.5,
+            deviation_m=400,
+            route_position_m=250_000,
+            extra_minutes=3.0,
             behind_route=False,
             wrong_side=False,
         ),
@@ -617,3 +617,91 @@ def test_tesla_high_deviation_loses_to_low_deviation_other() -> None:
         preferences=prefs,
     )
     assert key_other < key_tesla
+
+
+def test_intermediate_legs_not_much_shorter_than_target() -> None:
+    """#6140: tras 1.ª parada ~2h, la 2.ª no debe caer a ~1h si hay candidatos ~2h."""
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=100,
+        usable_capacity_kwh=57,
+        consumption_wh_per_km=136,
+        vehicle_preset_id="tesla-model3-sr-2023",
+        max_charge_power_kw=170,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    # ~90 km/h → target 135 min ≈ 202 km. Candidatos: ~200, luego corto 300, luego ~400.
+    positions = [200.0, 300.0, 410.0, 620.0, 800.0]
+    matches = [
+        CorridorMatch(
+            station=sample_station(f"s{idx}", 38.0 + idx * 0.01, -1.5 + idx * 0.1, kw=250.0),
+            deviation_m=200,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for idx, km in enumerate(positions, start=1)
+    ]
+    planned, _, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=900.0,
+        profile=profile,
+        route_distance_km=900.0,
+        route_duration_minutes=600.0,
+        route_preference="fastest",
+    )
+    assert projected is not None
+    assert len(planned) >= 2
+    for stop in planned:
+        # Evitar el patrón 1h–1:30 entre paradas intermedias (salvo tramo final corto).
+        if stop.order < len(planned):
+            assert stop.leg_driving_minutes >= 110, (
+                f"tramo #{stop.order} demasiado corto: {stop.leg_driving_minutes} min @ {stop.distance_from_origin_km} km"
+            )
+
+
+def test_slow_shortest_style_route_still_plans_stops() -> None:
+    """#6140: a ~64 km/h (ruta directa), no dejar el plan a 0 paradas por exclusión+max_leg."""
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=100,
+        usable_capacity_kwh=57,
+        consumption_wh_per_km=136,
+        vehicle_preset_id="tesla-model3-sr-2023",
+        max_charge_power_kw=170,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    # Velocidad media ~64 km/h: max_leg ≈ 192 km. Candidatos dentro y fuera de la ventana.
+    positions = [155.0, 177.0, 187.0, 228.0, 340.0, 480.0, 620.0]
+    matches = [
+        CorridorMatch(
+            station=sample_station(f"s{idx}", 38.0 + idx * 0.02, -1.2 + idx * 0.05, kw=200.0),
+            deviation_m=300,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for idx, km in enumerate(positions, start=1)
+    ]
+    planned, warnings, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=748.0,
+        profile=profile,
+        route_distance_km=748.0,
+        route_duration_minutes=699.0,
+        route_preference="shortest",
+    )
+    assert len(planned) >= 2, f"expected stops, got {planned!r}; warnings={warnings}"
+    assert projected is not None
+    assert planned[0].leg_driving_minutes >= 110
+    assert planned[0].distance_from_origin_km <= 200.0

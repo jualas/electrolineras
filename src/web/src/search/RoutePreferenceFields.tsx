@@ -20,8 +20,8 @@ export function RoutePreferenceFields({
 }: RoutePreferenceFieldsProps) {
   const fastestHint =
     variant === 'assistant'
-      ? 'Menor tiempo con velocidades reales de cada vía; autovía si compensa.'
-      : 'Menor tiempo; autovía cuando reduce duración.'
+      ? 'Menor tiempo con velocidades reales; puede tener más km que la directa.'
+      : 'Menor tiempo; suele tener más km que la directa (autovía).'
 
   return (
     <fieldset className="route-preference" disabled={disabled}>
@@ -38,7 +38,7 @@ export function RoutePreferenceFields({
           <span>
             Más directa (menos km)
             <span className="route-preference__hint">
-              Prioriza la ruta más recta posible; puede ser más lenta que la rápida.
+              Menos kilómetros; a menudo más lenta que la rápida (mira los tiempos).
             </span>
           </span>
         </label>
@@ -109,6 +109,8 @@ type RouteAlternativesKm = {
   route_fastest_distance_km?: number | null
   route_conventional_distance_km?: number | null
   route_conventional_duration_minutes?: number | null
+  route_shortest_duration_minutes?: number | null
+  route_fastest_duration_minutes?: number | null
   shortest_excess_km?: number | null
   route_variants_approximate?: boolean
 }
@@ -141,13 +143,17 @@ export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
       plan.shortest_excess_km != null && plan.shortest_excess_km > 0
         ? ` (+${plan.shortest_excess_km.toFixed(0)} km)`
         : ''
-    parts.push(`Directa: ${shortest.toFixed(0)} km${excess}`)
+    const duration = formatDurationMinutes(
+      plan.route_shortest_duration_minutes ??
+        (plan.route_preference === 'shortest' ? plan.route_duration_minutes : null),
+    )
+    parts.push(`Directa: ${shortest.toFixed(0)} km${excess}${duration ? ` · ${duration}` : ''}`)
   }
   if (fastest != null) {
-    const duration =
-      plan.route_preference === 'fastest'
-        ? formatDurationMinutes(plan.route_duration_minutes)
-        : ''
+    const duration = formatDurationMinutes(
+      plan.route_fastest_duration_minutes ??
+        (plan.route_preference === 'fastest' ? plan.route_duration_minutes : null),
+    )
     parts.push(`Rápida: ${fastest.toFixed(0)} km${duration ? ` · ${duration}` : ''}`)
   }
   if (conventional != null) {

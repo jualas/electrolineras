@@ -275,4 +275,5 @@ Rama: `feature/viaje-activo-6131`. Epic: TaskBoard **#6131**.
 2. **P1** Progreso + siguiente parada N → #6136  
 3. **P1** Copy dual Maps vs Tesla → #6137  
 4. **P1** Spikes G2/G3 en dispositivo → #6133, #6134  
-5. **P2** Replan + Asistente → #6138
+5. **P2** Replan + Asistente → #6138  
+6. **P1 #6140** (en curso en esta rama): UI tiempos Directa/Rápida; 1.er tramo = 135 min (no 180); tramos cortos; shortest sin paradas
