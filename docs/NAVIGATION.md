@@ -241,3 +241,38 @@ Factible en export Google Maps y en planificador propio. Validar que waypoints l
 - [ ] (v2) Usuario Tesla vinculado: “Enviar al coche” llega en < 30 s con coche online.
 - [ ] (v2) Documentar en UI que la ruta completa al Tesla puede requerir enviar paradas una a una.
 - [ ] Probar en navegador Tesla: mapa usable y botones legibles.
+
+---
+
+## Evaluación viaje activo + handoff (#6132, 2026-08-26)
+
+Rama: `feature/viaje-activo-6131`. Epic: TaskBoard **#6131**.
+
+### Verificado en API / código (sin dispositivo)
+
+| ID | Resultado | Notas |
+|----|-----------|-------|
+| G1 | ✅ OK | Cartagena→Irun: 3 waypoints DC; URL GMaps 186 chars (&lt;2000). Ejemplo: origen + 3 paradas + destino. |
+| E2 | ❌ FAIL esperado | `ActiveTrip` solo en `sessionStorage` → se pierde al cerrar pestaña. |
+| E3 | ❌ FAIL esperado | `AssistantPanel` no usa `useActiveTrip` ni `ReplanOnRouteBar`. |
+| E5 | ❌ N/A | No hay progreso de paradas (`completedStopOrders`). |
+| next_stop | ⚠️ Parcial | Botón «1.ª parada → Tesla» existe; no avanza a N+1 tras completar. |
+| Vías A→…→A | ❌ Hueco | `ActiveTripState` guarda solo destino final, no waypoints de itinerario. |
+
+### Pendiente en dispositivo real (Android + Tesla)
+
+| ID | Qué probar | Criterio |
+|----|------------|----------|
+| E1 | Plan loop Cartagena→Tres Cantos→Cuenca→A, F5 | ¿Restaura destino? ¿Pierde vías? |
+| G2 | GMaps con waypoints → Compartir → Tesla | ¿Solo destino final o también waypoints? |
+| G3 | En web móvil: «1.ª parada → Tesla» | ¿Llega al coche &lt;30 s? |
+| G4 | Tras “carga”, enviar parada #2 manualmente | Flujo usable parada a parada |
+| G5 | Abrir electro.jualas.es en browser Tesla | Botones export / En marcha legibles |
+
+### Fallos priorizados → tareas
+
+1. **P1** Persistencia + vías → #6135  
+2. **P1** Progreso + siguiente parada N → #6136  
+3. **P1** Copy dual Maps vs Tesla → #6137  
+4. **P1** Spikes G2/G3 en dispositivo → #6133, #6134  
+5. **P2** Replan + Asistente → #6138
