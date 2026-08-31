@@ -14,6 +14,22 @@ export type ActiveTripLastPlan = {
   stopIds: string[]
   routeDistanceKm: number | null
   computedAt: number
+  /** Wh/km efectivo (× terrain) usado al calcular el plan. */
+  consumptionWhPerKmEffective?: number | null
+}
+
+export type ReplanReason = 'manual' | 'auto_follow' | 'stop_completed'
+
+export type ActiveTripReplanTelemetry = {
+  count: number
+  lastAt: number | null
+  lastReason: ReplanReason | null
+}
+
+export const EMPTY_REPLAN_TELEMETRY: ActiveTripReplanTelemetry = {
+  count: 0,
+  lastAt: null,
+  lastReason: null,
 }
 
 export type ActiveTripProgress = {
@@ -28,6 +44,7 @@ export type ActiveTripState = {
   waypoints: ActiveTripWaypoint[]
   lastPlan: ActiveTripLastPlan | null
   progress: ActiveTripProgress
+  replan: ActiveTripReplanTelemetry
   corridorKm: number
   routePreference: RoutePreference
   avoidTolls: boolean
@@ -92,6 +109,45 @@ function parseLastPlan(raw: unknown): ActiveTripLastPlan | null {
         ? plan.routeDistanceKm
         : null,
     computedAt: typeof plan.computedAt === 'number' ? plan.computedAt : Date.now(),
+    consumptionWhPerKmEffective:
+      typeof plan.consumptionWhPerKmEffective === 'number' &&
+      Number.isFinite(plan.consumptionWhPerKmEffective)
+        ? plan.consumptionWhPerKmEffective
+        : null,
+  }
+}
+
+function parseReplanTelemetry(raw: unknown): ActiveTripReplanTelemetry {
+  if (!raw || typeof raw !== 'object') {
+    return { ...EMPTY_REPLAN_TELEMETRY }
+  }
+  const telemetry = raw as Partial<ActiveTripReplanTelemetry>
+  const reason =
+    telemetry.lastReason === 'manual' ||
+    telemetry.lastReason === 'auto_follow' ||
+    telemetry.lastReason === 'stop_completed'
+      ? telemetry.lastReason
+      : null
+  return {
+    count:
+      typeof telemetry.count === 'number' && telemetry.count >= 0
+        ? Math.floor(telemetry.count)
+        : 0,
+    lastAt: typeof telemetry.lastAt === 'number' ? telemetry.lastAt : null,
+    lastReason: reason,
+  }
+}
+
+export function bumpReplanTelemetry(
+  telemetry: ActiveTripReplanTelemetry | undefined,
+  reason: ReplanReason,
+  now: number = Date.now(),
+): ActiveTripReplanTelemetry {
+  const base = telemetry ?? EMPTY_REPLAN_TELEMETRY
+  return {
+    count: base.count + 1,
+    lastAt: now,
+    lastReason: reason,
   }
 }
 
@@ -173,6 +229,7 @@ export function parseActiveTrip(raw: string | null, now: number = Date.now()): A
         : [],
       lastPlan: parseLastPlan(parsed.lastPlan),
       progress: parseProgress(parsed.progress),
+      replan: parseReplanTelemetry(parsed.replan),
       corridorKm: typeof parsed.corridorKm === 'number' ? parsed.corridorKm : 10,
       routePreference:
         parsed.routePreference === 'fastest' ||

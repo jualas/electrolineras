@@ -34,7 +34,13 @@ import { ActiveTripProgressBar } from '../components/trip/ActiveTripProgressBar'
 import { ReplanOnRouteBar } from '../search/ReplanOnRouteBar'
 import { distancePointToRouteKm } from '../charging/routeDeviation'
 import { routeChargingStops } from '../charging/planRouteStops'
-import { clampTripProgress } from '../charging/activeTrip'
+import { clampTripProgress, bumpReplanTelemetry, EMPTY_REPLAN_TELEMETRY, type ReplanReason } from '../charging/activeTrip'
+import {
+  consumptionDivergencePct as calcConsumptionDivergencePct,
+  effectiveConsumptionWhPerKm,
+} from '../charging/consumptionDivergence'
+import { replanReasonLabel } from '../charging/replanLabels'
+import { vehicleProfileToChargingPlanQuery } from '../vehicle/vehicleProfile'
 import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
 
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
@@ -77,6 +83,7 @@ export function AssistantPanel({
   const recalcOnPreferenceRef = useRef(false)
   const runMapPlanRef = useRef<() => void>(() => {})
   const tripRestoredRef = useRef(false)
+  const pendingReplanReasonRef = useRef<ReplanReason | null>(null)
 
   const {
     vehicle,
@@ -255,7 +262,9 @@ export function AssistantPanel({
     dest: GeocodeResult,
     waypoints: Array<{ label: string; lat: number; lon: number }>,
     plan: import('../api/types').ChargingPlanResponse,
+    options: { isReplan: boolean; replanReason: ReplanReason },
   ) => {
+    const vehicleQuery = vehicleProfileToChargingPlanQuery(vehicleProfile)
     saveActiveTrip({
       version: 2,
       destination: { label: dest.label, lat: dest.lat, lon: dest.lon },
@@ -264,11 +273,15 @@ export function AssistantPanel({
         stopIds: (plan.planned_stops ?? []).map((stop) => stop.station.id),
         routeDistanceKm: plan.route_distance_km,
         computedAt: Date.now(),
+        consumptionWhPerKmEffective: effectiveConsumptionWhPerKm(vehicleQuery),
       },
       progress: clampTripProgress(
         activeTrip?.progress ?? { completedStopOrders: [], currentLegIndex: 0 },
         routeChargingStops(plan).length,
       ),
+      replan: options.isReplan
+        ? bumpReplanTelemetry(activeTrip?.replan, options.replanReason)
+        : { ...EMPTY_REPLAN_TELEMETRY },
       corridorKm: 10,
       routePreference,
       avoidTolls,
@@ -285,6 +298,10 @@ export function AssistantPanel({
   }
 
   const runMapPlan = async () => {
+    const replanReason = pendingReplanReasonRef.current ?? 'manual'
+    pendingReplanReasonRef.current = null
+    const isReplan = Boolean(activeTrip?.lastPlan) || Boolean(advice?.plan)
+
     let itinerary: {
       destination: GeocodeResult
       viaPoints: Array<{ lat: number; lon: number }>
@@ -345,7 +362,7 @@ export function AssistantPanel({
       )
       onPlanResults(result.plan)
       onPlanStateChange?.('ready')
-      persistTripFromPlan(dest, itinerary.waypoints, result.plan)
+      persistTripFromPlan(dest, itinerary.waypoints, result.plan, { isReplan, replanReason })
     } catch (err) {
       setAdvice(null)
       onPlanResults(null)
@@ -357,6 +374,10 @@ export function AssistantPanel({
   }
 
   const runAiGuide = async () => {
+    const replanReason = pendingReplanReasonRef.current ?? 'manual'
+    pendingReplanReasonRef.current = null
+    const isReplan = Boolean(activeTrip?.lastPlan) || Boolean(advice?.plan)
+
     let itinerary: {
       destination: GeocodeResult
       viaPoints: Array<{ lat: number; lon: number }>
@@ -406,7 +427,7 @@ export function AssistantPanel({
       setAdvice(result)
       onPlanResults(result.plan)
       onPlanStateChange?.('ready')
-      persistTripFromPlan(dest, itinerary.waypoints, result.plan)
+      persistTripFromPlan(dest, itinerary.waypoints, result.plan, { isReplan, replanReason })
     } catch (err) {
       onPlanStateChange?.('error')
       setGuideError(err instanceof Error ? err.message : 'Error al generar la guía IA')
@@ -418,6 +439,21 @@ export function AssistantPanel({
   runMapPlanRef.current = () => {
     void runMapPlan()
   }
+
+  const triggerMapPlan = (reason?: ReplanReason) => {
+    if (reason) {
+      pendingReplanReasonRef.current = reason
+    }
+    void runMapPlan()
+  }
+
+  const vehicleQueryForDisplay = vehicleProfileToChargingPlanQuery(vehicleProfile)
+  const plannedConsumptionWhPerKm = activeTrip?.lastPlan?.consumptionWhPerKmEffective ?? null
+  const currentConsumptionWhPerKm = effectiveConsumptionWhPerKm(vehicleQueryForDisplay)
+  const consumptionDivergencePct =
+    plannedConsumptionWhPerKm != null
+      ? calcConsumptionDivergencePct(plannedConsumptionWhPerKm, currentConsumptionWhPerKm)
+      : null
 
   const vehicleOrigin =
     vehicle != null
@@ -629,12 +665,18 @@ export function AssistantPanel({
               loading={loadingPlan}
               autoFollow={enMarchaSettings.autoFollow}
               onAutoFollowChange={setAutoFollow}
-              onReplan={() => void runMapPlan()}
+              onReplan={() => triggerMapPlan('manual')}
               canReplan={!busy && hasDestinationInput}
+              lastUpdatedAt={activeTrip.updatedAt}
               routeDeviationKm={distancePointToRouteKm(
                 { lat: vehicle.lat, lon: vehicle.lon },
                 advice.plan.route_geometry,
               )}
+              consumptionDivergencePct={consumptionDivergencePct}
+              plannedConsumptionWhPerKm={plannedConsumptionWhPerKm}
+              currentConsumptionWhPerKm={currentConsumptionWhPerKm}
+              replanCount={activeTrip.replan.count}
+              lastReplanReason={replanReasonLabel(activeTrip.replan.lastReason)}
             />
           ) : null}
           {activeTrip && advice.plan && routeChargingStops(advice.plan).length > 0 ? (
@@ -645,7 +687,7 @@ export function AssistantPanel({
               onMarkStopCompleted={(stopOrder) =>
                 markStopCompleted(stopOrder, routeChargingStops(advice.plan).length)
               }
-              onReplan={() => void runMapPlan()}
+              onReplan={() => triggerMapPlan('stop_completed')}
               replanLoading={loadingPlan}
             />
           ) : null}

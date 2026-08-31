@@ -4,7 +4,9 @@ import {
   ACTIVE_TRIP_STORAGE_KEY,
   ACTIVE_TRIP_TTL_MS,
   advanceTripProgress,
+  bumpReplanTelemetry,
   clampTripProgress,
+  EMPTY_REPLAN_TELEMETRY,
   loadActiveTripFromStorage,
   parseActiveTrip,
   persistActiveTripToStorage,
@@ -48,8 +50,10 @@ const baseTrip: ActiveTripState = {
     stopIds: ['st-1', 'st-2'],
     routeDistanceKm: 740,
     computedAt: 1_700_000_000_000,
+    consumptionWhPerKmEffective: 176,
   },
   progress: { completedStopOrders: [1], currentLegIndex: 1 },
+  replan: { count: 2, lastAt: 1_700_000_100_000, lastReason: 'auto_follow' },
   corridorKm: 12,
   routePreference: 'fastest',
   avoidTolls: true,
@@ -66,7 +70,10 @@ describe('parseActiveTrip v2', () => {
     expect(parsed?.waypoints).toHaveLength(2)
     expect(parsed?.waypoints[0]?.label).toBe('Tres Cantos')
     expect(parsed?.lastPlan?.stopIds).toEqual(['st-1', 'st-2'])
+    expect(parsed?.lastPlan?.consumptionWhPerKmEffective).toBe(176)
     expect(parsed?.progress.currentLegIndex).toBe(1)
+    expect(parsed?.replan.count).toBe(2)
+    expect(parsed?.replan.lastReason).toBe('auto_follow')
     expect(parsed?.routePreference).toBe('fastest')
   })
 
@@ -84,6 +91,7 @@ describe('parseActiveTrip v2', () => {
     expect(parsed?.waypoints).toEqual([])
     expect(parsed?.lastPlan).toBeNull()
     expect(parsed?.progress).toEqual({ completedStopOrders: [], currentLegIndex: 0 })
+    expect(parsed?.replan).toEqual(EMPTY_REPLAN_TELEMETRY)
     expect(parsed?.avoidTolls).toBe(true)
     expect(parsed?.version).toBe(2)
   })
@@ -128,5 +136,18 @@ describe('progreso de paradas', () => {
     const clamped = clampTripProgress({ completedStopOrders: [1, 2, 9], currentLegIndex: 5 }, 2)
     expect(clamped.currentLegIndex).toBe(1)
     expect(clamped.completedStopOrders).toEqual([1, 2])
+  })
+})
+
+describe('telemetría replan', () => {
+  it('bumpReplanTelemetry incrementa contador y guarda razón', () => {
+    const next = bumpReplanTelemetry(EMPTY_REPLAN_TELEMETRY, 'manual', 1_700_000_000_000)
+    expect(next.count).toBe(1)
+    expect(next.lastReason).toBe('manual')
+    expect(next.lastAt).toBe(1_700_000_000_000)
+
+    const again = bumpReplanTelemetry(next, 'stop_completed', 1_700_000_100_000)
+    expect(again.count).toBe(2)
+    expect(again.lastReason).toBe('stop_completed')
   })
 })

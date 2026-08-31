@@ -28,7 +28,12 @@ import {
 import { revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
-import { clampTripProgress } from '../charging/activeTrip'
+import { clampTripProgress, bumpReplanTelemetry, EMPTY_REPLAN_TELEMETRY, type ReplanReason } from '../charging/activeTrip'
+import {
+  consumptionDivergencePct as calcConsumptionDivergencePct,
+  effectiveConsumptionWhPerKm,
+} from '../charging/consumptionDivergence'
+import { replanReasonLabel } from '../charging/replanLabels'
 import { routeChargingStops } from '../charging/planRouteStops'
 import {
   isOriginOnlySearchKeyChange,
@@ -92,6 +97,7 @@ export function ChargingPlanPanel({
   const lastAutoReplanRef = useRef<AutoReplanSnapshot | null>(null)
   const recalcOnPreferenceRef = useRef(false)
   const tripRestoredRef = useRef(false)
+  const pendingReplanReasonRef = useRef<ReplanReason | null>(null)
   const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow, setGpsEnabled, markStopCompleted } =
     useActiveTrip()
 
@@ -246,6 +252,10 @@ export function ChargingPlanPanel({
   }, [stops])
 
   const runPlan = useCallback(async () => {
+    const replanReason = pendingReplanReasonRef.current ?? 'manual'
+    pendingReplanReasonRef.current = null
+    const isReplan = Boolean(activeTrip?.lastPlan) || Boolean(lastSearchKeyRef.current)
+
     setStatus('loading')
     setError(null)
     onSelectStation?.(null)
@@ -352,8 +362,12 @@ export function ChargingPlanPanel({
             stopIds: (response.planned_stops ?? []).map((stop) => stop.station.id),
             routeDistanceKm: response.route_distance_km,
             computedAt: Date.now(),
+            consumptionWhPerKmEffective: effectiveConsumptionWhPerKm(vehicleQuery),
           },
           progress,
+          replan: isReplan
+            ? bumpReplanTelemetry(activeTrip?.replan, replanReason)
+            : { ...EMPTY_REPLAN_TELEMETRY },
           corridorKm,
           routePreference,
           avoidTolls,
@@ -437,6 +451,7 @@ export function ChargingPlanPanel({
     ) {
       return
     }
+    pendingReplanReasonRef.current = 'auto_follow'
     void runPlan()
   }, [
     avoidTolls,
@@ -496,6 +511,7 @@ export function ChargingPlanPanel({
     ) {
       return
     }
+    pendingReplanReasonRef.current = 'auto_follow'
     void runPlan()
   }, [
     avoidTolls,
@@ -623,6 +639,23 @@ export function ChargingPlanPanel({
     }
     return distancePointToRouteKm(liveTrackingPoint, lastResponse.route_geometry)
   }, [lastResponse, liveTrackingPoint])
+
+  const plannedConsumptionWhPerKm = activeTrip?.lastPlan?.consumptionWhPerKmEffective ?? null
+  const currentConsumptionWhPerKm = effectiveConsumptionWhPerKm(resolveVehicleQueryForDisplay)
+  const consumptionDivergencePct =
+    plannedConsumptionWhPerKm != null
+      ? calcConsumptionDivergencePct(plannedConsumptionWhPerKm, currentConsumptionWhPerKm)
+      : null
+
+  const triggerPlan = useCallback(
+    (reason?: ReplanReason) => {
+      if (reason) {
+        pendingReplanReasonRef.current = reason
+      }
+      void runPlan()
+    },
+    [runPlan],
+  )
 
   const handleGpsEnabledChange = (enabled: boolean) => {
     setGpsEnabled(enabled)
@@ -901,7 +934,7 @@ export function ChargingPlanPanel({
           loading={status === 'loading'}
           autoFollow={enMarchaSettings.autoFollow}
           onAutoFollowChange={setAutoFollow}
-          onReplan={() => void runPlan()}
+          onReplan={() => triggerPlan('manual')}
           onRefreshOrigin={
             useCarOrigin
               ? () => void refreshCarTelemetry()
@@ -913,6 +946,11 @@ export function ChargingPlanPanel({
           lastUpdatedAt={activeTrip?.updatedAt ?? null}
           showAutoFollow={liveOriginMode}
           routeDeviationKm={routeDeviationKm}
+          consumptionDivergencePct={consumptionDivergencePct}
+          plannedConsumptionWhPerKm={plannedConsumptionWhPerKm}
+          currentConsumptionWhPerKm={currentConsumptionWhPerKm}
+          replanCount={activeTrip?.replan.count ?? 0}
+          lastReplanReason={replanReasonLabel(activeTrip?.replan.lastReason)}
         />
       ) : null}
 
@@ -922,7 +960,7 @@ export function ChargingPlanPanel({
           progress={activeTrip.progress}
           userLocation={liveTrackingPoint}
           onMarkStopCompleted={handleMarkStopCompleted}
-          onReplan={() => void runPlan()}
+          onReplan={() => triggerPlan('stop_completed')}
           replanLoading={status === 'loading'}
         />
       ) : null}

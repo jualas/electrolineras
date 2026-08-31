@@ -13,6 +13,12 @@ type ReplanOnRouteBarProps = {
   showAutoFollow?: boolean
   routeDeviationKm?: number | null
   routeDeviationThresholdKm?: number
+  consumptionDivergencePct?: number | null
+  plannedConsumptionWhPerKm?: number | null
+  currentConsumptionWhPerKm?: number | null
+  consumptionDivergenceThresholdPct?: number
+  replanCount?: number
+  lastReplanReason?: string | null
 }
 
 function formatUpdatedAt(timestamp: number | null | undefined): string | null {
@@ -40,10 +46,18 @@ export function ReplanOnRouteBar({
   showAutoFollow = true,
   routeDeviationKm = null,
   routeDeviationThresholdKm = 2,
+  consumptionDivergencePct = null,
+  plannedConsumptionWhPerKm = null,
+  currentConsumptionWhPerKm = null,
+  consumptionDivergenceThresholdPct = 15,
+  replanCount = 0,
+  lastReplanReason = null,
 }: ReplanOnRouteBarProps) {
   const updatedLabel = formatUpdatedAt(lastUpdatedAt)
   const offRoute =
     routeDeviationKm != null && routeDeviationKm > routeDeviationThresholdKm
+  const highConsumption =
+    consumptionDivergencePct != null && consumptionDivergencePct > consumptionDivergenceThresholdPct
 
   return (
     <section className="replan-bar" aria-label="Replanificación en marcha">
@@ -52,6 +66,12 @@ export function ReplanOnRouteBar({
         {updatedLabel ? (
           <span className="replan-bar__updated" role="status">
             Actualizado {updatedLabel}
+            {replanCount > 0 ? ` · ${replanCount} replan${replanCount === 1 ? '' : 'es'}` : ''}
+          </span>
+        ) : replanCount > 0 ? (
+          <span className="replan-bar__updated" role="status">
+            {replanCount} replan{replanCount === 1 ? '' : 'es'}
+            {lastReplanReason ? ` (${lastReplanReason})` : ''}
           </span>
         ) : null}
       </div>
@@ -78,6 +98,14 @@ export function ReplanOnRouteBar({
         <p className="route-message route-message--warn replan-bar__deviation" role="status">
           Te has desviado ~{routeDeviationKm!.toFixed(1)} km de la ruta planificada. ¿Recalcular desde
           aquí?
+        </p>
+      ) : null}
+
+      {highConsumption && plannedConsumptionWhPerKm != null && currentConsumptionWhPerKm != null ? (
+        <p className="route-message route-message--warn replan-bar__deviation" role="status">
+          Consumo actual ~{Math.round(currentConsumptionWhPerKm)} Wh/km difiere{' '}
+          {consumptionDivergencePct!.toFixed(0)} % del plan (~{Math.round(plannedConsumptionWhPerKm)}{' '}
+          Wh/km). Conviene recalcular paradas.
         </p>
       ) : null}
 
