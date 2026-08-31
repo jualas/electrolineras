@@ -21,6 +21,8 @@ type ActiveTripProgressBarProps = {
   progress: ActiveTripProgress
   userLocation?: MapCoords | null
   onMarkStopCompleted: (stopOrder: number) => void
+  onReplan?: () => void
+  replanLoading?: boolean
 }
 
 function stopOrderAtLeg(plan: ChargingPlanResponse, legIndex: number): number {
@@ -36,8 +38,11 @@ export function ActiveTripProgressBar({
   progress,
   userLocation,
   onMarkStopCompleted,
+  onReplan,
+  replanLoading = false,
 }: ActiveTripProgressBarProps) {
   const [shareError, setShareError] = useState(false)
+  const [showReplanPrompt, setShowReplanPrompt] = useState(false)
   const stops = routeChargingStops(plan)
   const totalStops = stops.length
   if (totalStops === 0) {
@@ -101,7 +106,10 @@ export function ActiveTripProgressBar({
           <button
             type="button"
             className="btn btn--secondary"
-            onClick={() => onMarkStopCompleted(stopOrder)}
+            onClick={() => {
+              onMarkStopCompleted(stopOrder)
+              setShowReplanPrompt(true)
+            }}
           >
             Marcar parada completada
           </button>
@@ -125,6 +133,15 @@ export function ActiveTripProgressBar({
           </a>
         ) : null}
       </div>
+
+      {showReplanPrompt && onReplan ? (
+        <div className="trip-progress__replan-prompt">
+          <p>¿Recalcular el plan desde tu posición y SOC actuales?</p>
+          <button type="button" className="btn btn--primary" disabled={replanLoading} onClick={onReplan}>
+            {replanLoading ? 'Recalculando…' : 'Recalcular desde aquí'}
+          </button>
+        </div>
+      ) : null}
 
       <p className="trip-progress__hint">
         Activa <strong>GPS del móvil</strong> para seguir tu posición. La navegación turn-by-turn la hace

@@ -30,6 +30,11 @@ import { useAuth } from './AuthContext'
 import { LoginPanel } from './LoginPanel'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { ActiveTripBanner } from '../components/trip/ActiveTripBanner'
+import { ActiveTripProgressBar } from '../components/trip/ActiveTripProgressBar'
+import { ReplanOnRouteBar } from '../search/ReplanOnRouteBar'
+import { distancePointToRouteKm } from '../charging/routeDeviation'
+import { routeChargingStops } from '../charging/planRouteStops'
+import { clampTripProgress } from '../charging/activeTrip'
 import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
 
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
@@ -52,7 +57,8 @@ export function AssistantPanel({
   selectedStationId,
 }: AssistantPanelProps) {
   const { loading, authenticated, loginEnabled, privateStackEnabled } = useAuth()
-  const { activeTrip, saveActiveTrip, clearActiveTrip } = useActiveTrip()
+  const { activeTrip, saveActiveTrip, clearActiveTrip, enMarchaSettings, setAutoFollow, markStopCompleted } =
+    useActiveTrip()
   const [stops, setStops] = useState<ItineraryStopDraft[]>(() => [createEmptyStop()])
   const [advice, setAdvice] = useState<TripGuideResponse | null>(null)
   const [planError, setPlanError] = useState<string | null>(null)
@@ -259,7 +265,10 @@ export function AssistantPanel({
         routeDistanceKm: plan.route_distance_km,
         computedAt: Date.now(),
       },
-      progress: { completedStopOrders: [], currentLegIndex: 0 },
+      progress: clampTripProgress(
+        activeTrip?.progress ?? { completedStopOrders: [], currentLegIndex: 0 },
+        routeChargingStops(plan).length,
+      ),
       corridorKm: 10,
       routePreference,
       avoidTolls,
@@ -611,6 +620,35 @@ export function AssistantPanel({
 
       {advice && (
         <div className="assistant-advice">
+          {activeTrip && advice.plan && vehicle ? (
+            <ReplanOnRouteBar
+              destinationLabel={activeTrip.destination.label}
+              originLabel={vehicleOrigin?.label ?? 'Coche'}
+              socPercent={Math.round(vehicle.battery_level_pct)}
+              socSourceLabel="TeslaMate"
+              loading={loadingPlan}
+              autoFollow={enMarchaSettings.autoFollow}
+              onAutoFollowChange={setAutoFollow}
+              onReplan={() => void runMapPlan()}
+              canReplan={!busy && hasDestinationInput}
+              routeDeviationKm={distancePointToRouteKm(
+                { lat: vehicle.lat, lon: vehicle.lon },
+                advice.plan.route_geometry,
+              )}
+            />
+          ) : null}
+          {activeTrip && advice.plan && routeChargingStops(advice.plan).length > 0 ? (
+            <ActiveTripProgressBar
+              plan={advice.plan}
+              progress={activeTrip.progress}
+              userLocation={{ lat: vehicle!.lat, lon: vehicle!.lon }}
+              onMarkStopCompleted={(stopOrder) =>
+                markStopCompleted(stopOrder, routeChargingStops(advice.plan).length)
+              }
+              onReplan={() => void runMapPlan()}
+              replanLoading={loadingPlan}
+            />
+          ) : null}
           {advice.guide_text && (
             <div className="assistant-guide">
               <div className="assistant-guide__header">
@@ -652,6 +690,7 @@ export function AssistantPanel({
             variant="assistant"
             originLabel="Tu coche"
             destinationLabel={destination?.label}
+            currentLegIndex={activeTrip?.progress.currentLegIndex}
           />
         </div>
       )}

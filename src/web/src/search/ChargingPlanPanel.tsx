@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { fetchChargingPlan } from '../api/chargingPlan'
 import type { ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
@@ -30,6 +30,12 @@ import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
 import { clampTripProgress } from '../charging/activeTrip'
 import { routeChargingStops } from '../charging/planRouteStops'
+import {
+  isOriginOnlySearchKeyChange,
+  shouldThrottleAutoReplan,
+  type AutoReplanSnapshot,
+} from '../charging/replanThrottle'
+import { distancePointToRouteKm } from '../charging/routeDeviation'
 import { useActiveTrip } from '../hooks/useActiveTrip'
 import { ActiveTripBanner } from '../components/trip/ActiveTripBanner'
 import { ActiveTripProgressBar } from '../components/trip/ActiveTripProgressBar'
@@ -83,6 +89,7 @@ export function ChargingPlanPanel({
     HOME_LOCATION,
   )
   const lastSearchKeyRef = useRef<string | null>(null)
+  const lastAutoReplanRef = useRef<AutoReplanSnapshot | null>(null)
   const recalcOnPreferenceRef = useRef(false)
   const tripRestoredRef = useRef(false)
   const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow, setGpsEnabled, markStopCompleted } =
@@ -314,6 +321,12 @@ export function ChargingPlanPanel({
         chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
       })
       lastSearchKeyRef.current = searchKey
+      lastAutoReplanRef.current = {
+        at: Date.now(),
+        lat: origin.lat,
+        lon: origin.lon,
+        soc: vehicleQuery.soc_percent,
+      }
       setLastResponse(response)
       setStatus('ready')
       onResults(response)
@@ -414,6 +427,16 @@ export function ChargingPlanPanel({
     if (searchKey === lastSearchKeyRef.current) {
       return
     }
+    if (
+      isOriginOnlySearchKeyChange(lastSearchKeyRef.current, searchKey) &&
+      shouldThrottleAutoReplan({
+        last: lastAutoReplanRef.current,
+        origin: gpsLocation,
+        soc: vehicleQuery.soc_percent,
+      })
+    ) {
+      return
+    }
     void runPlan()
   }, [
     avoidTolls,
@@ -461,6 +484,16 @@ export function ChargingPlanPanel({
       chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
     })
     if (searchKey === lastSearchKeyRef.current) {
+      return
+    }
+    if (
+      isOriginOnlySearchKeyChange(lastSearchKeyRef.current, searchKey) &&
+      shouldThrottleAutoReplan({
+        last: lastAutoReplanRef.current,
+        origin,
+        soc: vehicleQuery.soc_percent,
+      })
+    ) {
       return
     }
     void runPlan()
@@ -579,6 +612,17 @@ export function ChargingPlanPanel({
     !emergencyMode && Boolean(replanDestination) && Boolean(lastResponse) && liveOriginMode
   const resolveVehicleQueryForDisplay = resolveVehicleQuery()
   const chargingStopCount = lastResponse ? routeChargingStops(lastResponse).length : 0
+  const liveTrackingPoint = useCarOrigin && carTelemetry
+    ? { lat: carTelemetry.lat, lon: carTelemetry.lon }
+    : gpsLocation
+      ? { lat: gpsLocation.lat, lon: gpsLocation.lon }
+      : null
+  const routeDeviationKm = useMemo(() => {
+    if (!lastResponse?.route_geometry || !liveTrackingPoint) {
+      return null
+    }
+    return distancePointToRouteKm(liveTrackingPoint, lastResponse.route_geometry)
+  }, [lastResponse, liveTrackingPoint])
 
   const handleGpsEnabledChange = (enabled: boolean) => {
     setGpsEnabled(enabled)
@@ -868,6 +912,7 @@ export function ChargingPlanPanel({
           canReplan={canSubmit && Boolean(replanDestination)}
           lastUpdatedAt={activeTrip?.updatedAt ?? null}
           showAutoFollow={liveOriginMode}
+          routeDeviationKm={routeDeviationKm}
         />
       ) : null}
 
@@ -875,8 +920,10 @@ export function ChargingPlanPanel({
         <ActiveTripProgressBar
           plan={lastResponse}
           progress={activeTrip.progress}
-          userLocation={gpsLocation ? { lat: gpsLocation.lat, lon: gpsLocation.lon } : null}
+          userLocation={liveTrackingPoint}
           onMarkStopCompleted={handleMarkStopCompleted}
+          onReplan={() => void runPlan()}
+          replanLoading={status === 'loading'}
         />
       ) : null}
 

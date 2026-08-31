@@ -11,6 +11,8 @@ type ReplanOnRouteBarProps = {
   canReplan: boolean
   lastUpdatedAt?: number | null
   showAutoFollow?: boolean
+  routeDeviationKm?: number | null
+  routeDeviationThresholdKm?: number
 }
 
 function formatUpdatedAt(timestamp: number | null | undefined): string | null {
@@ -36,8 +38,12 @@ export function ReplanOnRouteBar({
   canReplan,
   lastUpdatedAt,
   showAutoFollow = true,
+  routeDeviationKm = null,
+  routeDeviationThresholdKm = 2,
 }: ReplanOnRouteBarProps) {
   const updatedLabel = formatUpdatedAt(lastUpdatedAt)
+  const offRoute =
+    routeDeviationKm != null && routeDeviationKm > routeDeviationThresholdKm
 
   return (
     <section className="replan-bar" aria-label="Replanificación en marcha">
@@ -67,6 +73,13 @@ export function ReplanOnRouteBar({
           </dd>
         </div>
       </dl>
+
+      {offRoute ? (
+        <p className="route-message route-message--warn replan-bar__deviation" role="status">
+          Te has desviado ~{routeDeviationKm!.toFixed(1)} km de la ruta planificada. ¿Recalcular desde
+          aquí?
+        </p>
+      ) : null}
 
       <div className="replan-bar__actions">
         <button
