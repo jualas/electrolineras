@@ -107,7 +107,7 @@ class AlongRouteResponse(BaseModel):
     route_fastest_geometry: dict[str, Any] | None = None
     route_conventional_geometry: dict[str, Any] | None = None
     route_preference: RoutePreference = "fastest"
-    avoid_highways: bool = False
+    avoid_highways: bool = True
     results: list[AlongRouteStationResult]
     candidates_in_bbox: int
 
@@ -246,7 +246,7 @@ class ChargingPlanResponse(BaseModel):
     route_conventional_geometry: dict[str, Any] | None = None
     preview_route_geometry: dict[str, Any] | None = None
     route_preference: RoutePreference | None = None
-    avoid_highways: bool = False
+    avoid_highways: bool = True
     preferred_operators: list[str] = Field(default_factory=list)
     max_price_eur_kwh: float | None = None
     stops: list[ChargingPlanStopResult]

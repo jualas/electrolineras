@@ -77,5 +77,11 @@ def auth_login(body: LoginRequest, response: Response) -> LoginResponse:
 
 @router.post("/logout")
 def auth_logout(response: Response) -> LoginResponse:
-    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path="/",
+        secure=settings.session_cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
     return LoginResponse()

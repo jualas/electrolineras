@@ -1690,6 +1690,7 @@ button {
 
 .active-trip-banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
@@ -1699,6 +1700,74 @@ button {
   background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
   border: 1px solid var(--color-border);
   font-size: 0.875rem;
+}
+
+.active-trip-banner__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.active-trip-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.active-trip-banner__gps {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.active-trip-banner__gps-state {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.trip-progress {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 0.5rem);
+  background: var(--color-surface);
+}
+
+.trip-progress__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.trip-progress__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.trip-progress__distance {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.trip-progress__stop {
+  margin: 0 0 0.65rem;
+  font-size: 0.875rem;
+}
+
+.trip-progress__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.trip-progress__hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.45;
 }
 
 .btn--compact {

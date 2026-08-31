@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     osrm_profile_conventional: str = "driving"
     osrm_shortest_directness_penalty: float = 0.35
     osrm_fastest_request_alternatives: bool = True
+    # OSRM acepta alternatives=true|N (máx. 3 en backend Iberia). N>1 saca más corredores.
+    osrm_fastest_alternatives_count: int = 3
     osrm_fastest_alternative_tolerance: float = 0.05
 
     def osrm_shortest_url(self) -> str:

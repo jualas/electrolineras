@@ -120,14 +120,19 @@ def osrm_coordinates_path(
 
 
 def build_osrm_exclude_param(route_preference: RoutePreference, avoid_highways: bool) -> str | None:
-    excludes: list[str] = []
+    """Devuelve una sola flag `exclude` para OSRM.
+
+    OSRM Iberia (v5.27) **no admite** combinar `motorway,toll` (HTTP 400
+    «Exclude flag combination is not supported»). Si fallaba el perfil
+    conventional con peajes, el multi-perfil entero caía al fallback y
+    Directa se derivaba del perfil `car` → mismos km/tiempo que Rápida.
+    """
     if route_preference == "conventional" and not settings.osrm_use_multi_profile:
-        excludes.append("motorway")
+        # Sin autovía implica sin peajes de autopista en la práctica.
+        return "motorway"
     if avoid_highways:
-        excludes.append("toll")
-    if not excludes:
-        return None
-    return ",".join(dict.fromkeys(excludes))
+        return "toll"
+    return None
 
 
 def osrm_exclude_unsupported(response: httpx.Response) -> bool:
@@ -307,6 +312,18 @@ def _osrm_http_error_detail(response: httpx.Response) -> str:
     return response.text[:200] or "sin detalle"
 
 
+def _osrm_alternatives_param(enabled: bool, *, count: int | None = None) -> str:
+    if not enabled:
+        return "false"
+    resolved = count if count is not None else settings.osrm_fastest_alternatives_count
+    if resolved <= 0:
+        return "false"
+    if resolved == 1:
+        return "true"
+    # OSRM Iberia: máximo 3; valores mayores → TooBig.
+    return str(min(resolved, 3))
+
+
 def _request_osrm_profile_route(
     origin_lat: float,
     origin_lon: float,
@@ -326,7 +343,7 @@ def _request_osrm_profile_route(
         "overview": "full",
         "geometries": "geojson",
         "steps": "false",
-        "alternatives": "true" if alternatives else "false",
+        "alternatives": _osrm_alternatives_param(alternatives),
     }
     if exclude:
         params["exclude"] = exclude
@@ -436,14 +453,12 @@ def _fetch_multi_profile_variants(
         "conventional": (settings.osrm_base_url, settings.osrm_profile_conventional),
     }
     toll_exclude = "toll" if avoid_highways else None
-    conv_exclude_parts = ["motorway"]
-    if avoid_highways:
-        conv_exclude_parts.append("toll")
-    conventional_exclude = ",".join(dict.fromkeys(conv_exclude_parts))
+    # Nunca motorway,toll: OSRM Iberia responde 400 y tumba todo el multi-perfil.
+    conventional_exclude = "motorway"
     results: dict[RoutePreference, _RoutePayload] = {}
     warnings: list[str] = []
 
-    def fetch_one(preference: RoutePreference, base_url: str, profile: str) -> tuple[RoutePreference, _RoutePayload]:
+    def fetch_one(preference: RoutePreference, profile_base: str, profile: str) -> tuple[RoutePreference, _RoutePayload]:
         exclude = conventional_exclude if preference == "conventional" else toll_exclude
         request_alternatives = preference == "fastest" and settings.osrm_fastest_request_alternatives
         routes = _request_osrm_profile_route(
@@ -452,7 +467,7 @@ def _fetch_multi_profile_variants(
             dest_lat,
             dest_lon,
             profile=profile,
-            base_url=base_url,
+            base_url=profile_base,
             timeout_s=timeout_s,
             exclude=exclude,
             alternatives=request_alternatives,
@@ -460,22 +475,58 @@ def _fetch_multi_profile_variants(
         )
         if preference == "fastest":
             route = select_fastest_route_payload(routes)
+        elif preference == "shortest":
+            geodesic_km = geodesic_path_km(
+                origin_lat,
+                origin_lon,
+                dest_lat,
+                dest_lon,
+                normalize_waypoints(waypoints),
+            )
+            route = select_osrm_route_payload(
+                routes,
+                route_preference="shortest",
+                geodesic_km=geodesic_km,
+            )
         else:
             route = routes[0]
         return preference, _RoutePayload(preference, route, approximate=False)
 
+    errors: list[str] = []
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {
-            executor.submit(fetch_one, preference, base_url, profile): preference
-            for preference, (base_url, profile) in profiles.items()
+            executor.submit(fetch_one, preference, profile_base, profile): preference
+            for preference, (profile_base, profile) in profiles.items()
         }
         for future in as_completed(futures):
-            preference, payload = future.result()
-            results[preference] = payload
+            preference = futures[future]
+            try:
+                pref, payload = future.result()
+                results[pref] = payload
+            except Exception as exc:  # noqa: BLE001 — aislamos perfiles
+                errors.append(f"{preference}: {exc}")
 
-    if avoid_highways and not settings.osrm_use_multi_profile:
+    if "fastest" not in results or "shortest" not in results:
+        detail = "; ".join(errors) if errors else "faltan variantes"
+        raise RoutingError(f"OSRM multi-perfil incompleto ({detail})")
+
+    if "conventional" not in results:
+        # Sin tumbar directa/rápida: reutilizamos rápida como aproximación.
+        results["conventional"] = _RoutePayload(
+            "conventional",
+            results["fastest"].route,
+            approximate=True,
+        )
         warnings.append(
-            "Exclusión de peajes no verificada en OSRM propio; revisa perfil si incluye autopistas de peaje."
+            "Convencionales no disponibles en OSRM; se muestra la ruta rápida como aproximación."
+        )
+        if errors:
+            warnings.append(f"Detalle OSRM: {errors[0]}")
+
+    if avoid_highways:
+        warnings.append(
+            "Peajes: se excluyen en rápida/directa (`exclude=toll`). "
+            "En convencionales basta con excluir autovía."
         )
 
     return results, warnings

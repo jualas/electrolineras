@@ -12,6 +12,46 @@ function isPlannedStop(stop: RouteChargingStop): stop is PlannedRouteStopResult 
   return 'order' in stop && typeof stop.order === 'number'
 }
 
+/** Distancia geodésica aproximada en km (para distancia a la siguiente parada). */
+export function haversineKm(a: MapCoords, b: MapCoords): number {
+  const earthRadiusKm = 6371
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(h))
+}
+
+export function chargingStopAtLeg(
+  plan: ChargingPlanResponse,
+  legIndex: number,
+): RouteChargingStop | null {
+  const stops = routeChargingStops(plan)
+  if (legIndex < 0 || legIndex >= stops.length) {
+    return null
+  }
+  return stops[legIndex]
+}
+
+export function routeExportSpecForNextStop(
+  plan: ChargingPlanResponse,
+  legIndex: number,
+): RouteExportSpec | null {
+  const stop = chargingStopAtLeg(plan, legIndex)
+  if (!stop) {
+    return null
+  }
+  const order = isPlannedStop(stop) ? stop.order : legIndex + 1
+  const siteName = stop.station.site_name?.trim() || stop.station.operator || 'Cargador'
+  return {
+    origin: plan.origin,
+    destination: stop.station.location,
+    title: `Parada ${order} · ${siteName}`,
+  }
+}
+
 /** Plan multi-parada completo (llega al destino con margen razonable). */
 export function isChargingPlanComplete(plan: ChargingPlanResponse): boolean {
   const planned = plan.planned_stops ?? []
@@ -164,12 +204,17 @@ export function routeExportSpecFromChargingPlan(plan: ChargingPlanResponse): Rou
   if (!plan.destination) {
     return null
   }
-  const waypoints = routeChargingWaypoints(plan)
+  const chargingStops = routeChargingStops(plan)
+  const waypoints = chargingStops.map((stop) => stop.station.location)
+  const stopCount = waypoints.length
   return {
     origin: plan.origin,
     destination: plan.destination,
-    waypoints: waypoints.length > 0 ? waypoints : undefined,
-    title: 'Viaje Electrolineras',
+    waypoints: stopCount > 0 ? waypoints : undefined,
+    title:
+      stopCount > 0
+        ? `Viaje Electrolineras · ${stopCount} parada${stopCount === 1 ? '' : 's'} de carga`
+        : 'Viaje Electrolineras',
   }
 }
 

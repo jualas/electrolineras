@@ -64,9 +64,16 @@ En el móvil / Tesla (WiFi casa): **http://<IP-LAN-SERVIDOR>:8016**
 5. **`make deploy`** (prod `:8015` / electro.jualas.es).
 6. Smoke prod + marcar TaskBoard.
 
+## Auth / cookies
+
+Staging usa **HTTP** (`:8016`). En `docker-compose.staging.yml` se fuerza
+`SESSION_COOKIE_SECURE=false` para que el navegador guarde `electrolineras_session`.
+Prod (`https://electro.jualas.es`) mantiene `SESSION_COOKIE_SECURE=true` en su `.env`.
+
 ## Checklist smoke staging (Cartagena → Irun)
 
 - [ ] Health 200 en `:8016`
+- [ ] Login TOTP: entra al asistente (no pantalla en blanco) y **refresh mantiene sesión**
 - [ ] Plan **Rápida**: tiempos visibles Directa vs Rápida (Rápida menos minutos pese a más km)
 - [ ] Paradas con tramos ~2 h (no 2.ª a ~1 h 20)
 - [ ] Plan **Directa**: ≥1–2 paradas (no plan vacío)

@@ -65,9 +65,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (usernameInput: string, totpCode: string) => {
     await loginWithTotp(usernameInput, totpCode)
-    setAuthenticated(true)
-    setUsername(usernameInput)
     setLastUsername(usernameInput)
+    // Relee /session con la cookie: si Secure=true en HTTP el navegador no la guarda.
+    const session = await fetchAuthSession()
+    if (!session.authenticated) {
+      setAuthenticated(false)
+      setUsername(null)
+      throw new Error(
+        'Sesión no persistida (cookie bloqueada). En HTTP/staging SESSION_COOKIE_SECURE debe ser false.',
+      )
+    }
+    setAuthenticated(true)
+    setUsername(session.username ?? usernameInput)
+    setPrivateStackEnabled(session.private_stack_enabled)
+    setLoginEnabled(session.login_enabled)
   }, [])
 
   const logout = useCallback(async () => {

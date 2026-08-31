@@ -28,7 +28,11 @@ import {
 import { revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
+import { clampTripProgress } from '../charging/activeTrip'
+import { routeChargingStops } from '../charging/planRouteStops'
 import { useActiveTrip } from '../hooks/useActiveTrip'
+import { ActiveTripBanner } from '../components/trip/ActiveTripBanner'
+import { ActiveTripProgressBar } from '../components/trip/ActiveTripProgressBar'
 import { ChargingPlanResults } from './ChargingPlanResults'
 import { ReplanOnRouteBar } from './ReplanOnRouteBar'
 import type { RoutePreference } from '../api/types'
@@ -67,7 +71,7 @@ export function ChargingPlanPanel({
   const [emergencyMode, setEmergencyMode] = useState(false)
   const [corridorKm, setCorridorKm] = useState(10)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
-  const [avoidTolls, setAvoidTolls] = useState(false)
+  const [avoidTolls, setAvoidTolls] = useState(true)
   const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
     revePlanningForPreset(vehicleProfile.presetId),
   )
@@ -81,7 +85,8 @@ export function ChargingPlanPanel({
   const lastSearchKeyRef = useRef<string | null>(null)
   const recalcOnPreferenceRef = useRef(false)
   const tripRestoredRef = useRef(false)
-  const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow } = useActiveTrip()
+  const { activeTrip, enMarchaSettings, saveActiveTrip, clearActiveTrip, setAutoFollow, setGpsEnabled, markStopCompleted } =
+    useActiveTrip()
 
   const {
     vehicle: carTelemetry,
@@ -126,7 +131,17 @@ export function ChargingPlanPanel({
       return
     }
     tripRestoredRef.current = true
+    const viaStops = activeTrip.waypoints.map((waypoint) => ({
+      id: createEmptyStop().id,
+      text: waypoint.label,
+      point: {
+        label: waypoint.label,
+        lat: waypoint.lat,
+        lon: waypoint.lon,
+      },
+    }))
     setStops([
+      ...viaStops,
       {
         id: createEmptyStop().id,
         text: activeTrip.destination.label,
@@ -142,10 +157,12 @@ export function ChargingPlanPanel({
     setAvoidTolls(activeTrip.avoidTolls)
     if (carTelemetryAvailable && activeTrip.originMode === 'car') {
       setOriginMode('car')
+    } else if (enMarchaSettings.gpsEnabled) {
+      setOriginMode('gps')
     } else if (activeTrip.originMode === 'gps') {
       setOriginMode('gps')
     }
-  }, [activeTrip, carTelemetryAvailable, stops])
+  }, [activeTrip, carTelemetryAvailable, enMarchaSettings.gpsEnabled, stops])
 
   useEffect(() => {
     onSearchStateChange?.(status)
@@ -301,12 +318,29 @@ export function ChargingPlanPanel({
       setStatus('ready')
       onResults(response)
       if (!emergencyMode && destination) {
+        const chargingStops = routeChargingStops(response)
+        const progress = clampTripProgress(
+          activeTrip?.progress ?? { completedStopOrders: [], currentLegIndex: 0 },
+          chargingStops.length,
+        )
         saveActiveTrip({
+          version: 2,
           destination: {
             label: destination.label,
             lat: destination.lat,
             lon: destination.lon,
           },
+          waypoints: viaPoints.map((point) => ({
+            label: point.label,
+            lat: point.lat,
+            lon: point.lon,
+          })),
+          lastPlan: {
+            stopIds: (response.planned_stops ?? []).map((stop) => stop.station.id),
+            routeDistanceKm: response.route_distance_km,
+            computedAt: Date.now(),
+          },
+          progress,
           corridorKm,
           routePreference,
           avoidTolls,
@@ -343,6 +377,7 @@ export function ChargingPlanPanel({
     clearActiveTrip,
     saveActiveTrip,
     useCarOrigin,
+    activeTrip,
     revePlanning,
   ])
 
@@ -543,6 +578,25 @@ export function ChargingPlanPanel({
   const showReplanBar =
     !emergencyMode && Boolean(replanDestination) && Boolean(lastResponse) && liveOriginMode
   const resolveVehicleQueryForDisplay = resolveVehicleQuery()
+  const chargingStopCount = lastResponse ? routeChargingStops(lastResponse).length : 0
+
+  const handleGpsEnabledChange = (enabled: boolean) => {
+    setGpsEnabled(enabled)
+    originModeTouchedRef.current = true
+    if (enabled) {
+      setOriginMode('gps')
+      lastSearchKeyRef.current = null
+    } else if (!useCarOrigin) {
+      setOriginMode('simulation')
+    }
+  }
+
+  const handleMarkStopCompleted = (stopOrder: number) => {
+    if (!lastResponse) {
+      return
+    }
+    markStopCompleted(stopOrder, routeChargingStops(lastResponse).length)
+  }
   const viaLabels = stops
     .slice(0, -1)
     .map((stop) => stop.point?.label ?? stop.text.trim())
@@ -551,6 +605,19 @@ export function ChargingPlanPanel({
   return (
     <section className="panel search-panel charge-panel" aria-labelledby="charge-plan-heading">
       <h2 id="charge-plan-heading">Plan de carga</h2>
+
+      {activeTrip && !emergencyMode ? (
+        <ActiveTripBanner
+          destinationLabel={activeTrip.destination.label}
+          waypointCount={activeTrip.waypoints.length}
+          gpsEnabled={enMarchaSettings.gpsEnabled}
+          gpsActive={isGpsActive}
+          gpsLoading={gpsStatus === 'loading'}
+          showGpsToggle={!useCarOrigin}
+          onGpsEnabledChange={handleGpsEnabledChange}
+          onEndTrip={clearActiveTrip}
+        />
+      ) : null}
 
       {privateStackEnabled && loginEnabled && !authLoading && !authenticated && (
         <details className="telemetry-login">
@@ -777,7 +844,7 @@ export function ChargingPlanPanel({
 
       {activeTrip && destinationPoint && status === 'idle' && !emergencyMode ? (
         <p className="panel-hint active-trip-restore" role="status">
-          Viaje activo a {activeTrip.destination.label}. Calcula o recalcula el plan con tu posición y SOC actuales.
+          Calcula o recalcula el plan con tu posición y SOC actuales.
         </p>
       ) : null}
 
@@ -804,6 +871,15 @@ export function ChargingPlanPanel({
         />
       ) : null}
 
+      {activeTrip && lastResponse && chargingStopCount > 0 && !emergencyMode ? (
+        <ActiveTripProgressBar
+          plan={lastResponse}
+          progress={activeTrip.progress}
+          userLocation={gpsLocation ? { lat: gpsLocation.lat, lon: gpsLocation.lon } : null}
+          onMarkStopCompleted={handleMarkStopCompleted}
+        />
+      ) : null}
+
       {status === 'ready' && lastResponse ? (
         <>
           <ChargingPlanResults
@@ -812,6 +888,7 @@ export function ChargingPlanPanel({
             onSelectStation={onSelectStation}
             originLabel={originLabel}
             destinationLabel={emergencyMode ? undefined : destinationPoint?.label ?? replanDestination?.label}
+            currentLegIndex={activeTrip?.progress.currentLegIndex}
           />
 
           {activeTrip && !emergencyMode ? (

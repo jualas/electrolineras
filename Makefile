@@ -1,4 +1,4 @@
-.PHONY: install install-dev api web web-build test lint smoke fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt ingest-reve ingest-reve-full test-reve-api cron-install cron-test-es cron-test-reve backup-run backup-verify monitor-check monitor-test env-check-prod env-secure ci-local deploy deploy-rollback deploy-staging docker-staging-down docker-build docker-up docker-down docker-sync-prod nominatim-prepare nominatim-up nominatim-logs nominatim-status nominatim-finish-prod nominatim-install-finish-cron nominatim-remove-finish-cron clean
+.PHONY: install install-dev api web web-build test lint smoke fetch-es fetch-pt parse-es parse-pt load-db ingest ingest-es ingest-pt ingest-reve ingest-reve-full test-reve-api cron-install cron-test-es cron-test-reve backup-run backup-verify monitor-check monitor-test env-check-prod env-secure ci-local deploy deploy-rollback deploy-staging docker-staging-down docker-build docker-up docker-down docker-sync-prod nominatim-prepare nominatim-up nominatim-logs nominatim-status nominatim-finish-prod nominatim-install-finish-cron nominatim-remove-finish-cron osrm-up osrm-down osrm-status osrm-enable-boot osrm-install-systemd clean
 
 DOCKER_COMPOSE_DIR ?= /mnt/datos/docker/electrolineras
 DOCKER_COMPOSE_FILE ?= docker/docker-compose.prod.yml
@@ -149,6 +149,30 @@ nominatim-install-finish-cron:
 
 nominatim-remove-finish-cron:
 	bash scripts/nominatim/install_finish_cron.sh --remove
+
+osrm-up:
+	cd docker/osrm && docker compose up -d
+
+osrm-down:
+	cd docker/osrm && docker compose stop
+
+osrm-status:
+	@docker ps -a --filter name=electrolineras-osrm --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+	@docker inspect -f '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' electrolineras-osrm-car electrolineras-osrm-shortest 2>/dev/null || true
+
+# Aplica restart: unless-stopped (Docker reinicia tras reboot del host)
+osrm-enable-boot:
+	cd docker/osrm && docker compose up -d --force-recreate
+	@docker inspect -f '{{.Name}} restart={{.HostConfig.RestartPolicy.Name}}' electrolineras-osrm-car electrolineras-osrm-shortest
+	@echo "Política unless-stopped aplicada. Opcional systemd (requiere sudo):"
+	@echo "  make osrm-install-systemd"
+
+osrm-install-systemd:
+	sudo cp scripts/osrm/electrolineras-osrm.service /etc/systemd/system/electrolineras-osrm.service
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now electrolineras-osrm.service
+	@systemctl is-enabled electrolineras-osrm.service
+	@echo "systemd electrolineras-osrm.service enabled"
 
 clean:
 	rm -rf .venv src/web/node_modules src/web/dist

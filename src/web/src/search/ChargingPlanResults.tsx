@@ -22,6 +22,7 @@ type ChargingPlanResultsProps = {
   variant?: 'full' | 'assistant'
   originLabel?: string | null
   destinationLabel?: string | null
+  currentLegIndex?: number
 }
 
 /** Estrategias de «cargar antes de salir» — no forman parte del relato de la ruta. */
@@ -78,7 +79,11 @@ function ReveRouteSummaryCard({
           {googleUrl && (
             <a
               className="reve-icon-btn"
-              title="Iniciar navegación"
+              title={
+                (routeExport?.waypoints?.length ?? 0) > 0
+                  ? `Google Maps con ${routeExport!.waypoints!.length} paradas de carga`
+                  : 'Abrir ruta en Google Maps'
+              }
               href={googleUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -128,6 +133,7 @@ export function ChargingPlanResults({
   variant = 'full',
   originLabel,
   destinationLabel,
+  currentLegIndex = 0,
 }: ChargingPlanResultsProps) {
   const assistant = variant === 'assistant'
   const plannedStops = plan.planned_stops ?? []
@@ -281,7 +287,11 @@ export function ChargingPlanResults({
       </div>
 
       {routeExport && (
-        <RouteExportActions route={routeExport} variant={assistant ? 'assistant' : 'default'} />
+        <RouteExportActions
+          route={routeExport}
+          variant={assistant ? 'assistant' : 'default'}
+          currentLegIndex={currentLegIndex}
+        />
       )}
 
       {!assistant && routeStrategies.length > 0 && !hasPlannedRoute && (

@@ -196,7 +196,7 @@ def private_trip_advice_from_car(
     car_id: Annotated[int | None, Query(ge=1)] = None,
     include_route: Annotated[bool, Query()] = False,
     route_preference: Annotated[RoutePreference, Query()] = "fastest",
-    avoid_highways: Annotated[bool, Query()] = False,
+    avoid_highways: Annotated[bool, Query(description="Evitar peajes (OSRM exclude=toll). Default true.")] = True,
     preferred_operators: Annotated[str | None, Query(max_length=500)] = None,
     max_price_eur_kwh: Annotated[float | None, Query(gt=0, le=2)] = None,
     departure_soc_percent: Annotated[
@@ -273,7 +273,7 @@ def private_trip_guide_from_car(
     invoke_dify: Annotated[bool, Query(description="Llamar workflow Dify si está configurado")] = True,
     user_note: Annotated[str | None, Query(max_length=2000, description="Pregunta o nota para la guía IA")] = None,
     route_preference: Annotated[RoutePreference, Query()] = "fastest",
-    avoid_highways: Annotated[bool, Query()] = False,
+    avoid_highways: Annotated[bool, Query(description="Evitar peajes (OSRM exclude=toll). Default true.")] = True,
     preferred_operators: Annotated[str | None, Query(max_length=500)] = None,
     max_price_eur_kwh: Annotated[float | None, Query(gt=0, le=2)] = None,
     departure_soc_percent: Annotated[

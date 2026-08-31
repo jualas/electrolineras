@@ -20,8 +20,8 @@ export function RoutePreferenceFields({
 }: RoutePreferenceFieldsProps) {
   const fastestHint =
     variant === 'assistant'
-      ? 'Menor tiempo con velocidades reales; puede tener más km que la directa.'
-      : 'Menor tiempo; suele tener más km que la directa (autovía).'
+      ? 'Plan OSRM sin tráfico. Al abrir en Google Maps, Google aplica tráfico y cortes en vivo.'
+      : 'Plan OSRM sin tráfico; Google lo reinterpreta con tráfico al abrir la ruta.'
 
   return (
     <fieldset className="route-preference" disabled={disabled}>
@@ -74,10 +74,15 @@ export function RoutePreferenceFields({
       <label className="field field--checkbox route-preference__avoid">
         <input
           type="checkbox"
-          checked={avoidTolls}
-          onChange={(event) => onAvoidTollsChange(event.target.checked)}
+          checked={!avoidTolls}
+          onChange={(event) => onAvoidTollsChange(!event.target.checked)}
         />
-        <span>Evitar autopistas de peaje (sin telepeaje)</span>
+        <span>
+          Permitir autopistas de peaje
+          <span className="route-preference__hint">
+            Por defecto se evitan (AP-7, etc.). Márcalo solo si aceptas peaje.
+          </span>
+        </span>
       </label>
     </fieldset>
   )

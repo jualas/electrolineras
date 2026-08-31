@@ -62,8 +62,8 @@ def stations_along_route(
     ] = "fastest",
     avoid_highways: Annotated[
         bool,
-        Query(description="Evitar autopistas de peaje (OSRM exclude=toll)"),
-    ] = False,
+        Query(description="Evitar autopistas de peaje (OSRM exclude=toll). Default true."),
+    ] = True,
 ) -> AlongRouteResponse:
     if min_kw is not None and max_kw is not None and min_kw > max_kw:
         raise HTTPException(status_code=422, detail="min_kw no puede ser mayor que max_kw")

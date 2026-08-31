@@ -108,7 +108,7 @@ def _to_response(
     route_conventional_geometry: dict | None = None,
     preview_route_geometry: dict | None = None,
     route_preference: RoutePreference | None = None,
-    avoid_highways: bool = False,
+    avoid_highways: bool = True,
     exclude_slow_chargers: bool = False,
     computation,
     candidates_in_bbox: int,
@@ -298,8 +298,8 @@ def stations_charging_plan(
     ] = "fastest",
     avoid_highways: Annotated[
         bool,
-        Query(description="Evitar autopistas de peaje (OSRM exclude=toll); autovías libres permitidas"),
-    ] = False,
+        Query(description="Evitar autopistas de peaje (OSRM exclude=toll); autovías libres permitidas. Default true."),
+    ] = True,
     vehicle_preset_id: Annotated[
         str | None,
         Query(max_length=64, description="Preset vehículo para curva DC (p. ej. tesla-model3-sr-2023)"),

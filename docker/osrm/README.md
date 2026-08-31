@@ -24,6 +24,34 @@ cd docker/osrm
 docker compose up -d
 ```
 
+Los servicios llevan `restart: unless-stopped`. Tras un reboot del mini PC deben
+levantar solos con Docker. Si la política no está aplicada (p. ej. contenedores
+antiguos):
+
+```bash
+make osrm-enable-boot
+```
+
+Opcional — oneshot systemd por si el compose quedó desincronizado:
+
+```bash
+make osrm-install-systemd
+# o a mano:
+sudo cp scripts/osrm/electrolineras-osrm.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now electrolineras-osrm.service
+```
+
+Comprobar:
+
+```bash
+make osrm-status
+# esperado: restart=unless-stopped
+```
+
+> Nota: el grafo Iberia tarda ~2–3 min en cargar en memoria tras el arranque;
+> hasta entonces la API puede devolver error de routing.
+
 ## Activar en Electrolineras
 
 En `/mnt/datos/docker/electrolineras/.env`:

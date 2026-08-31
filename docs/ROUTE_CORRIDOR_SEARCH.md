@@ -139,17 +139,30 @@ Peajes: `avoid_highways=true` añade `exclude=toll` (autovías libres permitidas
 
 ### Desempate «ruta más rápida» (`select_fastest_route_payload`)
 
-OSRM devuelve hasta **varias alternativas** cuando `OSRM_FASTEST_REQUEST_ALTERNATIVES=true` (default). No basta con `min(duration)`: en corredores con tiempos muy parecidos, la alternativa **más larga pero con mayor velocidad media** suele ser la que un conductor (o Google Maps) elegiría por autopista.
+OSRM pide hasta **N alternativas** cuando `OSRM_FASTEST_REQUEST_ALTERNATIVES=true`
+(`OSRM_FASTEST_ALTERNATIVES_COUNT`, default **3**). No basta con `min(duration)`: en
+corredores con tiempos muy parecidos, la alternativa **más larga pero con mayor
+velocidad media** suele ser la que un conductor elegiría por autopista.
 
 Algoritmo (`src/api/routing/osrm.py`):
 
-1. `min_duration` = menor `duration` entre alternativas.
-2. **Ventana de tolerancia:** candidatas con `duration ≤ min_duration × (1 + T)`, donde `T = OSRM_FASTEST_ALTERNATIVE_TOLERANCE` (default **0.05** = 5 %).
-3. Entre candidatas, gana la de **mayor velocidad media** `distance / duration`.
+1. Pedir `alternatives=N` (máx. 3 en OSRM Iberia).
+2. `min_duration` = menor `duration` entre alternativas.
+3. **Ventana de tolerancia:** candidatas con `duration ≤ min_duration × (1 + T)`, donde `T = OSRM_FASTEST_ALTERNATIVE_TOLERANCE` (default **0.05** = 5 %).
+4. Entre candidatas, gana la de **mayor velocidad media** `distance / duration`.
 
 **Caso de referencia — Cartagena → Zaragoza:** OSRM a veces marca ~3 min menos por interior (N-330 / Teruel), pero la ruta por **A-7 + A-23 Mudéjar** (vía Valencia) queda dentro del 5 % de tiempo y tiene mejor velocidad media; el motor elige la segunda. Tests: `tests/test_osrm_route.py` (`test_select_fastest_route_prefers_similar_time_higher_avg_speed`).
 
-**Limitación:** OSRM **no tiene tráfico en tiempo real** (#6067). La heurística aproxima «ruta rápida habitual», no congestión del momento.
+**Limitación (Cartagena/Murcia → Úbeda, ago 2026):** Google ~3h35 / 309 km por **A-315**
+porque evita **cortes en A-401**. OSRM (mapa estático) sigue prefiriendo ~4h / 348 km:
+no ve el corte. Forzar vía Baza en OSRM tampoco iguala el tiempo de Google. Paridad real
+requiere API con tráfico (#6067).
+
+**Peajes (default):** se evitan (`avoid_highways` / `exclude=toll`). En UI el check es
+**«Permitir autopistas de peaje»** (opt-in). Autovías libres siguen permitidas.
+
+**Google Maps:** al exportar la ruta, Google aplica tráfico y cortes en vivo; el plan
+OSRM solo fija corredor y paradas de carga.
 
 ### Variables relacionadas (`.env`)
 

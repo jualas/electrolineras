@@ -236,10 +236,10 @@ Factible en export Google Maps y en planificador propio. Validar que waypoints l
 
 ## Criterios de aceptación (cuando implementemos)
 
-- [ ] Desde un cargador: “Abrir en Google Maps” funciona en móvil y escritorio.
-- [ ] Desde un viaje planificado: URL con ≥ 3 waypoints abre ruta correcta en Google Maps.
+- [x] Desde un viaje planificado: URL con waypoints de **cargadores** (no solo destino) abre ruta en Google Maps.
+- [ ] Probar en dispositivo: Google Maps → Compartir → Tesla conserva paradas (G2; a menudo solo destino).
 - [ ] (v2) Usuario Tesla vinculado: “Enviar al coche” llega en < 30 s con coche online.
-- [ ] (v2) Documentar en UI que la ruta completa al Tesla puede requerir enviar paradas una a una.
+- [x] Documentar en UI que la ruta completa al Tesla puede requerir enviar paradas una a una.
 - [ ] Probar en navegador Tesla: mapa usable y botones legibles.
 
 ---
@@ -253,11 +253,11 @@ Rama: `feature/viaje-activo-6131`. Epic: TaskBoard **#6131**.
 | ID | Resultado | Notas |
 |----|-----------|-------|
 | G1 | ✅ OK | Cartagena→Irun: 3 waypoints DC; URL GMaps 186 chars (&lt;2000). Ejemplo: origen + 3 paradas + destino. |
-| E2 | ❌ FAIL esperado | `ActiveTrip` solo en `sessionStorage` → se pierde al cerrar pestaña. |
-| E3 | ❌ FAIL esperado | `AssistantPanel` no usa `useActiveTrip` ni `ReplanOnRouteBar`. |
+| E2 | ✅ OK (#6135) | Persistencia `localStorage` + TTL 48 h; migra desde `sessionStorage`. |
+| E3 | ⚠️ Parcial (#6135) | `AssistantPanel` restaura viaje activo (vías+destino); `ReplanOnRouteBar` sigue en #6138. |
 | E5 | ❌ N/A | No hay progreso de paradas (`completedStopOrders`). |
 | next_stop | ⚠️ Parcial | Botón «1.ª parada → Tesla» existe; no avanza a N+1 tras completar. |
-| Vías A→…→A | ❌ Hueco | `ActiveTripState` guarda solo destino final, no waypoints de itinerario. |
+| Vías A→…→A | ✅ (#6135) | `ActiveTripState.waypoints[]` + restore en Plan/Asistente. |
 
 ### Pendiente en dispositivo real (Android + Tesla)
 

@@ -28,6 +28,8 @@ import {
 } from './DepartureChargeSimulator'
 import { useAuth } from './AuthContext'
 import { LoginPanel } from './LoginPanel'
+import { useActiveTrip } from '../hooks/useActiveTrip'
+import { ActiveTripBanner } from '../components/trip/ActiveTripBanner'
 import { TELEMETRY_POLL_INTERVAL_MS, useVehicleTelemetry } from '../hooks/useVehicleTelemetry'
 
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
@@ -50,6 +52,7 @@ export function AssistantPanel({
   selectedStationId,
 }: AssistantPanelProps) {
   const { loading, authenticated, loginEnabled, privateStackEnabled } = useAuth()
+  const { activeTrip, saveActiveTrip, clearActiveTrip } = useActiveTrip()
   const [stops, setStops] = useState<ItineraryStopDraft[]>(() => [createEmptyStop()])
   const [advice, setAdvice] = useState<TripGuideResponse | null>(null)
   const [planError, setPlanError] = useState<string | null>(null)
@@ -57,7 +60,7 @@ export function AssistantPanel({
   const [loadingGuide, setLoadingGuide] = useState(false)
   const [culturalPoi, setCulturalPoi] = useState(true)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
-  const [avoidTolls, setAvoidTolls] = useState(false)
+  const [avoidTolls, setAvoidTolls] = useState(true)
   const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
     revePlanningForPreset(vehicleProfile.presetId),
   )
@@ -66,6 +69,8 @@ export function AssistantPanel({
   const [aiNote, setAiNote] = useState('')
   const [guideError, setGuideError] = useState<string | null>(null)
   const recalcOnPreferenceRef = useRef(false)
+  const runMapPlanRef = useRef<() => void>(() => {})
+  const tripRestoredRef = useRef(false)
 
   const {
     vehicle,
@@ -97,6 +102,57 @@ export function AssistantPanel({
     }
     setDepartureSoc((prev) => Math.max(prev, live))
   }, [vehicle?.battery_level_pct, simulateDeparture])
+
+  // Restaura viaje activo (vías + destino) sin pisar un itinerario ya escrito.
+  useEffect(() => {
+    if (!authenticated || tripRestoredRef.current || !activeTrip) {
+      return
+    }
+    const hasInput = stops.some((stop) => stop.point != null || stop.text.trim().length > 0)
+    if (hasInput) {
+      return
+    }
+    tripRestoredRef.current = true
+    const viaStops = activeTrip.waypoints.map((waypoint) => ({
+      id: createEmptyStop().id,
+      text: waypoint.label,
+      point: {
+        label: waypoint.label,
+        lat: waypoint.lat,
+        lon: waypoint.lon,
+      },
+    }))
+    setStops([
+      ...viaStops,
+      {
+        id: createEmptyStop().id,
+        text: activeTrip.destination.label,
+        point: {
+          label: activeTrip.destination.label,
+          lat: activeTrip.destination.lat,
+          lon: activeTrip.destination.lon,
+        },
+      },
+    ])
+    setRoutePreference(activeTrip.routePreference)
+    setAvoidTolls(activeTrip.avoidTolls)
+  }, [authenticated, activeTrip, stops])
+
+  const destination = stops[stops.length - 1]?.point ?? null
+  const busy = loadingPlan || loadingGuide
+
+  // Debe ir antes de cualquier return: si no, al pasar a authenticated React
+  // registra un hook de más y la UI queda en blanco.
+  useEffect(() => {
+    if (!authenticated) {
+      return
+    }
+    if (!recalcOnPreferenceRef.current || busy || !advice?.plan || !destination) {
+      return
+    }
+    recalcOnPreferenceRef.current = false
+    runMapPlanRef.current()
+  }, [authenticated, routePreference, avoidTolls, revePlanning, busy, advice?.plan, destination])
 
   const departureSocParam =
     vehicle != null
@@ -147,11 +203,11 @@ export function AssistantPanel({
     nominalKm != null && planningSocPercent > 0
       ? chargingReachFromNominal(nominalKm, planningSocPercent)
       : null
-  const destination = stops[stops.length - 1]?.point ?? null
 
   const resolveItinerary = async (): Promise<{
     destination: GeocodeResult
     viaPoints: Array<{ lat: number; lon: number }>
+    waypoints: Array<{ label: string; lat: number; lon: number }>
   }> => {
     const nextStops = [...stops]
     const resolved: GeocodeResult[] = []
@@ -177,10 +233,40 @@ export function AssistantPanel({
     if (resolved.length === 0) {
       throw new Error('Selecciona un destino de la lista')
     }
+    const waypoints = resolved.slice(0, -1).map((point) => ({
+      label: point.label,
+      lat: point.lat,
+      lon: point.lon,
+    }))
     return {
       destination: resolved[resolved.length - 1],
-      viaPoints: resolved.slice(0, -1).map((point) => ({ lat: point.lat, lon: point.lon })),
+      viaPoints: waypoints.map((point) => ({ lat: point.lat, lon: point.lon })),
+      waypoints,
     }
+  }
+
+  const persistTripFromPlan = (
+    dest: GeocodeResult,
+    waypoints: Array<{ label: string; lat: number; lon: number }>,
+    plan: import('../api/types').ChargingPlanResponse,
+  ) => {
+    saveActiveTrip({
+      version: 2,
+      destination: { label: dest.label, lat: dest.lat, lon: dest.lon },
+      waypoints,
+      lastPlan: {
+        stopIds: (plan.planned_stops ?? []).map((stop) => stop.station.id),
+        routeDistanceKm: plan.route_distance_km,
+        computedAt: Date.now(),
+      },
+      progress: { completedStopOrders: [], currentLegIndex: 0 },
+      corridorKm: 10,
+      routePreference,
+      avoidTolls,
+      chargingPreferences: DEFAULT_CHARGING_PREFERENCES,
+      originMode: 'car',
+      updatedAt: Date.now(),
+    })
   }
 
   const clearPlanState = () => {
@@ -190,7 +276,11 @@ export function AssistantPanel({
   }
 
   const runMapPlan = async () => {
-    let itinerary: { destination: GeocodeResult; viaPoints: Array<{ lat: number; lon: number }> }
+    let itinerary: {
+      destination: GeocodeResult
+      viaPoints: Array<{ lat: number; lon: number }>
+      waypoints: Array<{ label: string; lat: number; lon: number }>
+    }
     try {
       itinerary = await resolveItinerary()
     } catch (err) {
@@ -246,6 +336,7 @@ export function AssistantPanel({
       )
       onPlanResults(result.plan)
       onPlanStateChange?.('ready')
+      persistTripFromPlan(dest, itinerary.waypoints, result.plan)
     } catch (err) {
       setAdvice(null)
       onPlanResults(null)
@@ -257,7 +348,11 @@ export function AssistantPanel({
   }
 
   const runAiGuide = async () => {
-    let itinerary: { destination: GeocodeResult; viaPoints: Array<{ lat: number; lon: number }> }
+    let itinerary: {
+      destination: GeocodeResult
+      viaPoints: Array<{ lat: number; lon: number }>
+      waypoints: Array<{ label: string; lat: number; lon: number }>
+    }
     try {
       itinerary = await resolveItinerary()
     } catch (err) {
@@ -302,6 +397,7 @@ export function AssistantPanel({
       setAdvice(result)
       onPlanResults(result.plan)
       onPlanStateChange?.('ready')
+      persistTripFromPlan(dest, itinerary.waypoints, result.plan)
     } catch (err) {
       onPlanStateChange?.('error')
       setGuideError(err instanceof Error ? err.message : 'Error al generar la guía IA')
@@ -310,15 +406,9 @@ export function AssistantPanel({
     }
   }
 
-  const busy = loadingPlan || loadingGuide
-
-  useEffect(() => {
-    if (!recalcOnPreferenceRef.current || busy || !advice?.plan || !destination) {
-      return
-    }
-    recalcOnPreferenceRef.current = false
+  runMapPlanRef.current = () => {
     void runMapPlan()
-  }, [routePreference, avoidTolls, revePlanning, busy, advice?.plan, destination])
+  }
 
   const vehicleOrigin =
     vehicle != null
@@ -383,6 +473,18 @@ export function AssistantPanel({
       )}
 
       <form className="route-form" onSubmit={(event) => event.preventDefault()}>
+        {activeTrip ? (
+          <ActiveTripBanner
+            destinationLabel={activeTrip.destination.label}
+            waypointCount={activeTrip.waypoints.length}
+            gpsEnabled={false}
+            gpsActive={false}
+            gpsLoading={false}
+            showGpsToggle={false}
+            onGpsEnabledChange={() => undefined}
+            onEndTrip={clearActiveTrip}
+          />
+        ) : null}
         <ItineraryFields
           originText={vehicleOrigin?.label ?? 'Ubicación del vehículo'}
           originPoint={vehicleOrigin}

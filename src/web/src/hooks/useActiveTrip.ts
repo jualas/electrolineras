@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import {
-  ACTIVE_TRIP_STORAGE_KEY,
+  advanceTripProgress,
+  clampTripProgress,
   DEFAULT_EN_MARCHA_SETTINGS,
   EN_MARCHA_SETTINGS_STORAGE_KEY,
-  parseActiveTrip,
-  parseEnMarchaSettings,
+  loadActiveTripFromStorage,
+  loadEnMarchaSettingsFromStorage,
+  persistActiveTripToStorage,
   type ActiveTripState,
   type EnMarchaSettings,
 } from '../charging/activeTrip'
@@ -15,30 +17,30 @@ export function useActiveTrip() {
     if (typeof window === 'undefined') {
       return null
     }
-    return parseActiveTrip(sessionStorage.getItem(ACTIVE_TRIP_STORAGE_KEY))
+    return loadActiveTripFromStorage()
   })
 
   const [enMarchaSettings, setEnMarchaSettingsState] = useState<EnMarchaSettings>(() => {
     if (typeof window === 'undefined') {
       return DEFAULT_EN_MARCHA_SETTINGS
     }
-    return parseEnMarchaSettings(sessionStorage.getItem(EN_MARCHA_SETTINGS_STORAGE_KEY))
+    return loadEnMarchaSettingsFromStorage()
   })
 
   useEffect(() => {
-    if (activeTrip) {
-      sessionStorage.setItem(ACTIVE_TRIP_STORAGE_KEY, JSON.stringify(activeTrip))
-    } else {
-      sessionStorage.removeItem(ACTIVE_TRIP_STORAGE_KEY)
-    }
+    persistActiveTripToStorage(activeTrip)
   }, [activeTrip])
 
   useEffect(() => {
-    sessionStorage.setItem(EN_MARCHA_SETTINGS_STORAGE_KEY, JSON.stringify(enMarchaSettings))
+    if (typeof window === 'undefined') {
+      return
+    }
+    window.localStorage.setItem(EN_MARCHA_SETTINGS_STORAGE_KEY, JSON.stringify(enMarchaSettings))
+    window.sessionStorage.removeItem(EN_MARCHA_SETTINGS_STORAGE_KEY)
   }, [enMarchaSettings])
 
   const saveActiveTrip = useCallback((trip: ActiveTripState) => {
-    setActiveTripState({ ...trip, updatedAt: Date.now() })
+    setActiveTripState({ ...trip, version: 2, updatedAt: Date.now() })
   }, [])
 
   const clearActiveTrip = useCallback(() => {
@@ -46,8 +48,37 @@ export function useActiveTrip() {
   }, [])
 
   const setAutoFollow = useCallback((autoFollow: boolean) => {
-    setEnMarchaSettingsState({ autoFollow })
+    setEnMarchaSettingsState((prev) => ({ ...prev, autoFollow }))
   }, [])
+
+  const setGpsEnabled = useCallback((gpsEnabled: boolean) => {
+    setEnMarchaSettingsState((prev) => ({ ...prev, gpsEnabled }))
+  }, [])
+
+  const markStopCompleted = useCallback((stopOrder: number, totalStops: number) => {
+    setActiveTripState((prev) => {
+      if (!prev) {
+        return null
+      }
+      return advanceTripProgress(prev, stopOrder, totalStops)
+    })
+  }, [])
+
+  const updateTripProgress = useCallback(
+    (stopCount: number) => {
+      setActiveTripState((prev) => {
+        if (!prev) {
+          return null
+        }
+        return {
+          ...prev,
+          progress: clampTripProgress(prev.progress, stopCount),
+          updatedAt: Date.now(),
+        }
+      })
+    },
+    [],
+  )
 
   return {
     activeTrip,
@@ -55,5 +86,8 @@ export function useActiveTrip() {
     saveActiveTrip,
     clearActiveTrip,
     setAutoFollow,
+    setGpsEnabled,
+    markStopCompleted,
+    updateTripProgress,
   }
 }

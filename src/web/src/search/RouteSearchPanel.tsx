@@ -57,7 +57,7 @@ export function RouteSearchPanel({
   const [destPoint, setDestPoint] = useState<RouteEndpointInput | null>(null)
   const [corridorKm, setCorridorKm] = useState(10)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
-  const [avoidTolls, setAvoidTolls] = useState(false)
+  const [avoidTolls, setAvoidTolls] = useState(true)
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<AlongRouteResponse | null>(null)

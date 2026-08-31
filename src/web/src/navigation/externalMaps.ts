@@ -48,11 +48,21 @@ export function googleMapsRouteUrl(options: {
   return `https://www.google.com/maps/dir/?${params.toString()}`
 }
 
-export function routeShareText(spec: RouteExportSpec, mode: 'full' | 'next_stop' = 'full'): string {
-  if (mode === 'next_stop' && spec.waypoints?.[0]) {
-    const stop = spec.waypoints[0]
+export function routeShareText(
+  spec: RouteExportSpec,
+  mode: 'full' | 'next_stop' = 'full',
+  nextStopIndex = 0,
+): string {
+  const stop = spec.waypoints?.[nextStopIndex]
+  if (mode === 'next_stop' && stop) {
     const url = googleMapsDestinationUrl(stop.lat, stop.lon)
-    return `Parada de carga 1 · Electrolineras\n${url}`
+    const label = nextStopIndex + 1
+    return `Parada de carga ${label} · Electrolineras\n${url}`
+  }
+
+  if (mode === 'next_stop' && spec.destination) {
+    const url = googleMapsDestinationUrl(spec.destination.lat, spec.destination.lon)
+    return `Parada de carga · Electrolineras\n${url}`
   }
 
   const url = googleMapsRouteUrl({
@@ -129,19 +139,23 @@ export async function shareMapLocation(
 export async function shareRoute(
   spec: RouteExportSpec,
   mode: 'full' | 'next_stop' = 'full',
+  nextStopIndex = 0,
 ): Promise<boolean> {
   if (!canShareLocation()) {
     return false
   }
-  const text = routeShareText(spec, mode)
+  const text = routeShareText(spec, mode, nextStopIndex)
+  const stop = spec.waypoints?.[nextStopIndex]
   const url =
-    mode === 'next_stop' && spec.waypoints?.[0]
-      ? googleMapsDestinationUrl(spec.waypoints[0].lat, spec.waypoints[0].lon)
-      : googleMapsRouteUrl({
-          origin: spec.origin,
-          destination: spec.destination,
-          waypoints: spec.waypoints,
-        })
+    mode === 'next_stop' && stop
+      ? googleMapsDestinationUrl(stop.lat, stop.lon)
+      : mode === 'next_stop' && spec.destination
+        ? googleMapsDestinationUrl(spec.destination.lat, spec.destination.lon)
+        : googleMapsRouteUrl({
+            origin: spec.origin,
+            destination: spec.destination,
+            waypoints: spec.waypoints,
+          })
   try {
     await navigator.share({
       title: spec.title ?? 'Electrolineras',

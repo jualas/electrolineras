@@ -67,6 +67,7 @@ Desempate fastest, tipos de ruta y convencionales: [`ROUTE_CORRIDOR_SEARCH.md`](
 |----------|-------------|-------|
 | `OSRM_USE_MULTI_PROFILE` | `true` | Perfiles separados fastest / shortest / conventional |
 | `OSRM_FASTEST_REQUEST_ALTERNATIVES` | `true` | Alternativas OSRM para desempate fastest |
+| `OSRM_FASTEST_ALTERNATIVES_COUNT` | `3` | Nº de alternativas (`alternatives=N`; máx. 3 en Iberia) |
 | `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.05` | ±5 % sobre min tiempo; calibración #6069 |
 | `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza desvío vs geodesic en shortest |
 

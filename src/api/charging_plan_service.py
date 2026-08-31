@@ -246,7 +246,7 @@ def build_charging_plan(
     destination_radius_km: float = 10.0,
     local_mobility_km: float = 40.0,
     route_preference: RoutePreference = "fastest",
-    avoid_highways: bool = False,
+    avoid_highways: bool = True,
     vehicle_preset_id: str | None = None,
     preferred_operators: str | None = None,
     max_price_eur_kwh: float | None = None,

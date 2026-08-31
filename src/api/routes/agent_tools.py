@@ -63,7 +63,7 @@ def agent_trip_advice(
         Query(gt=0, le=200, description="Km locales previstos en destino"),
     ] = 40.0,
     route_preference: Annotated[RoutePreference, Query()] = "fastest",
-    avoid_highways: Annotated[bool, Query()] = False,
+    avoid_highways: Annotated[bool, Query(description="Evitar peajes (OSRM exclude=toll). Default true.")] = True,
     preferred_operators: Annotated[
         str | None,
         Query(max_length=500, description="Operadores preferidos (CSV)"),
@@ -191,7 +191,7 @@ def agent_trip_guide(
     destination_radius_km: Annotated[float, Query(gt=0, le=50)] = 10.0,
     local_mobility_km: Annotated[float, Query(gt=0, le=200)] = 40.0,
     route_preference: Annotated[RoutePreference, Query()] = "fastest",
-    avoid_highways: Annotated[bool, Query()] = False,
+    avoid_highways: Annotated[bool, Query(description="Evitar peajes (OSRM exclude=toll). Default true.")] = True,
     preferred_operators: Annotated[str | None, Query(max_length=500)] = None,
     max_price_eur_kwh: Annotated[float | None, Query(gt=0, le=2)] = None,
     dest_label: Annotated[str | None, Query(max_length=500)] = None,

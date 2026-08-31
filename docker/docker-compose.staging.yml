@@ -34,6 +34,8 @@ services:
       API_TRUST_PROXY_HEADERS: "true"
       # Docs útiles en staging; cerradas en prod
       API_DOCS_ENABLED: "true"
+      # Staging se sirve por HTTP (:8016 / LAN). Secure=true impide guardar la cookie.
+      SESSION_COOKIE_SECURE: "false"
       API_CORS_ORIGINS: >-
         https://electro-test.jualas.es,
         http://127.0.0.1:8016,

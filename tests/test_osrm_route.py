@@ -10,6 +10,23 @@ ROUTES = [
 GEODESIC_KM = 90.0
 
 
+def test_osrm_alternatives_param_uses_count() -> None:
+    from api.config import settings
+    from api.routing.osrm import _osrm_alternatives_param
+
+    assert _osrm_alternatives_param(False) == "false"
+    original = settings.osrm_fastest_alternatives_count
+    try:
+        settings.osrm_fastest_alternatives_count = 3
+        assert _osrm_alternatives_param(True) == "3"
+        settings.osrm_fastest_alternatives_count = 1
+        assert _osrm_alternatives_param(True) == "true"
+        settings.osrm_fastest_alternatives_count = 99
+        assert _osrm_alternatives_param(True) == "3"
+    finally:
+        settings.osrm_fastest_alternatives_count = original
+
+
 def test_select_osrm_route_fastest() -> None:
     selected = select_osrm_route_payload(ROUTES, route_preference="fastest", geodesic_km=GEODESIC_KM)
     assert selected["duration"] == 3000
@@ -85,7 +102,8 @@ def test_build_osrm_exclude_param() -> None:
     settings.osrm_use_multi_profile = False
     try:
         assert build_osrm_exclude_param("conventional", False) == "motorway"
-        assert build_osrm_exclude_param("conventional", True) == "motorway,toll"
+        # OSRM Iberia no admite motorway,toll; motorway basta (peajes en autovía).
+        assert build_osrm_exclude_param("conventional", True) == "motorway"
     finally:
         settings.osrm_use_multi_profile = original
 
@@ -93,6 +111,48 @@ def test_build_osrm_exclude_param() -> None:
     assert build_osrm_exclude_param("conventional", False) is None
     settings.osrm_use_multi_profile = original
 
+
+def test_multi_profile_avoid_tolls_keeps_distinct_shortest() -> None:
+    """Con peajes, conventional no debe tumbar multi-perfil (Directa ≠ Rápida)."""
+    from api.config import settings
+    from api.routing.osrm import _fetch_multi_profile_variants
+
+    calls: list[tuple[str, str | None]] = []
+
+    def fake_request(
+        *_args: object,
+        profile: str,
+        exclude: str | None = None,
+        **_kwargs: object,
+    ) -> list[dict[str, float]]:
+        calls.append((profile, exclude))
+        if profile == settings.osrm_profile_shortest:
+            return [{"distance": 298_000, "duration": 22_800}]
+        if exclude == "motorway":
+            return [{"distance": 354_000, "duration": 20_200}]
+        return [{"distance": 348_000, "duration": 15_100}]
+
+    original = settings.osrm_use_multi_profile
+    settings.osrm_use_multi_profile = True
+    try:
+        with patch("api.routing.osrm._request_osrm_profile_route", side_effect=fake_request):
+            variants, warnings = _fetch_multi_profile_variants(
+                37.6,
+                -1.0,
+                37.8,
+                -3.6,
+                base_url="http://osrm-car",
+                timeout_s=5.0,
+                avoid_highways=True,
+            )
+    finally:
+        settings.osrm_use_multi_profile = original
+
+    assert variants["shortest"].route["distance"] == 298_000
+    assert variants["fastest"].route["distance"] == 348_000
+    assert ("car", "toll") in calls or any(excl == "toll" for _prof, excl in calls)
+    assert not any(excl == "motorway,toll" for _prof, excl in calls)
+    assert any("Peajes" in w for w in warnings)
 
 def test_geodesic_distance_km() -> None:
     from api.routing.osrm import geodesic_distance_km
