@@ -364,7 +364,7 @@ Hasta entonces, la **PWA / web responsive** + flujo híbrido Maps/Tesla es el eq
 
 | Tarea | Enlace |
 |-------|--------|
-| Spike Maps → Tesla en dispositivo | #6133 (validar G2/G3 en Android real) |
+| Spike Maps → Tesla en dispositivo | ~~#6133~~ **descartado** (ver abajo) |
 | GPS arranque automático | #6144 ✅ |
 | Mapa sigue posición | #6145 ✅ |
 | Replan + consumo | #6138 ✅ |
@@ -372,13 +372,37 @@ Hasta entonces, la **PWA / web responsive** + flujo híbrido Maps/Tesla es el eq
 
 ---
 
+## Decisión de producto — spike #6133 descartado (2026-09-01)
+
+**No se ejecutará** la validación en dispositivo real Android (Google Maps → Compartir → Tesla) ni intentos de atajo nativo hacia la app Tesla.
+
+### Motivos
+
+1. **Fuera del alcance web:** no hay API estable para que `electro.jualas.es` envíe rutas o waypoints al nav Tesla; el único canal fiable desde navegador es **Web Share** (parada a parada) o que el usuario comparta manualmente desde Google Maps.
+2. **Hipótesis ya documentada:** la comunidad Tesla y nuestra propia arquitectura asumen que el coche recibe **un destino** (coords), no la ruta multi-waypoint de GMaps; `navigation_waypoints_request` (Fleet API) sigue siendo poco fiable.
+3. **Coste/beneficio:** un spike en coche real no desbloquea implementación en código; para mejorar el handoff haría falta app Android nativa o Fleet API por usuario — esfuerzo muy superior al MVP.
+4. **Flujo acordado suficiente:** plan EV en Electrolineras → ruta completa en **Google Maps** → **parada N → Tesla** vía Web Share cuando toque; copy honesto ya en UI (#6137).
+
+### Qué queda como criterio operativo (sin spike)
+
+| ID | Tratamiento |
+|----|-------------|
+| G2 | **Asumido:** GMaps → Tesla pierde waypoints; no prometer ruta completa al coche |
+| G3 | **Cubierto por producto:** botón «Parada N → Tesla» + Web Share; éxito depende del SO/usuario |
+| G4 | **Flujo manual** documentado en [flujo híbrido](#flujo-híbrido-recomendado-viaje-largo-ev) |
+| G5 | Prueba ad hoc si se usa browser Tesla; no bloquea cierre epic |
+
+Si en el futuro hubiera demanda fuerte, la vía sería **Fleet API** (#6133 no la sustituye) o app nativa, no más spikes de share sheet.
+
+---
+
 ## Criterios de aceptación (cuando implementemos)
 
 - [x] Desde un viaje planificado: URL con waypoints de **cargadores** (no solo destino) abre ruta en Google Maps.
-- [ ] Probar en dispositivo: Google Maps → Compartir → Tesla conserva paradas (G2; a menudo solo destino).
-- [ ] (v2) Usuario Tesla vinculado: “Enviar al coche” llega en < 30 s con coche online.
+- [x] ~~Probar en dispositivo G2~~ → **descartado #6133**; asumimos solo destino final al compartir GMaps→Tesla (documentado).
+- [ ] (v2) Usuario Tesla vinculado: “Enviar al coche” llega en < 30 s con coche online (Fleet API).
 - [x] Documentar en UI que la ruta completa al Tesla puede requerir enviar paradas una a una.
-- [ ] Probar en navegador Tesla: mapa usable y botones legibles.
+- [ ] Probar en navegador Tesla: mapa usable y botones legibles (opcional, no bloquea epic).
 
 ---
 
@@ -401,20 +425,22 @@ Rama: `feature/viaje-activo-6131`. Epic: TaskBoard **#6131**.
 
 ### Pendiente en dispositivo real (Android + Tesla)
 
+> **#6133 descartado** (2026-09-01): no se hará spike formal GMaps→Tesla. Los ítems G2/G3 se tratan como asunciones de producto; ver [decisión #6133](#decisión-de-producto--spike-6133-descartado-2026-09-01).
+
 | ID | Qué probar | Criterio |
 |----|------------|----------|
-| E1 | Plan loop Cartagena→Tres Cantos→Cuenca→A, F5 | ¿Restaura destino? ¿Pierde vías? |
-| G2 | GMaps con waypoints → Compartir → Tesla | ¿Solo destino final o también waypoints? |
-| G3 | En web móvil: «1.ª parada → Tesla» | ¿Llega al coche &lt;30 s? |
-| G4 | Tras “carga”, enviar parada #2 manualmente | Flujo usable parada a parada |
-| G5 | Abrir electro.jualas.es en browser Tesla | Botones export / En marcha legibles |
+| E1 | Plan loop Cartagena→Tres Cantos→Cuenca→A, F5 | ¿Restaura destino? ¿Pierde vías? (smoke manual opcional) |
+| G2 | GMaps con waypoints → Compartir → Tesla | **Asumido:** solo destino final (#6133 descartado) |
+| G3 | «Parada N → Tesla» (Web Share) | Cubierto por UI; sin SLA de &lt;30 s |
+| G4 | Tras carga, parada N+1 | Flujo manual documentado |
+| G5 | Browser Tesla | Opcional |
 
 ### Fallos priorizados → tareas
 
 1. ~~**P1** Persistencia + vías → #6135~~ ✅  
 2. ~~**P1** Progreso + siguiente parada N → #6136~~ ✅  
 3. ~~**P1** Copy dual Maps vs Tesla → #6137~~ ✅  
-4. **P1** Spikes G2/G3 en dispositivo → #6133, #6134  
+4. ~~**P1** Spikes G2/G3 en dispositivo → #6133~~ **descartado** (#6134 sin ejecutar)  
 5. ~~**P2** Replan + Asistente → #6138~~ ✅  
 6. ~~**P1 #6140** UI tiempos Directa/Rápida~~ ✅ (rama viaje activo)  
 7. ~~**P2** Límites PWA/GPS → #6146~~ ✅ (este documento)  

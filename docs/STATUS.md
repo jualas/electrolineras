@@ -4,9 +4,9 @@
 
 ## Fase actual
 
-**Viaje activo + handoff navegación (#6131)** en rama `feature/viaje-activo-6131`: plan EV, GPS móvil, replan en marcha, export Maps/Tesla. **Staging** `:8016` validado (smoke API Cartagena→Irun, #6143). **Prod** `https://electro.jualas.es` desplegado desde la misma rama.
+**Viaje activo + handoff navegación (#6131)** integrado en `develop` y prod. Staging `:8016` con smoke API (#6143). Spike dispositivo **#6133 descartado** por alcance (handoff manual + Web Share suficiente).
 
-Siguiente foco sugerido: merge `feature/viaje-activo-6131` → `develop`; spike dispositivo **#6133** (Maps → Tesla); cierre epic **#6131**.
+Siguiente foco sugerido: cierre epic **#6131** en TaskBoard; opcional hostname staging `electro-test.jualas.es` (#6142).
 
 ## Promote staging → develop → prod
 
