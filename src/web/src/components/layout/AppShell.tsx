@@ -9,6 +9,8 @@ import { MapStationFilters, type MapStationFilterState } from '../../filters/Map
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
+import { useActiveTrip } from '../../hooks/useActiveTrip'
+import { useActiveTripMapLocation } from '../../hooks/useActiveTripMapLocation'
 import type { MapLayerToggles } from '../../map/MapLayerControl'
 import { MapView } from '../../map/MapView'
 import { MapFloatingSearch } from '../../map/MapFloatingSearch'
@@ -62,6 +64,8 @@ export function AppShell() {
     setSocPercent: setVehicleSoc,
     setConsumptionWhPerKm: setVehicleConsumption,
   } = useVehicleProfile()
+  const { setCenterOnMe } = useActiveTrip()
+  const { trackingActive, location: tripMapLocation, centerOnMe } = useActiveTripMapLocation()
   useEffect(() => {
     checkApiHealth().then(setApiOk)
   }, [])
@@ -242,6 +246,10 @@ export function AppShell() {
         onPlannedStopSelect={handlePlannedStopSelect}
         mapFocusPlace={mapFocusPlace}
         onRegisterMapBounds={handleRegisterMapBounds}
+        tripTrackingActive={trackingActive}
+        tripUserLocation={tripMapLocation}
+        centerOnMe={centerOnMe}
+        onCenterOnMeChange={setCenterOnMe}
       />
 
       <div className="map-ui-layer">

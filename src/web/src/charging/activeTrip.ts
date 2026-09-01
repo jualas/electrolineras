@@ -57,6 +57,8 @@ export type EnMarchaSettings = {
   autoFollow: boolean
   /** Seguimiento GPS del móvil durante viaje activo (#6144). */
   gpsEnabled: boolean
+  /** Centrar mapa en la posición del usuario (#6145); independiente de autoFollow. */
+  centerOnMe: boolean
 }
 
 export const ACTIVE_TRIP_STORAGE_KEY = 'electrolineras.activeTrip'
@@ -67,6 +69,7 @@ export const ACTIVE_TRIP_TTL_MS = 48 * 60 * 60 * 1000
 export const DEFAULT_EN_MARCHA_SETTINGS: EnMarchaSettings = {
   autoFollow: true,
   gpsEnabled: true,
+  centerOnMe: true,
 }
 
 export const EMPTY_ACTIVE_TRIP_PROGRESS: ActiveTripProgress = {
@@ -329,6 +332,7 @@ export function parseEnMarchaSettings(raw: string | null): EnMarchaSettings {
     return {
       autoFollow: parsed.autoFollow !== false,
       gpsEnabled: parsed.gpsEnabled !== false,
+      centerOnMe: parsed.centerOnMe !== false,
     }
   } catch {
     return DEFAULT_EN_MARCHA_SETTINGS

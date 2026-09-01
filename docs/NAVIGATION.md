@@ -234,6 +234,144 @@ Factible en export Google Maps y en planificador propio. Validar que waypoints l
 
 ---
 
+## GPS móvil y límites PWA (#6146, 2026-09-01)
+
+Epic **#6131**. Documenta qué consigue nuestra **web móvil** con GPS y qué **no** puede igualar Android Auto, Google Maps nativo o el nav del Tesla.
+
+### Rol de producto: copiloto EV, no navegador turn-by-turn
+
+Electrolineras **no sustituye** la voz ni las maniobras de Google Maps, Waze ni del nav Tesla. Su trabajo en viaje activo es:
+
+| Responsabilidad | Electrolineras | Google Maps / Waze | Nav Tesla |
+|-----------------|----------------|--------------------|-----------|
+| Plan de paradas DC (kW, SOC, REVE) | ✅ | ❌ | ❌ |
+| Ruta completa con waypoints geográficos | Export URL | ✅ turn-by-turn | Parcial (waypoints a menudo se pierden al compartir) |
+| Siguiente parada al coche | Web Share / enlace destino | Compartir → Tesla | ✅ destino nativo |
+| Seguimiento posición para replan | ✅ GPS móvil o TeslaMate | ✅ | ❌ (no expone posición a la web) |
+| Instrucciones «gira a la derecha» | ❌ | ✅ | ✅ |
+| Precondicionamiento batería al SC | ❌ | A veces vía share | ✅ si el destino es cargador |
+
+**Mensaje honesto en UI (ya en producto):** «La navegación turn-by-turn la hace Google Maps o el Tesla; aquí gestionamos las paradas de carga.»
+
+### Qué hace hoy la web en prod (`feature/viaje-activo-6131`)
+
+Implementado en código (sin ser app nativa):
+
+| Función | Comportamiento |
+|---------|----------------|
+| Viaje activo | `localStorage` 48 h, vías usuario, progreso parada N de M (#6135–#6137) |
+| GPS móvil | `watchPosition` al restaurar viaje; toggle «Usar GPS del móvil» (#6144) |
+| Mapa | Marcador de posición + «Centrar en mí» independiente de `autoFollow` (#6145) |
+| Replan | Debounce (>2 km / >5 min / ΔSOC ≥3 pp), desvío de ruta, divergencia consumo ±15 % (#6138–#6139) |
+| Handoff | «Abrir ruta en Google Maps» (waypoints DC); «Parada N → Tesla» vía Web Share (#6137) |
+| Origen coche | TeslaMate en zona privada: replan desde SOC/posición del vehículo |
+
+Todo el GPS web usa la **Geolocation API del navegador** (`navigator.geolocation.watchPosition`). No hay Service Worker de posición ni `navigator.geolocation` en segundo plano real.
+
+### GPS: primer plano vs segundo plano
+
+| Situación | Chrome Android (pestaña abierta) | Chrome Android (pestaña en segundo plano) | iOS Safari | Tesla browser |
+|-----------|----------------------------------|-------------------------------------------|------------|---------------|
+| Pestaña visible, pantalla encendida | ✅ Actualización continua (~15 s `maximumAge`) | ⚠️ Throttle agresivo del SO; updates irregulares | ⚠️ Similar | ⚠️ Conexión + GPS variables |
+| Pantalla apagada / bloqueada | ❌ o muy espaciado | ❌ | ❌ | N/A (pantalla del coche) |
+| Pestaña cerrada | ❌ | ❌ | ❌ | ❌ |
+| Permiso denegado | Mensaje en UI; origen manual / simulación | — | — | — |
+
+**Conclusión:** el replan «en marcha» y el mapa centrado en el usuario asumen **pestaña en primer plano** (o segundo plano breve en Android). No es un tracker de flota 24/7. Para conducir horas con la app cerrada haría falta **app nativa** con foreground service (ver más abajo).
+
+### Navegación turn-by-turn: quién hace qué
+
+```
+┌─────────────────┐     plan EV + replan      ┌──────────────────┐
+│  Electrolineras │ ────────────────────────► │  Paradas DC, SOC │
+│  (copiloto)     │     GPS / TeslaMate       │  progreso N de M │
+└────────┬────────┘                           └──────────────────┘
+         │ export ruta / share parada
+         ▼
+┌─────────────────┐     turn-by-turn          ┌──────────────────┐
+│  Google Maps    │ ────────────────────────► │  Maniobras, ETA  │
+│  (móvil)        │     Android Auto opcional │  tráfico en ruta │
+└────────┬────────┘                           └──────────────────┘
+         │ Compartir → Tesla (manual)
+         ▼
+┌─────────────────┐     nav en pantalla       ┌──────────────────┐
+│  Nav Tesla      │ ────────────────────────► │  1 destino/parada│
+│  (coche)        │     precond. si SC        │  (no ruta entera)│
+└─────────────────┘                           └──────────────────┘
+```
+
+- **Android Auto:** proyecta **Google Maps** (u otra app aprobada), no nuestra web. No hay canal para embeber `electro.jualas.es` como app de navegación en el salpicadero sin wrapper nativo certificado por Google.
+- **Electrolineras en el móvil montado:** útil con pestaña abierta (o en split screen) para ver siguiente parada, recalcular y reenviar al Tesla; Maps lleva la voz.
+
+### Flujo híbrido recomendado (viaje largo EV)
+
+Orden probado en producto y alineado con limitaciones Tesla:
+
+1. **Planificar** en Electrolineras (origen GPS o coche, destino, filtro kW, preferencia de ruta).
+2. **Abrir ruta en Google Maps** (todos los waypoints DC) → iniciar navegación en el móvil o Android Auto.
+3. Activar **viaje activo** + **GPS del móvil** (o TeslaMate si conduces con datos del coche).
+4. En marcha: Electrolineras **replanifica paradas** si te desvías, cambia el SOC o el consumo; Maps sigue la ruta que el usuario quiera recalcular allí aparte.
+5. Antes de cada parada DC: **«Parada N → Tesla»** (Web Share) o abrir destino en Maps y compartir al coche.
+6. Tras cargar: **Marcar parada completada** → opcional **Recalcular desde aquí** → enviar parada N+1 al Tesla.
+
+No intentar que el usuario use solo el navegador Tesla para todo el viaje: pantalla pequeña, red irregular y sin turn-by-turn de nuestra app.
+
+### Matriz de capacidades (web vs nativo)
+
+| Capacidad | Web móvil (PWA-capable) | Android Auto + Maps | App Android nativa (hipotética) | Nav Tesla |
+|-----------|-------------------------|---------------------|----------------------------------|-----------|
+| Plan EV con paradas DC | ✅ | ❌ | ✅ | ❌ |
+| GPS con pestaña abierta | ✅ | ✅ (Maps) | ✅ | ❌ |
+| GPS con app en background | ❌ | ✅ (Maps) | ✅ (foreground service) | — |
+| Replan automático por posición/SOC | ✅* | ❌ | ✅* | ❌ |
+| Turn-by-turn + voz | ❌ | ✅ | ✅ (si integramos SDK) | ✅ |
+| Enviar ruta completa al Tesla | ❌ fiable | ❌ | ⚠️ share intent / Fleet API | — |
+| Enviar 1 parada al Tesla | Web Share | Manual | Intent `com.teslamotors.tesla` + share | ✅ |
+| Precondicionamiento SC | ❌ | A veces | Solo vía Tesla | ✅ |
+| Instalable en home (PWA) | ⚠️ sin push GPS bg | N/A | ✅ Play Store | N/A |
+| Uso en browser Tesla | ✅ lectura/plan | N/A | N/A | ✅ limitado |
+
+\*Con throttle (#6138): no en cada tick GPS; umbrales 2 km / 5 min / 3 pp SOC.
+
+### Tesla browser vs Chrome Android
+
+| Aspecto | Chrome Android | Navegador Tesla |
+|---------|----------------|-----------------|
+| Geolocalización | Permiso estándar; precisión buena con GPS del móvil | A menudo posición del **vehículo** o imprecisa; no sustituye TeslaMate |
+| Web Share API | ✅ menú compartir → Tesla | ❌ o muy limitado |
+| Abrir Google Maps | ✅ app nativa | Enlace web; compartir al nav es más incómodo |
+| UI viaje activo | Barra En marcha, mapa, GPS | Botones deben ser grandes; probar G5 (#6132) |
+| Replan en conducción | Con pestaña activa | No recomendado como canal principal |
+| TeslaMate / Asistente | ✅ zona privada | Depende de sesión; mismo backend |
+
+**Recomendación:** planificar y seguir el viaje en **móvil Android**; usar el **Tesla browser** para consultar plan o reenviar una parada si el móvil no está a mano, no como único dispositivo de copiloto.
+
+### Cuándo tendría sentido una app Android nativa (fuera de alcance actual)
+
+No implementada. Criterios para valorarla en el futuro:
+
+| Necesidad de negocio | Pieza nativa |
+|----------------------|--------------|
+| Replan con pantalla apagada o Maps en primer plano | `ForegroundService` + `FusedLocationProvider` |
+| Widget «siguiente parada / SOC» | App widget + notificación persistente |
+| Share directo a Tesla sin sheet del navegador | `Intent` explícito hacia app Tesla (frágil, sin API pública estable) |
+| Android Auto como “destino” de la app | Proyecto **Android for Cars** (plantilla navegación); esfuerzo alto, distinto de PWA |
+| Push «te desviaste, recalcula» | FCM + última posición en servidor (implica backend de tracking) |
+
+Hasta entonces, la **PWA / web responsive** + flujo híbrido Maps/Tesla es el equilibrio correcto coste/beneficio (#6131).
+
+### Relación con otras tareas
+
+| Tarea | Enlace |
+|-------|--------|
+| Spike Maps → Tesla en dispositivo | #6133 (validar G2/G3 en Android real) |
+| GPS arranque automático | #6144 ✅ |
+| Mapa sigue posición | #6145 ✅ |
+| Replan + consumo | #6138 ✅ |
+| Evaluación manual E/G | #6132 |
+
+---
+
 ## Criterios de aceptación (cuando implementemos)
 
 - [x] Desde un viaje planificado: URL con waypoints de **cargadores** (no solo destino) abre ruta en Google Maps.
@@ -254,10 +392,12 @@ Rama: `feature/viaje-activo-6131`. Epic: TaskBoard **#6131**.
 |----|-----------|-------|
 | G1 | ✅ OK | Cartagena→Irun: 3 waypoints DC; URL GMaps 186 chars (&lt;2000). Ejemplo: origen + 3 paradas + destino. |
 | E2 | ✅ OK (#6135) | Persistencia `localStorage` + TTL 48 h; migra desde `sessionStorage`. |
-| E3 | ⚠️ Parcial (#6135) | `AssistantPanel` restaura viaje activo (vías+destino); `ReplanOnRouteBar` sigue en #6138. |
-| E5 | ❌ N/A | No hay progreso de paradas (`completedStopOrders`). |
-| next_stop | ⚠️ Parcial | Botón «1.ª parada → Tesla» existe; no avanza a N+1 tras completar. |
+| E3 | ✅ OK (#6135, #6138) | Plan y Asistente restauran viaje; `ReplanOnRouteBar` en ambos paneles. |
+| E5 | ✅ OK (#6136) | `completedStopOrders`, «Parada N de M», marcar completada, share N+1. |
+| next_stop | ✅ OK (#6136–#6137) | `routeExportSpecForNextStop` + progreso `currentLegIndex`. |
 | Vías A→…→A | ✅ (#6135) | `ActiveTripState.waypoints[]` + restore en Plan/Asistente. |
+| GPS / mapa | ✅ (#6144–#6145) | Toggle GPS, marcador en mapa, «Centrar en mí». Ver sección [GPS móvil y límites PWA](#gps-móvil-y-límites-pwa-6146-2026-09-01). |
+| Replan | ✅ (#6138–#6139) | Debounce, desvío, divergencia consumo, `replanCount`. |
 
 ### Pendiente en dispositivo real (Android + Tesla)
 
@@ -271,9 +411,11 @@ Rama: `feature/viaje-activo-6131`. Epic: TaskBoard **#6131**.
 
 ### Fallos priorizados → tareas
 
-1. **P1** Persistencia + vías → #6135  
-2. **P1** Progreso + siguiente parada N → #6136  
-3. **P1** Copy dual Maps vs Tesla → #6137  
+1. ~~**P1** Persistencia + vías → #6135~~ ✅  
+2. ~~**P1** Progreso + siguiente parada N → #6136~~ ✅  
+3. ~~**P1** Copy dual Maps vs Tesla → #6137~~ ✅  
 4. **P1** Spikes G2/G3 en dispositivo → #6133, #6134  
-5. **P2** Replan + Asistente → #6138  
-6. **P1 #6140** (en curso en esta rama): UI tiempos Directa/Rápida; 1.er tramo = 135 min (no 180); tramos cortos; shortest sin paradas
+5. ~~**P2** Replan + Asistente → #6138~~ ✅  
+6. ~~**P1 #6140** UI tiempos Directa/Rápida~~ ✅ (rama viaje activo)  
+7. ~~**P2** Límites PWA/GPS → #6146~~ ✅ (este documento)  
+8. **P2** Mapa GPS en viaje → ~~#6145~~ ✅

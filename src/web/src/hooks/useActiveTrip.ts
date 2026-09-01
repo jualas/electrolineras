@@ -55,6 +55,10 @@ export function useActiveTrip() {
     setEnMarchaSettingsState((prev) => ({ ...prev, gpsEnabled }))
   }, [])
 
+  const setCenterOnMe = useCallback((centerOnMe: boolean) => {
+    setEnMarchaSettingsState((prev) => ({ ...prev, centerOnMe }))
+  }, [])
+
   const markStopCompleted = useCallback((stopOrder: number, totalStops: number) => {
     setActiveTripState((prev) => {
       if (!prev) {
@@ -87,6 +91,7 @@ export function useActiveTrip() {
     clearActiveTrip,
     setAutoFollow,
     setGpsEnabled,
+    setCenterOnMe,
     markStopCompleted,
     updateTripProgress,
   }

@@ -57,6 +57,14 @@ import { MapLayerControl, type MapLayerToggles } from './MapLayerControl'
 import { enhancePlaceLabels } from './mapPlaceLabels'
 import { ensureReliefLayers, setContourVisible, setShadowVisible } from './mapTerrainLayers'
 import { ensureTrafficLayer, setTrafficLayerVisible } from './mapTrafficLayer'
+import {
+  clearUserLocationMarker,
+  setUserLocationMarker,
+} from './userLocationLayers'
+import {
+  MAP_FOLLOW_ZOOM,
+  shouldRecenterMapOnUserMove,
+} from './mapFollowUser'
 
 const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
 const DEFAULT_ZOOM = 5.8
@@ -102,6 +110,10 @@ type MapViewProps = {
   onPlannedStopSelect?: (stop: RouteChargingStop | null) => void
   mapFocusPlace?: GeocodeResult | null
   onRegisterMapBounds?: (getter: MapBoundsGetter | null) => void
+  tripUserLocation?: { lat: number; lon: number; accuracyM?: number | null } | null
+  tripTrackingActive?: boolean
+  centerOnMe?: boolean
+  onCenterOnMeChange?: (value: boolean) => void
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
@@ -209,6 +221,10 @@ export function MapView({
   onPlannedStopSelect,
   mapFocusPlace = null,
   onRegisterMapBounds,
+  tripUserLocation = null,
+  tripTrackingActive = false,
+  centerOnMe = false,
+  onCenterOnMeChange,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -238,6 +254,11 @@ export function MapView({
   const selectedPlannedStopOrderRef = useRef(selectedPlannedStopOrder)
   const onPlannedStopSelectRef = useRef(onPlannedStopSelect)
   const clusterNavUntilRef = useRef(0)
+  const userMovedMapRef = useRef(false)
+  const lastCenteredUserRef = useRef<{ lat: number; lon: number } | null>(null)
+  const tripUserLocationRef = useRef(tripUserLocation)
+  const centerOnMeRef = useRef(centerOnMe)
+  const tripTrackingActiveRef = useRef(tripTrackingActive)
   const loadVisibleStationsRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
   const scheduleLoadRef = useRef<(map: maplibregl.Map, force?: boolean) => void>(() => undefined)
   const applyActiveOverlayRef = useRef<(map: maplibregl.Map) => void>(() => undefined)
@@ -259,6 +280,42 @@ export function MapView({
   chargePlanDataRef.current = chargePlanData
   selectedPlannedStopOrderRef.current = selectedPlannedStopOrder
   onPlannedStopSelectRef.current = onPlannedStopSelect
+  tripUserLocationRef.current = tripUserLocation
+  centerOnMeRef.current = centerOnMe
+  tripTrackingActiveRef.current = tripTrackingActive
+
+  const easeMapToUser = useCallback((map: maplibregl.Map, point: { lat: number; lon: number }, force = false) => {
+    if (!force && userMovedMapRef.current) {
+      return
+    }
+    if (!force && !shouldRecenterMapOnUserMove(lastCenteredUserRef.current, point)) {
+      return
+    }
+    lastCenteredUserRef.current = point
+    map.easeTo({
+      center: [point.lon, point.lat],
+      zoom: Math.max(map.getZoom(), MAP_FOLLOW_ZOOM),
+      duration: 900,
+      essential: true,
+      padding: getMapUiPadding(),
+    })
+  }, [])
+
+  const handleCenterOnMeClick = useCallback(() => {
+    const map = mapRef.current
+    const point = tripUserLocationRef.current
+    userMovedMapRef.current = false
+    onCenterOnMeChange?.(true)
+    if (!map || !point) {
+      return
+    }
+    const center = () => easeMapToUser(map, point, true)
+    if (map.isStyleLoaded()) {
+      center()
+      return
+    }
+    map.once('load', center)
+  }, [easeMapToUser, onCenterOnMeChange])
 
   const resolveRouteChargingStop = useCallback(
     (order: number): RouteChargingStop | null => {
@@ -723,6 +780,12 @@ export function MapView({
       }
     })
 
+    map.on('dragstart', () => {
+      if (tripTrackingActiveRef.current) {
+        userMovedMapRef.current = true
+      }
+    })
+
     map.on('click', CLUSTER_LAYER_ID, onClusterClick)
     map.on('click', CLUSTER_COUNT_LAYER_ID, onClusterClick)
     map.on('click', POINT_LAYER_ID, onPointClick)
@@ -888,6 +951,30 @@ export function MapView({
     scheduleLoad(map, true)
   }, [minKw, maxKw, publicOpenOnly, adHocOnly, availableOnly, maxPriceEurKwh, connectorTypes.join('|'), loadStations, scheduleLoad])
 
+  useEffect(() => {
+    if (!tripTrackingActive) {
+      userMovedMapRef.current = false
+      lastCenteredUserRef.current = null
+    }
+  }, [tripTrackingActive])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) {
+      return
+    }
+    runWhenMapReady(map, (readyMap) => {
+      if (!tripTrackingActive || !tripUserLocation) {
+        clearUserLocationMarker(readyMap)
+        return
+      }
+      setUserLocationMarker(readyMap, tripUserLocation)
+      if (centerOnMe) {
+        easeMapToUser(readyMap, tripUserLocation)
+      }
+    })
+  }, [tripTrackingActive, tripUserLocation, centerOnMe, easeMapToUser, runWhenMapReady])
+
   const showMapBadge =
     loadStations ||
     routeData !== null ||
@@ -910,6 +997,25 @@ export function MapView({
       {showLayerControl && mapLayers && onMapLayersChange && (
         <MapLayerControl value={mapLayers} onChange={onMapLayersChange} />
       )}
+      {tripTrackingActive ? (
+        <div className="map-follow-controls" aria-label="Seguimiento en mapa">
+          <button
+            type="button"
+            className={`map-follow-btn ${centerOnMe ? 'map-follow-btn--active' : ''}`}
+            aria-pressed={centerOnMe}
+            title={centerOnMe ? 'Dejar de centrar en mi posición' : 'Centrar mapa en mi posición'}
+            onClick={() => {
+              if (centerOnMe) {
+                onCenterOnMeChange?.(false)
+                return
+              }
+              handleCenterOnMeClick()
+            }}
+          >
+            {centerOnMe ? 'Centrado en mí' : 'Centrar en mí'}
+          </button>
+        </div>
+      ) : null}
       {showMapBadge && (
         <div className="map-overlay" aria-live="polite">
           {routeSearching && <span className="map-badge">Calculando ruta…</span>}
