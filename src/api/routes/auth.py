@@ -13,6 +13,7 @@ from api.auth.session import SESSION_COOKIE_NAME, create_session_value
 from api.auth.totp import verify_totp_code
 from api.config import settings
 from api.schemas import AuthConfigResponse, AuthSessionResponse
+from api.security.cookies import session_cookie_secure
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -49,7 +50,7 @@ def auth_session(request: Request) -> AuthSessionResponse:
 
 
 @router.post("/login")
-def auth_login(body: LoginRequest, response: Response) -> LoginResponse:
+def auth_login(body: LoginRequest, request: Request, response: Response) -> LoginResponse:
     if not settings.private_stack_enabled:
         raise HTTPException(status_code=503, detail="Stack privado desactivado")
     if not private_totp_auth_configured():
@@ -67,7 +68,7 @@ def auth_login(body: LoginRequest, response: Response) -> LoginResponse:
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=settings.session_cookie_secure,
+        secure=session_cookie_secure(request),
         samesite="lax",
         max_age=settings.auth_session_max_age_seconds,
         path="/",
@@ -76,11 +77,11 @@ def auth_login(body: LoginRequest, response: Response) -> LoginResponse:
 
 
 @router.post("/logout")
-def auth_logout(response: Response) -> LoginResponse:
+def auth_logout(request: Request, response: Response) -> LoginResponse:
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
         path="/",
-        secure=settings.session_cookie_secure,
+        secure=session_cookie_secure(request),
         httponly=True,
         samesite="lax",
     )

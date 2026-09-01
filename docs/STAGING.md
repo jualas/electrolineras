@@ -1,6 +1,6 @@
 # Entorno de staging (pruebas antes de producción)
 
-Última actualización: 2026-09-01 · rama `feature/viaje-activo-6131` · TaskBoard **#6141** / smoke **#6143**
+Última actualización: 2026-09-01 · rama `develop` · TaskBoard **#6141** / hostname **#6142**
 
 ## Por qué existe
 
@@ -10,6 +10,7 @@ Prod (`https://electro.jualas.es` → `:8015`) debe quedarse estable. Staging pe
 |---------|-----|--------|---------|--------|
 | **Dev Vite** | `http://127.0.0.1:5173` | 5173 | — | UI rápida; API en `:8000` |
 | **Staging** | `http://127.0.0.1:8016` (LAN `<IP-LAN-SERVIDOR>:8016`) | **8016** | `docker-compose.staging.yml` | Probar build Docker + motor + UI como en prod |
+| **Staging HTTPS** | `https://electro-test.jualas.es` (túnel Cloudflare) | 8016 | mismo stack | Pruebas móvil/Tesla fuera de LAN |
 | **Prod** | `https://electro.jualas.es` | **8015** | `docker-compose.prod.yml` | Solo tras validar en staging |
 
 > Lo que antes se usaba como “prueba” en **`:5173`** sigue siendo el modo desarrollo (hot reload). Staging es el **mismo tipo de stack que prod**, en paralelo.
@@ -66,9 +67,11 @@ En el móvil / Tesla (WiFi casa): **http://<IP-LAN-SERVIDOR>:8016**
 
 ## Auth / cookies
 
-Staging usa **HTTP** (`:8016`). En `docker-compose.staging.yml` se fuerza
-`SESSION_COOKIE_SECURE=false` para que el navegador guarde `electrolineras_session`.
-Prod (`https://electro.jualas.es`) mantiene `SESSION_COOKIE_SECURE=true` en su `.env`.
+Staging convive con **HTTP** (`:8016` / LAN) y **HTTPS** (`electro-test.jualas.es` vía túnel).
+
+- En compose se mantiene `SESSION_COOKIE_SECURE=false` para login por HTTP en LAN.
+- La API detecta `X-Forwarded-Proto: https` (Cloudflare/nginx) y emite cookie `Secure` solo en ese caso.
+- Prod (`https://electro.jualas.es`) sigue con `SESSION_COOKIE_SECURE=true` en su `.env`.
 
 ## Checklist smoke staging (Cartagena → Irun)
 
@@ -110,13 +113,47 @@ make web          # :5173
 Abrir `http://127.0.0.1:5173`. El proxy manda `/api` a `:8000`.  
 **No** sustituye staging: no valida imagen nginx ni compose.
 
-## Cloudflare (opcional) — `electro-test.jualas.es`
+## Cloudflare — `electro-test.jualas.es` (#6142)
 
-Para HTTPS público sin tocar prod:
+HTTPS público de staging **sin tocar** `electro.jualas.es`. Usa el **mismo túnel** (`electrolineras-cloudflared`) con una regla ingress adicional.
 
-1. Zero Trust → Public Hostname `electro-test.jualas.es` → `http://127.0.0.1:8016`
-2. CORS staging ya incluye ese origen en `docker-compose.staging.yml`
-3. TaskBoard: subtarea bajo epic #6141
+| Hostname | Origen local | Stack |
+|----------|--------------|-------|
+| `electro.jualas.es` | `http://<IP-LAN-SERVIDOR>:8015` (prod) | `:8015` |
+| `electro-test.jualas.es` | `http://127.0.0.1:8016` (staging) | `:8016` |
+
+CORS staging ya incluye `https://electro-test.jualas.es` en `docker-compose.staging.yml`.
+
+### Opción A — script (recomendado)
+
+Token API con permisos **Cloudflare Tunnel Edit** + **DNS Edit** en `jualas.es`:
+
+```bash
+export CLOUDFLARE_API_TOKEN=...
+bash scripts/deploy/cloudflare-staging-hostname.sh
+```
+
+Lee `CLOUDFLARED_TOKEN` de `/mnt/datos/docker/electrolineras/.env`, añade la regla ingress y crea/actualiza el CNAME `electro-test` → `{tunnel-id}.cfargotunnel.com`.
+
+### Opción B — Zero Trust (manual)
+
+1. [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → **Networks** → **Tunnels** → túnel Electrolineras.
+2. **Public Hostname** → Add:
+   - Subdomain: `electro-test`
+   - Domain: `jualas.es`
+   - Service: `http://127.0.0.1:8016`
+3. No modificar la regla de `electro.jualas.es`.
+
+### Verificación
+
+```bash
+curl -4 -sf https://electro-test.jualas.es/health
+curl -4 -sf https://electro.jualas.es/health   # prod intacto
+```
+
+Smoke UI: login TOTP en `https://electro-test.jualas.es`, plan Cartagena→Irun, viaje activo en móvil.
+
+> El conector `cloudflared` tarda unos segundos en recargar la config remota tras guardar en Zero Trust o vía API.
 
 ## Operación
 

@@ -6,7 +6,7 @@
 
 **Viaje activo + handoff navegación (#6131)** integrado en `develop` y prod. Staging `:8016` con smoke API (#6143). Spike dispositivo **#6133 descartado** por alcance (handoff manual + Web Share suficiente).
 
-Siguiente foco sugerido: cierre epic **#6131** en TaskBoard; opcional hostname staging `electro-test.jualas.es` (#6142).
+Siguiente foco sugerido: activar `electro-test.jualas.es` con `scripts/deploy/cloudflare-staging-hostname.sh` (#6142); cierre epic **#6131**.
 
 ## Promote staging → develop → prod
 
