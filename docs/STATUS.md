@@ -1,12 +1,30 @@
 # Estado del proyecto
 
-Última actualización: 2026-07-04
+Última actualización: 2026-09-01
 
 ## Fase actual
 
-**Producto y routing (Jul 2026).** Fases 1–3 cerradas. **Fase Prod operativa** en `https://electro.jualas.es` (Docker nginx + API, Cloudflare Tunnel, OSRM self-hosted, cron ingest, backups, monitoring). **Nominatim:** import en curso en mini PC; cron auto-configura prod al terminar ([`NOMINATIM.md`](NOMINATIM.md)).
+**Viaje activo + handoff navegación (#6131)** en rama `feature/viaje-activo-6131`: plan EV, GPS móvil, replan en marcha, export Maps/Tesla. **Staging** `:8016` validado (smoke API Cartagena→Irun, #6143). **Prod** `https://electro.jualas.es` desplegado desde la misma rama.
 
-Siguiente foco sugerido: [#6066](../TASKBOARD.md#task-6066) UI dos rutas, [#6071](../TASKBOARD.md#task-6071) SOC TeslaMate, deuda [#6081](../TASKBOARD.md#task-6081) tests OSRM conventional.
+Siguiente foco sugerido: merge `feature/viaje-activo-6131` → `develop`; spike dispositivo **#6133** (Maps → Tesla); cierre epic **#6131**.
+
+## Promote staging → develop → prod
+
+Flujo acordado (#6141):
+
+1. Desarrollar en `feature/…` (no tocar prod directamente si hay riesgo).
+2. `make test` + pytest local.
+3. **`make deploy-staging`** → smoke en [`STAGING.md`](STAGING.md) (API + checklist manual móvil/Tesla).
+4. PR / merge a `develop`.
+5. **`make deploy`** → prod `:8015` / electro.jualas.es.
+6. Smoke prod + TaskBoard.
+
+| Entorno | Puerto | Comando deploy |
+|---------|--------|----------------|
+| Staging | 8016 | `make deploy-staging` |
+| Prod | 8015 | `make deploy` |
+
+Detalle operativo: [`STAGING.md`](STAGING.md), [`CI_CD.md`](CI_CD.md).
 
 ## Producción (snapshot)
 
