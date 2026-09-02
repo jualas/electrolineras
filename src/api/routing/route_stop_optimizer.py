@@ -14,6 +14,7 @@ from api.routing.charging_plan import (
     MAX_DRIVING_LEG_MINUTES,
     MAX_PLANNED_ROUTE_STOPS,
     MIN_FORWARD_PROGRESS_KM,
+    MIN_ORIGIN_SKIP_ABSOLUTE_KM,
     PREFERRED_ON_ROUTE_TIME_BONUS_MIN,
     TARGET_DRIVING_LEG_MINUTES,
     PlannedRouteStop,
@@ -32,6 +33,7 @@ from api.routing.charging_plan import (
     leg_distance_for_driving_minutes,
     min_leg_progress_fraction,
     origin_exclusion_radius_km,
+    relaxed_origin_exclusion_km,
     resolve_avg_speed_kmh,
     soc_at_distance_km,
 )
@@ -285,12 +287,32 @@ def optimize_planned_route_stops(
         projected = soc_at_distance_km(profile, distance_to_dest)
         return [], [], round(clamp_display_soc_pct(projected), 1)
 
+    early_first_stop_warning = False
+    charging_reach_km = estimate_charging_reach_km(profile)
+
+    def _has_reachable_first_stop(cands: list[_RouteCandidate]) -> bool:
+        reach_end = origin_position_km + charging_reach_km
+        return any(origin_position_km < c.route_km <= reach_end + 1e-6 for c in cands)
+
     candidates = _reduce_corridor_candidates(
         matches,
         origin_route_km=origin_position_km,
         destination_km=destination_distance_km,
         origin_exclusion_km=origin_exclusion_km,
     )
+    if not _has_reachable_first_stop(candidates):
+        relaxed = relaxed_origin_exclusion_km(origin_exclusion_km)
+        if relaxed < origin_exclusion_km - 1e-6:
+            relaxed_cands = _reduce_corridor_candidates(
+                matches,
+                origin_route_km=origin_position_km,
+                destination_km=destination_distance_km,
+                origin_exclusion_km=relaxed,
+            )
+            if _has_reachable_first_stop(relaxed_cands):
+                candidates = relaxed_cands
+                origin_exclusion_km = relaxed
+                early_first_stop_warning = True
     if not candidates:
         return None
 
@@ -349,7 +371,12 @@ def optimize_planned_route_stops(
             avg_speed_kmh=avg_speed_kmh,
             route_preference=route_preference,
         ):
-            continue
+            # Con exclusión relajada (#6151) aceptar 1.ª parada alcanzable aunque sea < ~2 h.
+            if not (
+                early_first_stop_warning
+                and leg_km + 1e-6 >= max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, origin_exclusion_km)
+            ):
+                continue
         best[j] = _NodeState(
             time_min=_transition_cost(drive_min=drive_min, charge_min=charge_min, cand=cand),
             dep_soc=dep_soc,
@@ -476,6 +503,11 @@ def optimize_planned_route_stops(
         return None
 
     warnings: list[str] = []
+    if early_first_stop_warning:
+        warnings.append(
+            "Primera parada anticipada: no hay cargador en el tramo ~2 h "
+            "alcanzable con tu SOC; se sugiere cargar antes."
+        )
     planned: list[PlannedRouteStop] = []
     previous_km = origin_position_km
     from_soc = profile.soc_percent

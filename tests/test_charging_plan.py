@@ -705,3 +705,53 @@ def test_slow_shortest_style_route_still_plans_stops() -> None:
     assert projected is not None
     assert planned[0].leg_driving_minutes >= 110
     assert planned[0].distance_from_origin_km <= 200.0
+
+
+def test_fastest_relaxes_origin_exclusion_when_reach_window_empty() -> None:
+    """#6151 — rápida con SOC medio: sin DC en [~2 h, alcance] no debe dejar plan vacío.
+
+    Corredor tipo Cartagena→interior: paradas tempranas (~50–90 km) y 1.ª DC «ideal»
+    más allá del alcance (~200 km). Con exclusión ~2 h el plan fallaba; directa sí
+    encontraba paradas por ir más despacio.
+    """
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=45,
+        usable_capacity_kwh=50,
+        consumption_wh_per_km=122.0,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        max_charge_power_kw=150,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    # ~80 km/h → target ~2 h ≈ 180 km; alcance ~163 km → ventana [~133, 163] vacía.
+    route_km = 503.0
+    route_duration = 375.0
+    positions = [48.0, 92.0, 198.0, 302.0, 400.0]
+    matches = [
+        CorridorMatch(
+            station=sample_station(f"s{idx}", 38.0 + idx * 0.02, -1.0 + idx * 0.05, kw=150.0),
+            deviation_m=200,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for idx, km in enumerate(positions, start=1)
+    ]
+    planned, warnings, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=route_km,
+        profile=profile,
+        route_distance_km=route_km,
+        route_duration_minutes=route_duration,
+        route_preference="fastest",
+    )
+    assert len(planned) >= 1, f"expected early stop, got {planned!r}; warnings={warnings}"
+    assert planned[0].distance_from_origin_km < 160.0
+    assert any("anticipada" in w.lower() or "2 h" in w for w in warnings)
+    assert projected is not None

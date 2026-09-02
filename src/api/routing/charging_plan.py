@@ -477,6 +477,17 @@ def origin_exclusion_radius_km(
     return exclusion
 
 
+def relaxed_origin_exclusion_km(origin_exclusion_km: float) -> float:
+    """Exclusión mínima si la ventana [~2 h, alcance] no tiene cargadores (#6151).
+
+    En ruta «rápida» la exclusión ~2 h puede superar el alcance útil con SOC medio;
+    sin relajar, el plan queda vacío mientras «directa» (más lenta) sí encuentra paradas.
+    """
+    if origin_exclusion_km <= MIN_ORIGIN_SKIP_ABSOLUTE_KM + 1e-6:
+        return 0.0
+    return MIN_ORIGIN_SKIP_ABSOLUTE_KM
+
+
 def resolve_avg_speed_kmh(
     route_distance_km: float | None,
     route_duration_minutes: float | None,
@@ -928,6 +939,29 @@ def build_planned_route_stops_greedy(
             trip_start_route_km=trip_start_route_km,
             origin_exclusion_km=origin_exclusion_km,
         )
+        is_first_hop = current_route_km <= trip_start_route_km + 1e-6
+        if not segment_matches and is_first_hop and not allow_origin_zone:
+            # #6151 — ventana [exclusión ~2 h, alcance] vacía (frecuente en rápida).
+            relaxed = relaxed_origin_exclusion_km(origin_exclusion_km)
+            if relaxed < origin_exclusion_km - 1e-6:
+                relaxed_min = trip_start_route_km + relaxed
+                segment_matches = _filter_segment_matches(
+                    matches,
+                    segment_min_km=relaxed_min,
+                    segment_end_km=segment_end_km,
+                    used_station_ids=used_station_ids,
+                    current_route_km=current_route_km,
+                    trip_start_route_km=trip_start_route_km,
+                    origin_exclusion_km=relaxed,
+                )
+                if segment_matches:
+                    origin_exclusion_km = relaxed
+                    segment_min_km = max(0.0, relaxed_min - current_route_km)
+                    min_leg_km = segment_min_km
+                    warnings.append(
+                        "Primera parada anticipada: no hay cargador en el tramo ~2 h "
+                        "alcanzable con tu SOC; se sugiere cargar antes."
+                    )
         if not segment_matches and allow_origin_zone:
             segment_matches = [
                 match
