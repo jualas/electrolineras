@@ -65,8 +65,8 @@ export async function fetchAlongRoute(
   if (query.routePreference !== undefined) {
     params.set('route_preference', query.routePreference)
   }
-  if (query.avoidHighways) {
-    params.set('avoid_highways', 'true')
+  if (query.avoidHighways !== undefined) {
+    params.set('avoid_highways', query.avoidHighways ? 'true' : 'false')
   }
 
   return fetchApi<AlongRouteResponse>(`/api/v1/stations/along-route?${params.toString()}`, init)

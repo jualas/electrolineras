@@ -71,8 +71,8 @@ export async function fetchChargingPlan(
   if (query.routePreference !== undefined) {
     params.set('route_preference', query.routePreference)
   }
-  if (query.avoidHighways) {
-    params.set('avoid_highways', 'true')
+  if (query.avoidHighways !== undefined) {
+    params.set('avoid_highways', query.avoidHighways ? 'true' : 'false')
   }
   if (query.vehiclePresetId) {
     params.set('vehicle_preset_id', query.vehiclePresetId)

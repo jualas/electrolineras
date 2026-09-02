@@ -73,8 +73,8 @@ export async function fetchTripAdviceFromCar(params: {
   if (params.routePreference) {
     query.set('route_preference', params.routePreference)
   }
-  if (params.avoidHighways) {
-    query.set('avoid_highways', 'true')
+  if (params.avoidHighways !== undefined) {
+    query.set('avoid_highways', params.avoidHighways ? 'true' : 'false')
   }
   if (params.departureSocPercent != null) {
     query.set('departure_soc_percent', String(params.departureSocPercent))
@@ -196,8 +196,8 @@ export async function fetchTripGuideFromCar(params: {
   if (params.routePreference) {
     query.set('route_preference', params.routePreference)
   }
-  if (params.avoidHighways) {
-    query.set('avoid_highways', 'true')
+  if (params.avoidHighways !== undefined) {
+    query.set('avoid_highways', params.avoidHighways ? 'true' : 'false')
   }
   if (params.departureSocPercent != null) {
     query.set('departure_soc_percent', String(params.departureSocPercent))
