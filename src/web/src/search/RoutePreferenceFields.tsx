@@ -20,8 +20,8 @@ export function RoutePreferenceFields({
 }: RoutePreferenceFieldsProps) {
   const fastestHint =
     variant === 'assistant'
-      ? 'Plan OSRM sin tráfico. Al abrir en Google Maps, Google aplica tráfico y cortes en vivo.'
-      : 'Plan OSRM sin tráfico; Google lo reinterpreta con tráfico al abrir la ruta.'
+      ? 'Plan OSRM sin tráfico (velocidad ajustada). Al abrir en Google Maps, Google aplica tráfico y cortes en vivo.'
+      : 'Plan OSRM sin tráfico (velocidad ajustada); Google lo reinterpreta con tráfico al abrir la ruta.'
 
   return (
     <fieldset className="route-preference" disabled={disabled}>

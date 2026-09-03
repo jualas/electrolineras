@@ -60,15 +60,47 @@ def test_select_osrm_route_shortest() -> None:
 
 
 def test_summarize_osrm_alternatives() -> None:
+    from api.config import settings
     from api.routing.osrm import summarize_osrm_alternatives
 
-    summary = summarize_osrm_alternatives(ROUTES, geodesic_km=GEODESIC_KM)
-    assert summary.geodesic_distance_km == GEODESIC_KM
-    assert summary.shortest_distance_km == 100.0
-    assert summary.fastest_distance_km == 120.0
-    assert summary.fastest_duration_minutes == 50.0
-    assert summary.shortest_duration_minutes == 60.0
-    assert summary.variants_approximate is True
+    original = settings.osrm_speed_factor
+    try:
+        settings.osrm_speed_factor = 1.0
+        summary = summarize_osrm_alternatives(ROUTES, geodesic_km=GEODESIC_KM)
+        assert summary.geodesic_distance_km == GEODESIC_KM
+        assert summary.shortest_distance_km == 100.0
+        assert summary.fastest_distance_km == 120.0
+        assert summary.fastest_duration_minutes == 50.0
+        assert summary.shortest_duration_minutes == 60.0
+        assert summary.variants_approximate is True
+    finally:
+        settings.osrm_speed_factor = original
+
+
+def test_osrm_speed_factor_scales_duration() -> None:
+    from api.config import settings
+    from api.routing.osrm import osrm_route_from_payload, scale_osrm_duration_s, summarize_osrm_alternatives
+
+    assert scale_osrm_duration_s(3600.0, speed_factor=1.0) == 3600.0
+    assert abs(scale_osrm_duration_s(3600.0, speed_factor=1.2) - 3000.0) < 1e-6
+    assert scale_osrm_duration_s(3600.0, speed_factor=0.5) == scale_osrm_duration_s(3600.0, speed_factor=0.85)
+
+    original = settings.osrm_speed_factor
+    try:
+        settings.osrm_speed_factor = 1.15
+        summary = summarize_osrm_alternatives(ROUTES, geodesic_km=GEODESIC_KM)
+        # 3000 s / 1.15 / 60 ≈ 43.5 min
+        assert summary.fastest_duration_minutes == 43.5
+        # 3600 s / 1.15 / 60 ≈ 52.2 min
+        assert summary.shortest_duration_minutes == 52.2
+        route = osrm_route_from_payload(
+            {"distance": 120_000, "duration": 3000, "geometry": {"coordinates": [[0, 0], [1, 1]]}},
+            route_preference="fastest",
+            avoid_highways=True,
+        )
+        assert abs(route.duration_s - 3000 / 1.15) < 1e-6
+    finally:
+        settings.osrm_speed_factor = original
 
 
 def test_select_osrm_route_conventional_with_exclude() -> None:

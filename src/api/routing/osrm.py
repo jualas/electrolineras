@@ -225,13 +225,38 @@ def select_osrm_route_payload(
     return min(routes, key=lambda route: float(route.get("distance", 0)))
 
 
+def resolved_osrm_speed_factor() -> float:
+    """Factor de velocidad sobre duración OSRM (#6153).
+
+    ``duration_ajustada = duration_osrm / factor``. Valores > 1 acortan tiempos
+    (OSRM Iberia suele ser ~15–25 % más lento que Google en autovía).
+    """
+    raw = float(settings.osrm_speed_factor)
+    if raw <= 0:
+        return 1.0
+    return max(0.85, min(1.5, raw))
+
+
+def scale_osrm_duration_s(duration_s: float, *, speed_factor: float | None = None) -> float:
+    """Aplica ``OSRM_SPEED_FACTOR`` a una duración en segundos."""
+    if speed_factor is None:
+        factor = resolved_osrm_speed_factor()
+    else:
+        raw = float(speed_factor)
+        if raw <= 0:
+            factor = 1.0
+        else:
+            factor = max(0.85, min(1.5, raw))
+    return float(duration_s) / factor
+
+
 def _metrics_from_payload(
     route: dict[str, Any],
     *,
     geodesic_km: float,
 ) -> tuple[float, float, float]:
     distance_km = round(float(route.get("distance", 0)) / 1000.0, 2)
-    duration_minutes = round(float(route.get("duration", 0)) / 60.0, 1)
+    duration_minutes = round(scale_osrm_duration_s(float(route.get("duration", 0))) / 60.0, 1)
     excess_km = _excess_km_vs_geodesic(distance_km, geodesic_km)
     return distance_km, duration_minutes, excess_km
 
@@ -295,7 +320,7 @@ def osrm_route_from_payload(
     return OsrmRoute(
         coordinates=coordinates,
         distance_m=float(route.get("distance", 0)),
-        duration_s=float(route.get("duration", 0)),
+        duration_s=scale_osrm_duration_s(float(route.get("duration", 0))),
         route_preference=route_preference,
         avoid_highways=avoid_highways,
     )

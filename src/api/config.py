@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # OSRM acepta alternatives=true|N (máx. 3 en backend Iberia). N>1 saca más corredores.
     osrm_fastest_alternatives_count: int = 3
     osrm_fastest_alternative_tolerance: float = 0.05
+    # Multiplica la velocidad efectiva OSRM (duration /= factor). >1 acerca tiempos a
+    # Google/autovía real; 1.0 = bruto OSM. Rango útil ~1.10–1.25 (#6153).
+    osrm_speed_factor: float = 1.15
 
     def osrm_shortest_url(self) -> str:
         return self.osrm_shortest_base_url.strip() or self.osrm_base_url

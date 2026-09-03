@@ -164,6 +164,11 @@ requiere API con tráfico (#6067).
 **Google Maps:** al exportar la ruta, Google aplica tráfico y cortes en vivo; el plan
 OSRM solo fija corredor y paradas de carga.
 
+**Factor de velocidad (#6153):** `OSRM_SPEED_FACTOR` (default `1.15`) divide la
+duración OSRM (`duration / factor`). Compensa que el perfil `car` Iberia suele ir
+~15–25 % más lento que Google en autovía libre. No cambia km ni geometría; afecta
+ETA, velocidad media y ventanas ~2 h de paradas. Rango clamp 0.85–1.5.
+
 ### Variables relacionadas (`.env`)
 
 | Variable | Default | Efecto |
@@ -173,6 +178,7 @@ OSRM solo fija corredor y paradas de carga.
 | `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza rutas «circulares» en modo shortest. |
 | `OSRM_USE_MULTI_PROFILE` | `true` en prod | Tres perfiles OSRM (`fastest` / `shortest` / `conventional`); convencionales con `exclude=motorway` en perfil propio. |
 | `OSRM_PROFILE_CONVENTIONAL` | `conventional` | Nombre del perfil Lua en OSRM self-hosted (`docker/osrm/`). |
+| `OSRM_SPEED_FACTOR` | `1.15` | Multiplica velocidad efectiva OSRM (`duration /= factor`). `1.0` = bruto OSM (#6153). |
 
 En la respuesta JSON, `route_variants_approximate=true` indica que alguna variante (típicamente convencional en OSRM público) no aplicó exclusiones estrictas. La UI muestra polilíneas de referencia **directa / rápida / convencional** (#6066).
 
