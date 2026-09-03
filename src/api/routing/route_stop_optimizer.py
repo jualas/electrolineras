@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from api.routing.charging_plan import (
     CHARGING_MIN_ARRIVAL_SOC_PCT,
+    FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT,
     MAX_DRIVING_LEG_MINUTES,
     MAX_PLANNED_ROUTE_STOPS,
     MIN_FORWARD_PROGRESS_KM,
@@ -30,6 +31,7 @@ from api.routing.charging_plan import (
     estimate_charge_minutes,
     estimate_charging_reach_km,
     estimate_range_km,
+    first_stop_comfort_matches,
     leg_distance_for_driving_minutes,
     min_leg_progress_fraction,
     origin_exclusion_radius_km,
@@ -290,9 +292,29 @@ def optimize_planned_route_stops(
     early_first_stop_warning = False
     charging_reach_km = estimate_charging_reach_km(profile)
 
-    def _has_reachable_first_stop(cands: list[_RouteCandidate]) -> bool:
+    def _reachable_first_arrivals(cands: list[_RouteCandidate]) -> list[float]:
         reach_end = origin_position_km + charging_reach_km
-        return any(origin_position_km < c.route_km <= reach_end + 1e-6 for c in cands)
+        arrivals: list[float] = []
+        for cand in cands:
+            if not (origin_position_km < cand.route_km <= reach_end + 1e-6):
+                continue
+            leg = _drive_and_arrival(
+                profile,
+                from_km=origin_position_km,
+                from_soc=profile.soc_percent,
+                to_km=cand.route_km,
+                avg_speed_kmh=avg_speed_kmh,
+                extra_minutes=cand.extra_minutes,
+            )
+            if leg is not None:
+                arrivals.append(leg[1])
+        return arrivals
+
+    def _needs_earlier_first_stop(cands: list[_RouteCandidate]) -> bool:
+        arrivals = _reachable_first_arrivals(cands)
+        if not arrivals:
+            return True
+        return min(arrivals) < FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT - 1e-6
 
     candidates = _reduce_corridor_candidates(
         matches,
@@ -300,7 +322,7 @@ def optimize_planned_route_stops(
         destination_km=destination_distance_km,
         origin_exclusion_km=origin_exclusion_km,
     )
-    if not _has_reachable_first_stop(candidates):
+    if _needs_earlier_first_stop(candidates):
         relaxed = relaxed_origin_exclusion_km(origin_exclusion_km)
         if relaxed < origin_exclusion_km - 1e-6:
             relaxed_cands = _reduce_corridor_candidates(
@@ -309,15 +331,41 @@ def optimize_planned_route_stops(
                 destination_km=destination_distance_km,
                 origin_exclusion_km=relaxed,
             )
-            if _has_reachable_first_stop(relaxed_cands):
+            comfort_matches = first_stop_comfort_matches(
+                [c.match for c in relaxed_cands],
+                current_route_km=origin_position_km,
+                profile=profile,
+            )
+            comfort_ids = {m.station.id for m in comfort_matches}
+            comfort_cands = [c for c in relaxed_cands if c.match.station.id in comfort_ids]
+            # Si hay 1.ª parada cómoda (≥20 %), ampliar ventana; el semillado 1.ª hop
+            # solo usa comfort_first_ids (Hellín, no Albacete al 6 %).
+            if comfort_cands:
                 candidates = relaxed_cands
                 origin_exclusion_km = relaxed
                 early_first_stop_warning = True
+            else:
+                old_arrivals = _reachable_first_arrivals(candidates)
+                new_arrivals = _reachable_first_arrivals(relaxed_cands)
+                if new_arrivals and (
+                    not old_arrivals or min(new_arrivals) > min(old_arrivals) + 1e-6
+                ):
+                    candidates = relaxed_cands
+                    origin_exclusion_km = relaxed
+                    early_first_stop_warning = True
     if not candidates:
         return None
 
     n = len(candidates)
     best: list[_NodeState | None] = [None] * n
+    comfort_first_ids = {
+        m.station.id
+        for m in first_stop_comfort_matches(
+            [c.match for c in candidates],
+            current_route_km=origin_position_km,
+            profile=profile,
+        )
+    }
 
     def _transition_cost(
         *,
@@ -335,6 +383,9 @@ def optimize_planned_route_stops(
 
     # Salida → primera parada
     for j, cand in enumerate(candidates):
+        if comfort_first_ids and cand.match.station.id not in comfort_first_ids:
+            # Hay alternativas cómodas: no sembrar 1.ª parada crítica (p. ej. Albacete al 6 %).
+            continue
         leg = _drive_and_arrival(
             profile,
             from_km=origin_position_km,
@@ -505,8 +556,8 @@ def optimize_planned_route_stops(
     warnings: list[str] = []
     if early_first_stop_warning:
         warnings.append(
-            "Primera parada anticipada: no hay cargador en el tramo ~2 h "
-            "alcanzable con tu SOC; se sugiere cargar antes."
+            "Primera parada anticipada: el tramo ~2 h dejaría poca batería al llegar; "
+            "se sugiere cargar antes."
         )
     planned: list[PlannedRouteStop] = []
     previous_km = origin_position_km

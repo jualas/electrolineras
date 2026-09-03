@@ -31,6 +31,8 @@ STRATEGY_BEST_VALUE = "best_value"
 
 # SOC mínimo al llegar a un cargador (llegar con 5 % = crítico pero alcanzable).
 CHARGING_MIN_ARRIVAL_SOC_PCT = 5.0
+# Si la 1.ª parada tras exclusión ~2 h llega por debajo, relajar (Hellín vs Albacete).
+FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT = 20.0
 
 
 @dataclass(frozen=True)
@@ -486,6 +488,26 @@ def relaxed_origin_exclusion_km(origin_exclusion_km: float) -> float:
     if origin_exclusion_km <= MIN_ORIGIN_SKIP_ABSOLUTE_KM + 1e-6:
         return 0.0
     return MIN_ORIGIN_SKIP_ABSOLUTE_KM
+
+
+def first_stop_comfort_matches(
+    matches: list[CorridorMatch],
+    *,
+    current_route_km: float,
+    profile: VehicleEnergyProfile,
+) -> list[CorridorMatch]:
+    """Candidatos de 1.ª parada con llegada ≥ confort (~20 %).
+
+    No usar min(llegadas) sobre la ventana ampliada: el crítico (Albacete) sigue dentro
+    y el min no mejora aunque exista Hellín cómodo.
+    """
+    comfort: list[CorridorMatch] = []
+    for match in matches:
+        leg_km = max(0.0, (match.route_position_m / 1000.0) - current_route_km)
+        arrival = soc_at_distance_km(profile, leg_km)
+        if arrival + 1e-6 >= FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT:
+            comfort.append(match)
+    return comfort
 
 
 def resolve_avg_speed_kmh(
@@ -961,6 +983,43 @@ def build_planned_route_stops_greedy(
                     warnings.append(
                         "Primera parada anticipada: no hay cargador en el tramo ~2 h "
                         "alcanzable con tu SOC; se sugiere cargar antes."
+                    )
+        elif (
+            segment_matches
+            and is_first_hop
+            and not allow_origin_zone
+            and origin_exclusion_km > MIN_ORIGIN_SKIP_ABSOLUTE_KM + 1e-6
+        ):
+            # Comfort: 1.ª parada en ventana ~2 h llegaría < 20 % → Hellín antes que Albacete.
+            window_arrivals = [
+                soc_at_distance_km(segment_profile, max(0.0, (m.route_position_m / 1000.0) - current_route_km))
+                for m in segment_matches
+            ]
+            if window_arrivals and min(window_arrivals) < FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT - 1e-6:
+                relaxed = relaxed_origin_exclusion_km(origin_exclusion_km)
+                relaxed_min = trip_start_route_km + relaxed
+                relaxed_matches = _filter_segment_matches(
+                    matches,
+                    segment_min_km=relaxed_min,
+                    segment_end_km=segment_end_km,
+                    used_station_ids=used_station_ids,
+                    current_route_km=current_route_km,
+                    trip_start_route_km=trip_start_route_km,
+                    origin_exclusion_km=relaxed,
+                )
+                comfort_matches = first_stop_comfort_matches(
+                    relaxed_matches,
+                    current_route_km=current_route_km,
+                    profile=segment_profile,
+                )
+                if comfort_matches:
+                    segment_matches = comfort_matches
+                    origin_exclusion_km = relaxed
+                    segment_min_km = max(0.0, relaxed_min - current_route_km)
+                    min_leg_km = segment_min_km
+                    warnings.append(
+                        "Primera parada anticipada: el tramo ~2 h dejaría poca batería "
+                        "al llegar; se sugiere cargar antes."
                     )
         if not segment_matches and allow_origin_zone:
             segment_matches = [

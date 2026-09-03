@@ -755,3 +755,53 @@ def test_fastest_relaxes_origin_exclusion_when_reach_window_empty() -> None:
     assert planned[0].distance_from_origin_km < 160.0
     assert any("anticipada" in w.lower() or "2 h" in w for w in warnings)
     assert projected is not None
+
+
+def test_first_stop_prefers_comfort_soc_over_two_hour_target() -> None:
+    """1.ª parada ~2 h al ~6 % SOC no debe ganar a Hellín (~25 %) más temprano.
+
+    Caso Ship→Riba: exclusión DGT deja Albacete (~198 km); Hellín (~128 km) está
+    dentro del alcance y llega con batería cómoda.
+    """
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=61,
+        usable_capacity_kwh=57.5,
+        consumption_wh_per_km=160.0,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        max_charge_power_kw=170,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    route_km = 503.0
+    route_duration = 375.0
+    positions = [128.0, 198.0, 302.0, 400.0]
+    matches = [
+        CorridorMatch(
+            station=sample_station(f"s{idx}", 38.0 + idx * 0.02, -1.0 + idx * 0.05, kw=150.0),
+            deviation_m=200,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for idx, km in enumerate(positions, start=1)
+    ]
+    planned, warnings, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=route_km,
+        profile=profile,
+        route_distance_km=route_km,
+        route_duration_minutes=route_duration,
+        route_preference="fastest",
+    )
+    assert len(planned) >= 1, f"expected stops, got {planned!r}; warnings={warnings}"
+    assert planned[0].station.id == "s1"
+    assert planned[0].distance_from_origin_km < 160.0
+    assert planned[0].soc_arrival_pct >= 20.0
+    assert any("anticipada" in w.lower() or "poca batería" in w.lower() for w in warnings)
+    assert projected is not None

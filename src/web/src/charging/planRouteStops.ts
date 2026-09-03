@@ -170,11 +170,10 @@ function pickStopsByRouteDistance(
 export function routeChargingStops(plan: ChargingPlanResponse): RouteChargingStop[] {
   const planned = plan.planned_stops ?? []
   if (planned.length > 0) {
-    const minKm = minDistanceFromOriginKm(plan)
-    if (minKm <= 0) {
-      return planned
-    }
-    return planned.filter((stop) => stop.route_distance_km >= minKm - 1e-6)
+    // El backend ya aplicó exclusión de origen / DGT. Filtrar aquí ocultaba la 1.ª
+    // parada (p. ej. Hellín ~128 km) y dejaba solo la 2.ª con un `leg_distance_km`
+    // relativo a la oculta — el timeline parecía «174 km desde el coche al 9 %».
+    return planned
   }
   if (plan.reachable_without_stop || plan.mode === 'emergency') {
     return []

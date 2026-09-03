@@ -4,6 +4,7 @@ import type { ChargingPlanResponse } from '../api/types'
 import {
   googleMapsRouteUrlFromPlan,
   haversineKm,
+  routeChargingStops,
   routeExportSpecForNextStop,
   routeExportSpecFromChargingPlan,
 } from './planRouteStops'
@@ -126,5 +127,55 @@ describe('export Google Maps con paradas de carga', () => {
     const km = haversineKm({ lat: 37.63, lon: -0.99 }, { lat: 37.79, lon: -3.61 })
     expect(km).toBeGreaterThan(200)
     expect(km).toBeLessThan(280)
+  })
+
+  it('no oculta planned_stops tempranas por exclusión UI (~2 h)', () => {
+    // Hellín ~128 km + Atlante ~302 km: la UI no debe tirar Hellín y dejar solo Atlante
+    // con leg 174 km dibujado desde el coche.
+    const plan = stubPlan({
+      vehicle: {
+        soc_percent: 61,
+        usable_capacity_kwh: 50,
+        consumption_wh_per_km: 122,
+      },
+      range_km: 208,
+      charging_reach_km: 229,
+      route_distance_km: 503,
+      route_duration_minutes: 374,
+      planned_stops: [
+        {
+          ...stubPlan().planned_stops![0],
+          order: 1,
+          route_distance_km: 128,
+          distance_from_origin_km: 128,
+          leg_distance_km: 128,
+          soc_arrival_pct: 30,
+          soc_departure_pct: 55,
+          station: {
+            ...stubPlan().planned_stops![0].station,
+            id: 'hellin',
+            site_name: 'Hellín, Spain',
+          },
+        },
+        {
+          ...stubPlan().planned_stops![1],
+          order: 2,
+          route_distance_km: 302,
+          distance_from_origin_km: 302,
+          leg_distance_km: 174,
+          soc_arrival_pct: 9,
+          soc_departure_pct: 78,
+          station: {
+            ...stubPlan().planned_stops![1].station,
+            id: 'atlante-fermin',
+            site_name: 'Atlante - Restaurante San Fermin',
+          },
+        },
+      ],
+    })
+    const stops = routeChargingStops(plan)
+    expect(stops).toHaveLength(2)
+    expect(stops[0].station.site_name).toContain('Hellín')
+    expect(stops[1].station.site_name).toContain('Atlante')
   })
 })
