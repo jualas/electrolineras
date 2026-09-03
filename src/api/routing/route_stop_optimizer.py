@@ -610,10 +610,8 @@ def optimize_planned_route_stops(
             trip_start_route_km=trip_start,
             origin_exclusion_km=origin_exclusion_km if order == 1 else 0.0,
         ):
-            warnings.append(
-                f"Parada {order} en km {cand.route_km:.0f} aporta poca energía; "
-                "incluida por optimización global de tiempo."
-            )
+            # #6154: no publicar micro-paradas «por tiempo global»; invalidar y usar greedy.
+            return None
         leg_driving = driving_minutes_for_distance(leg_km, avg_speed_kmh)
         if leg_driving > MAX_DRIVING_LEG_MINUTES + 5:
             warnings.append(

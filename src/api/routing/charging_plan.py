@@ -588,11 +588,16 @@ def _is_meaningful_charging_stop(
         return False
     if leg_distance_km + 1e-6 < min_leg_km * 0.5:
         return False
-    # Tramo ya cerca del objetivo de espaciado: válido aunque la carga sea corta.
+    soc_gain = departure_soc_pct - arrival_soc_pct
+    # Micro-parada (#6154 Totana/Cúllar): con batería no crítica, exigir ganancia ≥10 %.
+    # En HPC 5–8 min suelen ser solo +5 % SOC — no compensan el desvío.
+    if (
+        arrival_soc_pct + 1e-6 >= FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT
+        and soc_gain + 1e-6 < MIN_WORTHWHILE_SOC_GAIN_PCT
+    ):
+        return False
     if leg_distance_km + 1e-6 >= min_leg_km * MIN_LEG_ACCEPT_FRACTION:
         return True
-    # Tramo corto: solo si la recarga es sustancial (no bypass por 8 min).
-    soc_gain = departure_soc_pct - arrival_soc_pct
     return (
         charge_minutes >= MIN_WORTHWHILE_CHARGE_MINUTES
         and soc_gain >= MIN_WORTHWHILE_SOC_GAIN_PCT
@@ -612,9 +617,14 @@ def _is_worth_charging_stop(
     trip_start_soc_pct: float,
     avg_speed_kmh: float,
 ) -> bool:
-    """Descarta micro-paradas (#6098): alta llegada y poca ganancia de carga."""
-    # Si el tramo ya respeta el espaciado (~2 h), no aplicar filtros de micro-parada
-    # (en rutas lentas se llega al ~55 % y la carga óptima puede ser corta).
+    """Descarta micro-paradas (#6098, #6154): alta llegada y poca ganancia de carga."""
+    soc_gain = departure_soc_pct - arrival_soc_pct
+    if (
+        arrival_soc_pct + 1e-6 >= FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT
+        and soc_gain + 1e-6 < MIN_WORTHWHILE_SOC_GAIN_PCT
+    ):
+        return False
+
     if leg_distance_km + 1e-6 >= min_leg_km * MIN_LEG_ACCEPT_FRACTION:
         return _is_meaningful_charging_stop(
             arrival_soc_pct=arrival_soc_pct,
@@ -627,7 +637,6 @@ def _is_worth_charging_stop(
             origin_exclusion_km=origin_exclusion_km,
         )
 
-    soc_gain = departure_soc_pct - arrival_soc_pct
     if (
         arrival_soc_pct >= MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT
         and charge_minutes < MIN_WORTHWHILE_CHARGE_MINUTES
@@ -644,7 +653,6 @@ def _is_worth_charging_stop(
             leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES)
             * MIN_LEG_ACCEPT_FRACTION,
         )
-        # No empujar la 1.ª parada más allá de la ventana factible ≤3 h.
         first_leg_min_km = min(first_leg_min_km, max_leg_km * MIN_LEG_ACCEPT_FRACTION)
         from_start = stop_route_km - trip_start_route_km
         if from_start < first_leg_min_km and arrival_soc_pct > HIGH_ARRIVAL_MICRO_STOP_SOC_PCT:
@@ -791,7 +799,15 @@ def _optimal_departure_soc_for_stop(
     buffered = min(100.0, min_departure + DEPARTURE_SOC_BUFFER_PCT)
     sweet_spot_ceiling = _intermediate_charge_ceiling_pct(profile)
     departure = min(buffered, sweet_spot_ceiling)
-    return max(departure, arrival_soc_pct + 5.0)
+    departure = max(departure, arrival_soc_pct + 5.0)
+    # #6154: si paras con SOC no crítico, carga al menos +10 % (evita pinchazos de 5 min).
+    if arrival_soc_pct + 1e-6 >= FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT:
+        worthwhile_floor = min(
+            profile.max_charge_soc_pct,
+            arrival_soc_pct + MIN_WORTHWHILE_SOC_GAIN_PCT,
+        )
+        departure = max(departure, worthwhile_floor)
+    return min(departure, profile.max_charge_soc_pct)
 
 
 def _planned_stop_selection_key(

@@ -136,11 +136,37 @@ def test_is_worth_charging_stop_rejects_albacete_pattern() -> None:
         trip_start_soc_pct=100.0,
         avg_speed_kmh=90.0,
     )
-    # Tramo ya espaciado (~2 h): válido aunque la carga óptima sea corta.
-    assert _is_worth_charging_stop(
+    # #6154: tramo ~2 h NO valida micro-carga (+5–7 % SOC / ~5–8 min).
+    assert not _is_worth_charging_stop(
         arrival_soc_pct=55.0,
         departure_soc_pct=62.0,
         charge_minutes=8.0,
+        leg_distance_km=200.0,
+        min_leg_km=200.0,
+        stop_route_km=200.0,
+        trip_start_route_km=0.0,
+        origin_exclusion_km=180.0,
+        trip_start_soc_pct=100.0,
+        avg_speed_kmh=90.0,
+    )
+    # Llegada crítica: sí permitir ganancia pequeña para no quedarse tirado.
+    assert _is_worth_charging_stop(
+        arrival_soc_pct=12.0,
+        departure_soc_pct=22.0,
+        charge_minutes=8.0,
+        leg_distance_km=200.0,
+        min_leg_km=200.0,
+        stop_route_km=200.0,
+        trip_start_route_km=0.0,
+        origin_exclusion_km=180.0,
+        trip_start_soc_pct=60.0,
+        avg_speed_kmh=90.0,
+    )
+    # Tras suelo +10 % SOC, la parada intermedia sí es válida.
+    assert _is_worth_charging_stop(
+        arrival_soc_pct=52.0,
+        departure_soc_pct=62.0,
+        charge_minutes=10.0,
         leg_distance_km=200.0,
         min_leg_km=200.0,
         stop_route_km=200.0,

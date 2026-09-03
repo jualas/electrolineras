@@ -805,3 +805,21 @@ def test_first_stop_prefers_comfort_soc_over_two_hour_target() -> None:
     assert planned[0].soc_arrival_pct >= 20.0
     assert any("anticipada" in w.lower() or "poca batería" in w.lower() for w in warnings)
     assert projected is not None
+
+
+def test_spaced_leg_rejects_micro_soc_gain() -> None:
+    """#6154: tramo ~2 h con +5 % SOC (Totana/Cúllar ~5 min) no es parada útil."""
+    from api.routing.charging_plan import _is_worth_charging_stop
+
+    assert not _is_worth_charging_stop(
+        arrival_soc_pct=56.6,
+        departure_soc_pct=61.6,
+        charge_minutes=6.0,
+        leg_distance_km=156.0,
+        min_leg_km=120.0,
+        stop_route_km=156.0,
+        trip_start_route_km=0.0,
+        origin_exclusion_km=100.0,
+        trip_start_soc_pct=100.0,
+        avg_speed_kmh=56.0,
+    )
