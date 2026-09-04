@@ -101,6 +101,7 @@ def _build_telemetry(car_id: int, values: dict[str, str]) -> VehicleTelemetry:
         inside_temp_c=float(inside_raw) if inside_raw is not None else None,
         outside_temp_c=float(outside_raw) if outside_raw is not None else None,
         odometer_km=float(odometer_raw) if odometer_raw is not None else None,
+        efficiency_kwh_per_km=None,
         source="teslamate-mqtt",
     )
 

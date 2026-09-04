@@ -44,6 +44,8 @@ class VehicleTelemetry:
     inside_temp_c: float | None = None
     outside_temp_c: float | None = None
     odometer_km: float | None = None
+    """kWh/km histórico TeslaMate (`cars.efficiency`); None si no está configurado."""
+    efficiency_kwh_per_km: float | None = None
     source: str = "teslamateapi"
 
 
@@ -124,6 +126,8 @@ def _parse_status(car_id: int, payload: dict[str, Any]) -> VehicleTelemetry:
         inside_temp_c=_as_float(status.get("inside_temp")),
         outside_temp_c=_as_float(status.get("outside_temp")),
         odometer_km=_as_float(status.get("odometer")),
+        efficiency_kwh_per_km=_as_float(status.get("efficiency")),
+        source="teslamateapi",
     )
 
 

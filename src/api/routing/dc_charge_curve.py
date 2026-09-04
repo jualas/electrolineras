@@ -31,7 +31,7 @@ def _profiles_by_id() -> dict[str, DcChargeProfile]:
         "tesla-model3-sr-2023": DcChargeProfile(
             id="tesla-model3-sr-2023",
             peak_dc_kw=170.0,
-            usable_capacity_kwh=57.0,
+            usable_capacity_kwh=57.5,
             taper_start_soc=42.0,
             taper_mid_soc=78.0,
             ramp_end_soc=22.0,

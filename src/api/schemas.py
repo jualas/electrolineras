@@ -279,6 +279,7 @@ class VehicleTelemetryResult(BaseModel):
     inside_temp_c: float | None = None
     outside_temp_c: float | None = None
     odometer_km: float | None = None
+    efficiency_kwh_per_km: float | None = None
     source: str = "teslamateapi"
 
 

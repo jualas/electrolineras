@@ -330,6 +330,8 @@ export type VehicleTelemetryResult = {
   inside_temp_c?: number | null
   outside_temp_c?: number | null
   odometer_km?: number | null
+  /** kWh/km histórico TeslaMate (cars.efficiency), si la API lo expone. */
+  efficiency_kwh_per_km?: number | null
   source?: string
 }
 

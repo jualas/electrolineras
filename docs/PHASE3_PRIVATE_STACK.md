@@ -97,7 +97,12 @@ TESLAMATE_MQTT_PORT=1883
 TESLAMATE_MQTT_USERNAME=jualas
 TESLAMATE_MQTT_PASSWORD=<igual que MQTT_PASSWORD en teslamate/.env>
 TESLAMATE_MQTT_TOPIC_PREFIX=teslamate/cars
+# Consumo y capacidad reales (The Ship: cars.efficiency + cargas)
+TESLAMATE_EFFICIENCY_KWH_PER_KM=0.13733
+TESLAMATE_USABLE_CAPACITY_KWH=57.5
 ```
+
+`TESLAMATE_EFFICIENCY_KWH_PER_KM` es el valor de `cars.efficiency` en PostgreSQL TeslaMate (kWh/km → ×1000 = Wh/km). El planificador `trip-*-from-car` lo usa como consumo base; el campo REVE `consumption_kwh_per_100km` solo lo sobrescribe si el usuario lo rellena a mano.
 
 Probar broker:
 

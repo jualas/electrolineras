@@ -59,6 +59,7 @@ def _telemetry_to_schema(telemetry: VehicleTelemetry) -> VehicleTelemetryResult:
         inside_temp_c=telemetry.inside_temp_c,
         outside_temp_c=telemetry.outside_temp_c,
         odometer_km=telemetry.odometer_km,
+        efficiency_kwh_per_km=telemetry.efficiency_kwh_per_km,
         source=telemetry.source,
     )
 

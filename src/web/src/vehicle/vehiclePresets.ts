@@ -38,7 +38,7 @@ function preset(
 }
 
 export const VEHICLE_PRESETS: VehiclePresetDefinition[] = [
-  preset('tesla-model3-sr-2023', 'Tesla Model 3 SR (2023)', 'Tesla', 'Model 3 Standard Range', 57, 420, 170),
+  preset('tesla-model3-sr-2023', 'Tesla Model 3 SR (2023)', 'Tesla', 'Model 3 Standard Range', 57.5, 410, 170),
   preset('tesla-model-y-lr', 'Tesla Model Y LR', 'Tesla', 'Model Y Long Range', 75, 533, 250),
   preset('vw-id3-pro', 'VW ID.3 Pro', 'Volkswagen', 'ID.3 Pro', 58, 426, 125),
   preset('hyundai-kona-64', 'Hyundai Kona Electric 64 kWh', 'Hyundai', 'Kona Electric', 64, 484, 100),

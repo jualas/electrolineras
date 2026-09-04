@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from api.config import settings
 from api.integrations.teslamate import TeslaMateError, VehicleTelemetry
 from api.routing.dc_charge_curve import GENERIC_DC_PROFILE, resolve_dc_profile
+
+# Model 3 SR+ (trim 50): pack ~60 kWh brutos; útil medido en cargas TeslaMate ~57.5 kWh.
+MODEL_3_SR_USABLE_KWH = 57.5
+MODEL_3_LR_USABLE_KWH = 75.0
+MODEL_Y_LR_USABLE_KWH = 75.0
 
 
 def nominal_range_km(telemetry: VehicleTelemetry) -> float | None:
@@ -10,7 +16,7 @@ def nominal_range_km(telemetry: VehicleTelemetry) -> float | None:
     TeslaMate publica `rated_battery_range_km` a la autonomía del SOC actual (modo
     «Rated» del cuadro), no normalizada al 100 %. Se divide por el SOC actual para
     obtener la autonomía al 100 % que asumen `current_range_from_nominal`,
-    `planning_range_km` y el consumo derivado en `vehicle_energy_from_telemetry`.
+    `planning_range_km` y el fallback de consumo si no hay efficiency TeslaMate.
     Al depender del SOC en vivo, la autonomía nominal se ajusta sola si la batería
     pierde capacidad con el tiempo, en vez de quedar fija a un valor de preset.
     """
@@ -30,6 +36,20 @@ def current_range_from_nominal(telemetry: VehicleTelemetry) -> float | None:
     return rated * soc / 100.0
 
 
+def resolve_telemetry_efficiency_kwh_per_km(
+    telemetry: VehicleTelemetry | None = None,
+) -> float | None:
+    """Consumo real TeslaMate (kWh/km), p. ej. cars.efficiency = 0.13733."""
+    if telemetry is not None and telemetry.efficiency_kwh_per_km is not None:
+        eff = float(telemetry.efficiency_kwh_per_km)
+        if eff > 0:
+            return eff
+    configured = settings.teslamate_efficiency_kwh_per_km
+    if configured is not None and configured > 0:
+        return float(configured)
+    return None
+
+
 def resolve_telemetry_capacity_kwh(
     *,
     vehicle_preset_id: str | None = None,
@@ -38,6 +58,9 @@ def resolve_telemetry_capacity_kwh(
 ) -> float:
     if usable_capacity_kwh is not None and usable_capacity_kwh > 0:
         return usable_capacity_kwh
+    configured = settings.teslamate_usable_capacity_kwh
+    if configured is not None and configured > 0:
+        return float(configured)
     if telemetry is not None:
         from_telemetry = _capacity_kwh_from_telemetry_model(telemetry)
         if from_telemetry is not None:
@@ -48,18 +71,24 @@ def resolve_telemetry_capacity_kwh(
 
 
 def _capacity_kwh_from_telemetry_model(telemetry: VehicleTelemetry) -> float | None:
-    """Capacidad útil aproximada según modelo TeslaMate (p. ej. Model 3 50)."""
+    """Capacidad útil según modelo TeslaMate (SR+ trim 50 → 57.5 kWh, no el badging)."""
     label = (telemetry.car_model_label or "").lower()
     trim = (telemetry.trim_badging or "").lower()
     model = (telemetry.model or "").strip()
     if model == "3" or "model 3" in label:
-        if "50" in label or trim in {"50", "sr", "standard", "standard range"}:
-            return 50.0
-        if "lr" in label or "long" in label or trim in {"long range", "lr"}:
-            return 75.0
+        if "lr" in label or "long" in label or trim in {"long range", "lr", "74", "75", "82"}:
+            return MODEL_3_LR_USABLE_KWH
+        if (
+            "50" in label
+            or "sr" in label
+            or trim in {"50", "sr", "sr+", "standard", "standard range"}
+        ):
+            return MODEL_3_SR_USABLE_KWH
+        # Model 3 sin trim: asumir SR+ (The Ship)
+        return MODEL_3_SR_USABLE_KWH
     if model == "y" or "model y" in label:
         if "lr" in label or "long" in label:
-            return 75.0
+            return MODEL_Y_LR_USABLE_KWH
     return None
 
 
@@ -72,7 +101,10 @@ def vehicle_energy_from_telemetry(
     usable_capacity_kwh: float | None = None,
 ) -> tuple[float, float, float, float]:
     """
-    Perfil de energía desde autonomía nominal TeslaMate (rated_battery_range_km).
+    Perfil de energía desde TeslaMate.
+
+    Consumo: prioriza `cars.efficiency` (kWh/km) vía telemetría/settings.
+    Fallback: capacidad útil ÷ autonomía rated al 100 % (coherente con el cuadro).
 
     No usa est_battery_range_km: en MQTT puede divergir del valor nominal del cuadro.
     `departure_soc_percent` simula carga previa a la salida (p. ej. cargar en casa).
@@ -91,8 +123,12 @@ def vehicle_energy_from_telemetry(
         usable_capacity_kwh=usable_capacity_kwh,
         telemetry=telemetry,
     )
-    # Consumo coherente con capacidad útil y autonomía nominal TeslaMate al 100 %
-    consumption_wh_per_km = (capacity * 1000.0 / rated_km) * terrain
+    efficiency = resolve_telemetry_efficiency_kwh_per_km(telemetry)
+    if efficiency is not None:
+        consumption_wh_per_km = efficiency * 1000.0 * terrain
+    else:
+        # Fallback: coherente con capacidad útil y autonomía nominal TeslaMate al 100 %
+        consumption_wh_per_km = (capacity * 1000.0 / rated_km) * terrain
     return soc, capacity, consumption_wh_per_km, reserve_soc_percent
 
 

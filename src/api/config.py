@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     teslamate_mqtt_password: str = ""
     teslamate_mqtt_topic_prefix: str = "teslamate/cars"
     teslamate_mqtt_timeout_seconds: float = 3.0
+    # Consumo / capacidad reales TeslaMate (cars.efficiency, cargas → kWh útiles).
+    # Si están: se deriva capacidad/rated. Ver docs PHASE3 / INTEGRACION_APPS.
+    teslamate_efficiency_kwh_per_km: float | None = None
+    teslamate_usable_capacity_kwh: float | None = None
+
     dify_api_base_url: str = ""
     dify_trip_workflow_api_key: str = ""
     dify_timeout_seconds: float = 90.0
