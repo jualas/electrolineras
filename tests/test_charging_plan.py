@@ -823,3 +823,60 @@ def test_spaced_leg_rejects_micro_soc_gain() -> None:
         trip_start_soc_pct=100.0,
         avg_speed_kmh=56.0,
     )
+
+
+def test_after_early_first_stop_relaxes_spacing_to_fill_gap() -> None:
+    """#6156 — Ship→Puerto Urraco directa: 1.ª anticipada no debe dejar solo Lorca.
+
+    Comfort elige ~70 km; el mínimo ~2 h salta Cúllar (~156 km) y el alcance post-carga
+    no llega a Linares (~280 km). Relajar espaciado debe incluir Cúllar (≥2 paradas).
+    """
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=55,
+        usable_capacity_kwh=57.5,
+        consumption_wh_per_km=160.0,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        max_charge_power_kw=170,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    # ~60 km/h (directa lenta): target ~2 h ≈ 135 km → carga intermedia ~50 %;
+    # con eso el mínimo ~2 h salta Cúllar y no alcanza Linares (caso prod).
+    route_km = 480.0
+    route_duration = 480.0
+    stations = [
+        ("lorca", 70.0, 50.0),
+        ("cullar", 156.0, 250.0),
+        ("linares", 280.0, 150.0),
+        ("andujar", 340.0, 150.0),
+        ("pozoblanco", 410.0, 50.0),
+    ]
+    matches = [
+        CorridorMatch(
+            station=sample_station(sid, 37.5 + i * 0.1, -1.0 - i * 0.2, kw=kw),
+            deviation_m=250,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for i, (sid, km, kw) in enumerate(stations)
+    ]
+    planned, warnings, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=route_km,
+        profile=profile,
+        route_distance_km=route_km,
+        route_duration_minutes=route_duration,
+        route_preference="shortest",
+    )
+    assert len(planned) >= 2, f"expected ≥2 stops, got {planned!r}; warnings={warnings}"
+    assert planned[0].station.id == "lorca"
+    assert any(s.station.id == "cullar" for s in planned)
+    assert projected is not None and projected > 0
+    assert any("intermedia más cercana" in w.lower() or "hueco" in w.lower() for w in warnings)

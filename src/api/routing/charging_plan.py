@@ -1061,6 +1061,30 @@ def build_planned_route_stops_greedy(
                     "Parada más lejana: no hay cargadores en el tramo ideal ~2–3 h; "
                     "revisa corredor o filtros kW."
                 )
+        if not segment_matches and not is_first_hop:
+            # #6156 — tras 1.ª anticipada (p. ej. Lorca), el mínimo ~2 h salta Cúllar y
+            # el alcance no llega a Linares/Úbeda. Relajar espaciado dentro del alcance.
+            gap_relaxed_min = current_route_km + max(
+                MIN_FORWARD_PROGRESS_KM,
+                target_leg_km * 0.4,
+            )
+            gap_matches = _filter_segment_matches(
+                matches,
+                segment_min_km=gap_relaxed_min,
+                segment_end_km=segment_end_km,
+                used_station_ids=used_station_ids,
+                current_route_km=current_route_km,
+                trip_start_route_km=trip_start_route_km,
+                origin_exclusion_km=0.0,
+            )
+            if gap_matches:
+                segment_matches = gap_matches
+                segment_min_km = gap_relaxed_min
+                min_leg_km = max(0.0, gap_relaxed_min - current_route_km)
+                warnings.append(
+                    "Parada intermedia más cercana: el espaciado ~2 h dejaría un hueco "
+                    "sin cargador alcanzable; se sugiere cargar antes."
+                )
         if not segment_matches:
             warnings.append(
                 f"No hay cargador alcanzable en el tramo ~{current_route_km:.0f}–{segment_end_km:.0f} km "
