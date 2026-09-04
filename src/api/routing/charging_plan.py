@@ -426,6 +426,8 @@ MIN_WORTHWHILE_SOC_GAIN_PCT = 10.0
 HIGH_ARRIVAL_MICRO_STOP_SOC_PCT = 45.0
 MICRO_STOP_SHORT_CHARGE_ARRIVAL_SOC_PCT = 44.0
 MIN_FORWARD_PROGRESS_KM = 5.0
+# Con SOC ≤10 % permitir 1.ª parada a pocos metros/km del origen (#6157).
+ORIGIN_ZONE_MIN_FORWARD_KM = 0.3
 DEVIATION_PENALTY_KM_BUCKET = 5.0
 MIN_LEG_PROGRESS_FRACTION = 0.85
 HIGHWAY_MIN_LEG_PROGRESS_FRACTION = 0.90
@@ -455,7 +457,8 @@ def asymmetric_distance_to_target_km(stop_km: float, target_stop_km: float) -> f
 
 
 def allows_origin_zone_charging(trip_start_soc_pct: float) -> bool:
-    return trip_start_soc_pct < ORIGIN_CHARGE_SOC_THRESHOLD_PCT
+    """True si conviene cargar junto a la salida (SOC ≤ umbral, p. ej. 10 %)."""
+    return trip_start_soc_pct <= ORIGIN_CHARGE_SOC_THRESHOLD_PCT + 1e-6
 
 
 def origin_exclusion_radius_km(
@@ -465,7 +468,7 @@ def origin_exclusion_radius_km(
     charging_reach_km: float | None = None,
     max_leg_km: float | None = None,
 ) -> float:
-    """Distancia mínima desde la salida antes de la 1.ª parada (≈2 h DGT si SOC ≥10 %)."""
+    """Distancia mínima desde la salida antes de la 1.ª parada (≈2 h DGT si SOC >10 %)."""
     if allows_origin_zone_charging(trip_start_soc_pct):
         return 0.0
     exclusion = max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, target_leg_km * MIN_LEG_ACCEPT_FRACTION)
@@ -557,6 +560,10 @@ def _segment_min_route_km(
     from_trip_start = current_route_km - trip_start_route_km
     progress_fraction = min_leg_progress_fraction(route_preference)
 
+    # #6157 — SOC ≤10 %: no exigir ~15–2 h; la 1.ª parada debe poder ser el cargador de salida.
+    if allows_origin_zone_charging(trip_start_soc) and from_trip_start < 1.0:
+        return trip_start_route_km + ORIGIN_ZONE_MIN_FORWARD_KM
+
     if exclusion_km > 0 and from_trip_start < 1.0:
         return trip_start_route_km + exclusion_km
 
@@ -583,10 +590,12 @@ def _is_meaningful_charging_stop(
     stop_route_km: float,
     trip_start_route_km: float,
     origin_exclusion_km: float,
+    allow_short_origin_leg: bool = False,
 ) -> bool:
     if origin_exclusion_km > 0 and (stop_route_km - trip_start_route_km) < origin_exclusion_km - 1e-6:
         return False
-    if leg_distance_km + 1e-6 < min_leg_km * 0.5:
+    # #6157: con SOC ≤10 % la 1.ª parada puede estar a pocos km de la salida.
+    if not allow_short_origin_leg and leg_distance_km + 1e-6 < min_leg_km * 0.5:
         return False
     soc_gain = departure_soc_pct - arrival_soc_pct
     # Micro-parada (#6154 Totana/Cúllar): con batería no crítica, exigir ganancia ≥10 %.
@@ -619,11 +628,19 @@ def _is_worth_charging_stop(
 ) -> bool:
     """Descarta micro-paradas (#6098, #6154): alta llegada y poca ganancia de carga."""
     soc_gain = departure_soc_pct - arrival_soc_pct
+    allow_short_origin_leg = allows_origin_zone_charging(trip_start_soc_pct)
     if (
         arrival_soc_pct + 1e-6 >= FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT
         and soc_gain + 1e-6 < MIN_WORTHWHILE_SOC_GAIN_PCT
     ):
         return False
+
+    if allow_short_origin_leg and leg_distance_km + 1e-6 >= ORIGIN_ZONE_MIN_FORWARD_KM:
+        # Carga de emergencia cerca del origen: basta una ganancia útil.
+        if soc_gain + 1e-6 >= MIN_WORTHWHILE_SOC_GAIN_PCT or (
+            charge_minutes + 1e-6 >= MIN_WORTHWHILE_CHARGE_MINUTES
+        ):
+            return True
 
     if leg_distance_km + 1e-6 >= min_leg_km * MIN_LEG_ACCEPT_FRACTION:
         return _is_meaningful_charging_stop(
@@ -635,6 +652,7 @@ def _is_worth_charging_stop(
             stop_route_km=stop_route_km,
             trip_start_route_km=trip_start_route_km,
             origin_exclusion_km=origin_exclusion_km,
+            allow_short_origin_leg=allow_short_origin_leg,
         )
 
     if (
@@ -666,6 +684,7 @@ def _is_worth_charging_stop(
         stop_route_km=stop_route_km,
         trip_start_route_km=trip_start_route_km,
         origin_exclusion_km=origin_exclusion_km,
+        allow_short_origin_leg=allow_short_origin_leg,
     )
 
 
@@ -1044,6 +1063,12 @@ def build_planned_route_stops_greedy(
                 if match.station.id not in used_station_ids
                 and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
             ]
+            if segment_matches and is_first_hop:
+                segment_min_km = current_route_km + ORIGIN_ZONE_MIN_FORWARD_KM
+                min_leg_km = ORIGIN_ZONE_MIN_FORWARD_KM
+                warnings.append(
+                    "SOC bajo al salir: se sugiere cargar cerca del origen antes de continuar."
+                )
         if not segment_matches and remaining_km > max_leg_km + 1e-6:
             expanded_end_km = current_route_km + min(charging_reach_km, remaining_km)
             segment_matches = _filter_segment_matches(
@@ -1110,10 +1135,15 @@ def build_planned_route_stops_greedy(
             )
             break
 
+        forward_min_km = (
+            ORIGIN_ZONE_MIN_FORWARD_KM
+            if allow_origin_zone and is_first_hop
+            else MIN_FORWARD_PROGRESS_KM
+        )
         forward_viable = [
             stop
             for stop in viable
-            if stop.route_distance_km > current_route_km + MIN_FORWARD_PROGRESS_KM - 1e-6
+            if stop.route_distance_km > current_route_km + forward_min_km - 1e-6
             and stop.route_distance_km >= segment_min_km - 1e-6
         ]
         if forward_viable:

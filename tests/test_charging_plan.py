@@ -880,3 +880,66 @@ def test_after_early_first_stop_relaxes_spacing_to_fill_gap() -> None:
     assert any(s.station.id == "cullar" for s in planned)
     assert projected is not None and projected > 0
     assert any("intermedia más cercana" in w.lower() or "hueco" in w.lower() for w in warnings)
+
+
+def test_allows_origin_zone_at_exactly_ten_percent() -> None:
+    """#6157 — SOC 10 % cuenta como zona origen (umbral inclusivo)."""
+    from api.routing.charging_plan import allows_origin_zone_charging, origin_exclusion_radius_km
+
+    assert allows_origin_zone_charging(10.0)
+    assert allows_origin_zone_charging(9.0)
+    assert not allows_origin_zone_charging(10.1)
+    assert origin_exclusion_radius_km(180.0, 10.0, charging_reach_km=18.0, max_leg_km=200.0) == 0.0
+
+
+def test_soc_ten_percent_plans_near_origin_then_continues() -> None:
+    """#6157 — con SOC 10 % el plan debe incluir carga cerca de la salida y seguir.
+
+    Antes el mínimo de tramo (~15–17 km) dejaba ventana [17, 18] vacía y planned_stops=[].
+    """
+    from api.routing.charging_plan import build_planned_route_stops
+
+    profile = VehicleEnergyProfile(
+        soc_percent=10,
+        usable_capacity_kwh=57.5,
+        consumption_wh_per_km=160.0,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        max_charge_power_kw=170,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    route_km = 480.0
+    route_duration = 480.0
+    stations = [
+        ("origin_dc", 4.0, 150.0),
+        ("mid_a", 160.0, 250.0),
+        ("mid_b", 300.0, 150.0),
+        ("late", 410.0, 100.0),
+    ]
+    matches = [
+        CorridorMatch(
+            station=sample_station(sid, 37.5 + i * 0.1, -1.0 - i * 0.2, kw=kw),
+            deviation_m=200,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for i, (sid, km, kw) in enumerate(stations)
+    ]
+    planned, warnings, projected = build_planned_route_stops(
+        matches,
+        origin_position_km=0.0,
+        destination_distance_km=route_km,
+        profile=profile,
+        route_distance_km=route_km,
+        route_duration_minutes=route_duration,
+        route_preference="shortest",
+    )
+    assert len(planned) >= 2, f"expected ≥2 stops, got {planned!r}; warnings={warnings}"
+    assert planned[0].station.id == "origin_dc"
+    assert planned[0].distance_from_origin_km < 20.0
+    assert planned[0].soc_departure_pct >= 40.0
+    assert projected is not None and projected > 0

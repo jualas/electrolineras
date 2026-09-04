@@ -16,6 +16,7 @@ from api.routing.charging_plan import (
     MAX_PLANNED_ROUTE_STOPS,
     MIN_FORWARD_PROGRESS_KM,
     MIN_ORIGIN_SKIP_ABSOLUTE_KM,
+    ORIGIN_ZONE_MIN_FORWARD_KM,
     PREFERRED_ON_ROUTE_TIME_BONUS_MIN,
     TARGET_DRIVING_LEG_MINUTES,
     PlannedRouteStop,
@@ -26,6 +27,7 @@ from api.routing.charging_plan import (
     _optimal_departure_soc_for_stop,
     _profile_at_soc,
     _stop_from_corridor_match,
+    allows_origin_zone_charging,
     clamp_display_soc_pct,
     driving_minutes_for_distance,
     estimate_charge_minutes,
@@ -74,12 +76,13 @@ def _reduce_corridor_candidates(
     origin_route_km: float,
     destination_km: float,
     origin_exclusion_km: float,
+    min_forward_km: float = MIN_FORWARD_PROGRESS_KM,
 ) -> list[_RouteCandidate]:
     """Mantiene los mejores cargadores por bin espacial (~35 km)."""
     bins: dict[int, list[CorridorMatch]] = {}
     for match in matches:
         km = _route_km(match)
-        if km <= origin_route_km + MIN_FORWARD_PROGRESS_KM:
+        if km <= origin_route_km + min_forward_km:
             continue
         if km >= destination_km - 5.0:
             continue
@@ -291,6 +294,8 @@ def optimize_planned_route_stops(
 
     early_first_stop_warning = False
     charging_reach_km = estimate_charging_reach_km(profile)
+    origin_zone = allows_origin_zone_charging(profile.soc_percent)
+    min_forward_km = ORIGIN_ZONE_MIN_FORWARD_KM if origin_zone else MIN_FORWARD_PROGRESS_KM
 
     def _reachable_first_arrivals(cands: list[_RouteCandidate]) -> list[float]:
         reach_end = origin_position_km + charging_reach_km
@@ -321,6 +326,7 @@ def optimize_planned_route_stops(
         origin_route_km=origin_position_km,
         destination_km=destination_distance_km,
         origin_exclusion_km=origin_exclusion_km,
+        min_forward_km=min_forward_km,
     )
     if _needs_earlier_first_stop(candidates):
         relaxed = relaxed_origin_exclusion_km(origin_exclusion_km)
@@ -330,6 +336,7 @@ def optimize_planned_route_stops(
                 origin_route_km=origin_position_km,
                 destination_km=destination_distance_km,
                 origin_exclusion_km=relaxed,
+                min_forward_km=min_forward_km,
             )
             comfort_matches = first_stop_comfort_matches(
                 [c.match for c in relaxed_cands],
@@ -422,10 +429,15 @@ def optimize_planned_route_stops(
             avg_speed_kmh=avg_speed_kmh,
             route_preference=route_preference,
         ):
-            # Con exclusión relajada (#6151) aceptar 1.ª parada alcanzable aunque sea < ~2 h.
+            # Con exclusión relajada (#6151) o SOC≤10 % (#6157) aceptar 1.ª parada alcanzable.
+            origin_zone = allows_origin_zone_charging(profile.soc_percent)
             if not (
-                early_first_stop_warning
-                and leg_km + 1e-6 >= max(MIN_ORIGIN_SKIP_ABSOLUTE_KM, origin_exclusion_km)
+                (early_first_stop_warning or origin_zone)
+                and leg_km + 1e-6
+                >= max(
+                    ORIGIN_ZONE_MIN_FORWARD_KM if origin_zone else MIN_ORIGIN_SKIP_ABSOLUTE_KM,
+                    origin_exclusion_km,
+                )
             ):
                 continue
         best[j] = _NodeState(
