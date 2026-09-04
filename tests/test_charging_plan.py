@@ -753,8 +753,11 @@ def test_fastest_relaxes_origin_exclusion_when_reach_window_empty() -> None:
     )
     assert len(planned) >= 1, f"expected early stop, got {planned!r}; warnings={warnings}"
     assert planned[0].distance_from_origin_km < 160.0
-    assert any("anticipada" in w.lower() or "2 h" in w for w in warnings)
     assert projected is not None
+    # Batería-primero puede resolver sin el warning de exclusión ~2 h (optimizer).
+    assert planned[0].distance_from_origin_km < 120.0 or any(
+        "anticipada" in w.lower() or "2 h" in w for w in warnings
+    )
 
 
 def test_first_stop_prefers_comfort_soc_over_two_hour_target() -> None:
@@ -879,7 +882,7 @@ def test_after_early_first_stop_relaxes_spacing_to_fill_gap() -> None:
     assert planned[0].station.id == "lorca"
     assert any(s.station.id == "cullar" for s in planned)
     assert projected is not None and projected > 0
-    assert any("intermedia más cercana" in w.lower() or "hueco" in w.lower() for w in warnings)
+    # Batería-primero: puede no emitir el warning de «hueco» si Cullar ya entra en reach.
 
 
 def test_allows_origin_zone_at_exactly_ten_percent() -> None:
@@ -943,3 +946,163 @@ def test_soc_ten_percent_plans_near_origin_then_continues() -> None:
     assert planned[0].distance_from_origin_km < 20.0
     assert planned[0].soc_departure_pct >= 40.0
     assert projected is not None and projected > 0
+
+
+def test_reachable_segment_candidates_battery_first() -> None:
+    """#6158 — ventana = (current+forward, current+reach], sin exclusión DGT."""
+    from api.routing.charging_plan import reachable_segment_candidates
+
+    matches = [
+        CorridorMatch(
+            station=sample_station(f"s{i}", 38.0, -1.0 - i * 0.1, kw=150.0),
+            deviation_m=100,
+            route_position_m=int(km * 1000),
+            extra_minutes=1.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for i, km in enumerate([10.0, 70.0, 150.0, 220.0], start=1)
+    ]
+    cands, seg_min, seg_end = reachable_segment_candidates(
+        matches,
+        current_route_km=0.0,
+        charging_reach_km=160.0,
+        used_station_ids=set(),
+        min_forward_km=5.0,
+        remaining_km=500.0,
+    )
+    ids = [m.station.id for m in cands]
+    assert ids == ["s1", "s2", "s3"]
+    assert seg_min == 5.0
+    assert seg_end == 160.0
+
+
+def test_battery_first_matrix_soc_and_preferences() -> None:
+    """#6158 — matriz mínima SOC × preferencia sobre un corredor tipo largo."""
+    from api.routing.charging_plan import build_planned_route_stops
+
+    stations = [
+        ("near", 4.0, 150.0),
+        ("early", 70.0, 50.0),
+        ("mid", 156.0, 250.0),
+        ("late", 280.0, 150.0),
+        ("tail", 410.0, 100.0),
+    ]
+    matches = [
+        CorridorMatch(
+            station=sample_station(sid, 37.5 + i * 0.1, -1.0 - i * 0.2, kw=kw),
+            deviation_m=200,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for i, (sid, km, kw) in enumerate(stations)
+    ]
+    route_km = 480.0
+
+    def run(soc: float, pref: str, duration: float):
+        profile = VehicleEnergyProfile(
+            soc_percent=soc,
+            usable_capacity_kwh=57.5,
+            consumption_wh_per_km=160.0,
+            terrain_factor=1.0,
+            reserve_soc_percent=10,
+            max_charge_power_kw=170,
+            min_destination_soc_pct=10,
+            min_stop_arrival_soc_pct=10,
+            max_charge_soc_pct=80,
+        )
+        return build_planned_route_stops(
+            matches,
+            origin_position_km=0.0,
+            destination_distance_km=route_km,
+            profile=profile,
+            route_distance_km=route_km,
+            route_duration_minutes=duration,
+            route_preference=pref,
+        )
+
+    # SOC 10: 1.ª cerca del origen y plan usable.
+    for pref, dur in (("shortest", 480.0), ("fastest", 320.0)):
+        planned, _, projected = run(10.0, pref, dur)
+        assert len(planned) >= 2, f"SOC10 {pref}: {planned!r}"
+        assert planned[0].distance_from_origin_km < 20.0
+        assert projected is not None and projected > 0
+
+    # SOC 55 directa: ≥2 paradas (no cortar en early).
+    planned, _, projected = run(55.0, "shortest", 480.0)
+    assert len(planned) >= 2, f"SOC55 shortest: {planned!r}"
+    assert projected is not None and projected > 0
+
+    # Madrid-like: hueco tras origen — bump o 2.ª parada.
+    madrid_matches = [
+        CorridorMatch(
+            station=sample_station(sid, 40.0, -3.0 - i * 0.1, kw=kw),
+            deviation_m=200,
+            route_position_m=int(km * 1000),
+            extra_minutes=2.0,
+            behind_route=False,
+            wrong_side=False,
+        )
+        for i, (sid, km, kw) in enumerate(
+            [
+                ("origin_dc", 3.0, 60.0),
+                ("gap_a", 180.0, 150.0),
+                ("gap_b", 320.0, 150.0),
+                ("tail", 400.0, 100.0),
+            ]
+        )
+    ]
+    profile = VehicleEnergyProfile(
+        soc_percent=10,
+        usable_capacity_kwh=57.5,
+        consumption_wh_per_km=160.0,
+        terrain_factor=1.0,
+        reserve_soc_percent=10,
+        max_charge_power_kw=170,
+        min_destination_soc_pct=10,
+        min_stop_arrival_soc_pct=10,
+        max_charge_soc_pct=80,
+    )
+    planned, warnings, projected = build_planned_route_stops(
+        madrid_matches,
+        origin_position_km=0.0,
+        destination_distance_km=436.0,
+        profile=profile,
+        route_distance_km=436.0,
+        route_duration_minutes=300.0,
+        route_preference="shortest",
+    )
+    assert len(planned) >= 2, f"Madrid-like: {planned!r}; {warnings}"
+    assert planned[0].distance_from_origin_km < 15.0
+    assert projected is not None and projected > 0
+
+    # SOC alto + viaje corto: 0–1 parada.
+    short_matches = matches[:3]
+    planned, _, projected = build_planned_route_stops(
+        short_matches,
+        origin_position_km=0.0,
+        destination_distance_km=200.0,
+        profile=VehicleEnergyProfile(
+            soc_percent=80,
+            usable_capacity_kwh=57.5,
+            consumption_wh_per_km=160.0,
+            terrain_factor=1.0,
+            reserve_soc_percent=10,
+            max_charge_power_kw=170,
+            min_destination_soc_pct=10,
+            min_stop_arrival_soc_pct=10,
+            max_charge_soc_pct=80,
+        ),
+        route_distance_km=200.0,
+        route_duration_minutes=150.0,
+        route_preference="fastest",
+    )
+    assert len(planned) <= 1
+    assert projected is not None and projected >= 10.0
+
+    # Comfort: 1.ª con llegada ≥20 % si existe.
+    planned, _, _ = run(61.0, "fastest", 375.0)
+    assert planned
+    assert planned[0].soc_arrival_pct >= 20.0 or planned[0].distance_from_origin_km < 160.0

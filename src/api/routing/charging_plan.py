@@ -513,6 +513,117 @@ def first_stop_comfort_matches(
     return comfort
 
 
+def hop_min_forward_km(*, trip_start_soc_pct: float, is_first_hop: bool) -> float:
+    """Avance mínimo en ruta: casi 0 si SOC≤10 % en la 1.ª parada (#6157 / batería-primero)."""
+    if is_first_hop and allows_origin_zone_charging(trip_start_soc_pct):
+        return ORIGIN_ZONE_MIN_FORWARD_KM
+    return MIN_FORWARD_PROGRESS_KM
+
+
+def reachable_segment_candidates(
+    matches: list[CorridorMatch],
+    *,
+    current_route_km: float,
+    charging_reach_km: float,
+    used_station_ids: set[str],
+    min_forward_km: float,
+    remaining_km: float,
+) -> tuple[list[CorridorMatch], float, float]:
+    """Ventana batería-primero: cargadores en (current + min_forward, current + reach].
+
+    Sin exclusión DGT dura. El espaciado ~2 h solo afecta al ranking posterior.
+    Devuelve (candidatos, segment_min_km, segment_end_km).
+    """
+    segment_min_km = current_route_km + max(0.0, min_forward_km)
+    segment_end_km = current_route_km + min(max(0.0, charging_reach_km), max(0.0, remaining_km))
+    if segment_end_km <= current_route_km + 1e-6:
+        return [], segment_min_km, segment_end_km
+    candidates = [
+        match
+        for match in matches
+        if match.station.id not in used_station_ids
+        and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
+        and (match.route_position_m / 1000.0) >= segment_min_km - 1e-6
+    ]
+    return candidates, segment_min_km, segment_end_km
+
+
+def preferred_stop_target_km(
+    *,
+    current_route_km: float,
+    charging_reach_km: float,
+    remaining_km: float,
+    target_leg_km: float,
+    current_soc: float,
+    avg_speed_kmh: float,
+) -> float:
+    """Km de ruta preferido (~2–2:30 h) acotado al alcance de batería."""
+    leg_target = target_leg_km
+    if current_soc >= FIRST_LEG_FULL_SOC_THRESHOLD_PCT:
+        leg_target = leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES)
+    return current_route_km + min(charging_reach_km, leg_target, remaining_km)
+
+
+def _next_hop_has_reachable_charger(
+    matches: list[CorridorMatch],
+    *,
+    from_route_km: float,
+    departure_soc_pct: float,
+    profile: VehicleEnergyProfile,
+    destination_distance_km: float,
+    used_station_ids: set[str],
+) -> bool:
+    """True si con ese SOC de salida se llega al destino o hay DC en el alcance."""
+    segment_profile = _profile_at_soc(profile, departure_soc_pct)
+    remaining = max(0.0, destination_distance_km - from_route_km)
+    if remaining <= estimate_range_km(segment_profile) + 1e-6:
+        return True
+    reach = estimate_charging_reach_km(segment_profile)
+    cands, _, _ = reachable_segment_candidates(
+        matches,
+        current_route_km=from_route_km,
+        charging_reach_km=reach,
+        used_station_ids=used_station_ids,
+        min_forward_km=MIN_FORWARD_PROGRESS_KM,
+        remaining_km=remaining,
+    )
+    return bool(cands)
+
+
+def _bump_departure_soc_for_next_hop(
+    *,
+    arrival_soc_pct: float,
+    departure_soc_pct: float,
+    stop_route_km: float,
+    station_max_kw: float,
+    matches: list[CorridorMatch],
+    profile: VehicleEnergyProfile,
+    destination_distance_km: float,
+    used_station_ids: set[str],
+) -> tuple[float, float]:
+    """Sube SOC de salida hasta abrir la siguiente ventana reach o techo DC."""
+    ceiling = min(profile.max_charge_soc_pct, OPTIMAL_CHARGE_CEILING_SOC_PCT)
+    departure = departure_soc_pct
+    while departure + 0.5 < ceiling and not _next_hop_has_reachable_charger(
+        matches,
+        from_route_km=stop_route_km,
+        departure_soc_pct=departure,
+        profile=profile,
+        destination_distance_km=destination_distance_km,
+        used_station_ids=used_station_ids,
+    ):
+        departure = min(ceiling, departure + 5.0)
+    charge_minutes = estimate_charge_minutes(
+        arrival_soc_pct,
+        departure,
+        usable_capacity_kwh=profile.usable_capacity_kwh,
+        max_power_kw=station_max_kw,
+        vehicle_preset_id=profile.vehicle_preset_id,
+        vehicle_max_charge_kw=profile.max_charge_power_kw,
+    )
+    return departure, charge_minutes
+
+
 def resolve_avg_speed_kmh(
     route_distance_km: float | None,
     route_duration_minutes: float | None,
@@ -925,6 +1036,7 @@ def build_planned_route_stops_greedy(
     route_duration_minutes: float | None = None,
     route_preference: str | None = None,
 ) -> tuple[list[PlannedRouteStop], list[str], float | None]:
+    """Greedy batería-primero: SOC → reach → candidatos → ranking (~2 h suave) → carga."""
     _ = charge_target_soc_pct  # legacy param; optimal SOC replaces fixed 80 % target
     resolved_destination_soc = (
         destination_target_soc_pct
@@ -947,12 +1059,6 @@ def build_planned_route_stops_greedy(
 
     max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
     target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
-    origin_exclusion_km = origin_exclusion_radius_km(
-        target_leg_km,
-        trip_start_soc,
-        charging_reach_km=estimate_charging_reach_km(profile),
-        max_leg_km=max_leg_km,
-    )
     allow_origin_zone = allows_origin_zone_charging(trip_start_soc)
 
     for _attempt in range(max_stops):
@@ -964,156 +1070,82 @@ def build_planned_route_stops_greedy(
             return planned, warnings, round(clamp_display_soc_pct(projected), 1)
 
         charging_reach_km = estimate_charging_reach_km(segment_profile)
-        segment_end_km = current_route_km + min(charging_reach_km, max_leg_km, remaining_km)
-        first_leg_from_full = (
-            current_route_km <= trip_start_route_km + 1e-6
-            and current_soc >= FIRST_LEG_FULL_SOC_THRESHOLD_PCT
-        )
-        leg_target_km = (
-            leg_distance_for_driving_minutes(avg_speed_kmh, FIRST_LEG_DRIVING_MINUTES)
-            if first_leg_from_full
-            else target_leg_km
-        )
-        target_stop_km = current_route_km + min(charging_reach_km, leg_target_km, remaining_km)
-        segment_min_km = _segment_min_route_km(
-            trip_start_route_km=trip_start_route_km,
-            current_route_km=current_route_km,
-            current_soc=current_soc,
-            trip_start_soc=trip_start_soc,
-            target_leg_km=target_leg_km,
-            max_leg_km=max_leg_km,
-            profile=profile,
-            route_preference=route_preference,
-        )
-        min_leg_km = max(0.0, segment_min_km - current_route_km)
-
-        segment_matches = _filter_segment_matches(
-            matches,
-            segment_min_km=segment_min_km,
-            segment_end_km=segment_end_km,
-            used_station_ids=used_station_ids,
-            current_route_km=current_route_km,
-            trip_start_route_km=trip_start_route_km,
-            origin_exclusion_km=origin_exclusion_km,
-        )
         is_first_hop = current_route_km <= trip_start_route_km + 1e-6
-        if not segment_matches and is_first_hop and not allow_origin_zone:
-            # #6151 — ventana [exclusión ~2 h, alcance] vacía (frecuente en rápida).
-            relaxed = relaxed_origin_exclusion_km(origin_exclusion_km)
-            if relaxed < origin_exclusion_km - 1e-6:
-                relaxed_min = trip_start_route_km + relaxed
-                segment_matches = _filter_segment_matches(
-                    matches,
-                    segment_min_km=relaxed_min,
-                    segment_end_km=segment_end_km,
-                    used_station_ids=used_station_ids,
-                    current_route_km=current_route_km,
-                    trip_start_route_km=trip_start_route_km,
-                    origin_exclusion_km=relaxed,
+        min_forward = hop_min_forward_km(
+            trip_start_soc_pct=trip_start_soc,
+            is_first_hop=is_first_hop,
+        )
+        segment_matches, segment_min_km, segment_end_km = reachable_segment_candidates(
+            matches,
+            current_route_km=current_route_km,
+            charging_reach_km=charging_reach_km,
+            used_station_ids=used_station_ids,
+            min_forward_km=min_forward,
+            remaining_km=remaining_km,
+        )
+        # Preferencia suave ~3 h: si hay candidatos dentro del techo fisiológico, úsalos.
+        soft_end_km = current_route_km + min(charging_reach_km, max_leg_km, remaining_km)
+        if soft_end_km + 1e-6 < segment_end_km:
+            within_soft = [
+                m
+                for m in segment_matches
+                if (m.route_position_m / 1000.0) <= soft_end_km + 1e-6
+            ]
+            if within_soft:
+                segment_matches = within_soft
+                segment_end_km = soft_end_km
+
+        target_stop_km = preferred_stop_target_km(
+            current_route_km=current_route_km,
+            charging_reach_km=charging_reach_km,
+            remaining_km=remaining_km,
+            target_leg_km=target_leg_km,
+            current_soc=current_soc,
+            avg_speed_kmh=avg_speed_kmh,
+        )
+        preferred_min_leg_km = max(
+            min_forward,
+            min(
+                target_leg_km * min_leg_progress_fraction(route_preference),
+                charging_reach_km * 0.95,
+            ),
+        )
+        # Tras la 1.ª parada, el espaciado ~2 h es solo ranking; no descartar
+        # candidatos alcanzables (p. ej. Cúllar tras Lorca anticipada).
+        if not is_first_hop:
+            preferred_min_leg_km = min_forward
+
+        if is_first_hop and allow_origin_zone and segment_matches:
+            warnings.append(
+                "SOC bajo al salir: se sugiere cargar cerca del origen antes de continuar."
+            )
+
+        # Comfort (#6152): si hay llegada ≥20 % en la ventana reach, preferir esos.
+        if is_first_hop and segment_matches and not allow_origin_zone:
+            comfort_matches = first_stop_comfort_matches(
+                segment_matches,
+                current_route_km=current_route_km,
+                profile=segment_profile,
+            )
+            if comfort_matches and len(comfort_matches) < len(segment_matches):
+                segment_matches = comfort_matches
+                warnings.append(
+                    "Primera parada anticipada: el tramo ~2 h dejaría poca batería "
+                    "al llegar; se sugiere cargar antes."
                 )
-                if segment_matches:
-                    origin_exclusion_km = relaxed
-                    segment_min_km = max(0.0, relaxed_min - current_route_km)
-                    min_leg_km = segment_min_km
+            elif not comfort_matches and segment_matches:
+                # Ventana reach sin tramo ~2 h cómodo (#6151 / batería-primero).
+                farthest = max(m.route_position_m / 1000.0 for m in segment_matches)
+                if farthest + 1e-6 < target_stop_km:
                     warnings.append(
                         "Primera parada anticipada: no hay cargador en el tramo ~2 h "
                         "alcanzable con tu SOC; se sugiere cargar antes."
                     )
-        elif (
-            segment_matches
-            and is_first_hop
-            and not allow_origin_zone
-            and origin_exclusion_km > MIN_ORIGIN_SKIP_ABSOLUTE_KM + 1e-6
-        ):
-            # Comfort: 1.ª parada en ventana ~2 h llegaría < 20 % → Hellín antes que Albacete.
-            window_arrivals = [
-                soc_at_distance_km(segment_profile, max(0.0, (m.route_position_m / 1000.0) - current_route_km))
-                for m in segment_matches
-            ]
-            if window_arrivals and min(window_arrivals) < FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT - 1e-6:
-                relaxed = relaxed_origin_exclusion_km(origin_exclusion_km)
-                relaxed_min = trip_start_route_km + relaxed
-                relaxed_matches = _filter_segment_matches(
-                    matches,
-                    segment_min_km=relaxed_min,
-                    segment_end_km=segment_end_km,
-                    used_station_ids=used_station_ids,
-                    current_route_km=current_route_km,
-                    trip_start_route_km=trip_start_route_km,
-                    origin_exclusion_km=relaxed,
-                )
-                comfort_matches = first_stop_comfort_matches(
-                    relaxed_matches,
-                    current_route_km=current_route_km,
-                    profile=segment_profile,
-                )
-                if comfort_matches:
-                    segment_matches = comfort_matches
-                    origin_exclusion_km = relaxed
-                    segment_min_km = max(0.0, relaxed_min - current_route_km)
-                    min_leg_km = segment_min_km
-                    warnings.append(
-                        "Primera parada anticipada: el tramo ~2 h dejaría poca batería "
-                        "al llegar; se sugiere cargar antes."
-                    )
-        if not segment_matches and allow_origin_zone:
-            segment_matches = [
-                match
-                for match in matches
-                if match.station.id not in used_station_ids
-                and current_route_km < (match.route_position_m / 1000.0) <= segment_end_km + 1e-6
-            ]
-            if segment_matches and is_first_hop:
-                segment_min_km = current_route_km + ORIGIN_ZONE_MIN_FORWARD_KM
-                min_leg_km = ORIGIN_ZONE_MIN_FORWARD_KM
-                warnings.append(
-                    "SOC bajo al salir: se sugiere cargar cerca del origen antes de continuar."
-                )
-        if not segment_matches and remaining_km > max_leg_km + 1e-6:
-            expanded_end_km = current_route_km + min(charging_reach_km, remaining_km)
-            segment_matches = _filter_segment_matches(
-                matches,
-                segment_min_km=segment_min_km,
-                segment_end_km=expanded_end_km,
-                used_station_ids=used_station_ids,
-                current_route_km=current_route_km,
-                trip_start_route_km=trip_start_route_km,
-                origin_exclusion_km=origin_exclusion_km,
-            )
-            if segment_matches:
-                segment_end_km = expanded_end_km
-                warnings.append(
-                    "Parada más lejana: no hay cargadores en el tramo ideal ~2–3 h; "
-                    "revisa corredor o filtros kW."
-                )
-        if not segment_matches and not is_first_hop:
-            # #6156 — tras 1.ª anticipada (p. ej. Lorca), el mínimo ~2 h salta Cúllar y
-            # el alcance no llega a Linares/Úbeda. Relajar espaciado dentro del alcance.
-            gap_relaxed_min = current_route_km + max(
-                MIN_FORWARD_PROGRESS_KM,
-                target_leg_km * 0.4,
-            )
-            gap_matches = _filter_segment_matches(
-                matches,
-                segment_min_km=gap_relaxed_min,
-                segment_end_km=segment_end_km,
-                used_station_ids=used_station_ids,
-                current_route_km=current_route_km,
-                trip_start_route_km=trip_start_route_km,
-                origin_exclusion_km=0.0,
-            )
-            if gap_matches:
-                segment_matches = gap_matches
-                segment_min_km = gap_relaxed_min
-                min_leg_km = max(0.0, gap_relaxed_min - current_route_km)
-                warnings.append(
-                    "Parada intermedia más cercana: el espaciado ~2 h dejaría un hueco "
-                    "sin cargador alcanzable; se sugiere cargar antes."
-                )
+
         if not segment_matches:
             warnings.append(
                 f"No hay cargador alcanzable en el tramo ~{current_route_km:.0f}–{segment_end_km:.0f} km "
-                f"(SOC {current_soc:.0f} %, máx. {MAX_DRIVING_LEG_MINUTES / 60:.0f} h conducción)."
+                f"(SOC {current_soc:.0f} %, alcance ~{charging_reach_km:.0f} km)."
             )
             break
 
@@ -1135,15 +1167,10 @@ def build_planned_route_stops_greedy(
             )
             break
 
-        forward_min_km = (
-            ORIGIN_ZONE_MIN_FORWARD_KM
-            if allow_origin_zone and is_first_hop
-            else MIN_FORWARD_PROGRESS_KM
-        )
         forward_viable = [
             stop
             for stop in viable
-            if stop.route_distance_km > current_route_km + forward_min_km - 1e-6
+            if stop.route_distance_km > current_route_km + min_forward - 1e-6
             and stop.route_distance_km >= segment_min_km - 1e-6
         ]
         if forward_viable:
@@ -1172,15 +1199,18 @@ def build_planned_route_stops_greedy(
             )
             continue
         leg_distance_km = max(0.0, stop_route_km - previous_route_km)
+
+        # Batería-primero: no exclusión DGT dura. El ranking (~2 h) prefiere paradas
+        # lejanas; _is_worth sigue rechazando micro-paradas con SOC alto.
         if not _is_worth_charging_stop(
             arrival_soc_pct=chosen.soc_arrival_pct,
             departure_soc_pct=departure_soc,
             charge_minutes=charge_minutes,
             leg_distance_km=leg_distance_km,
-            min_leg_km=min_leg_km,
+            min_leg_km=preferred_min_leg_km,
             stop_route_km=stop_route_km,
             trip_start_route_km=trip_start_route_km,
-            origin_exclusion_km=origin_exclusion_km,
+            origin_exclusion_km=0.0,
             trip_start_soc_pct=trip_start_soc,
             avg_speed_kmh=avg_speed_kmh,
         ):
@@ -1191,6 +1221,26 @@ def build_planned_route_stops_greedy(
             if len(used_station_ids) > max_stops * 3:
                 break
             continue
+
+        ids_after_stop = used_station_ids | {chosen.station.id}
+        bumped_dep, bumped_charge = _bump_departure_soc_for_next_hop(
+            arrival_soc_pct=chosen.soc_arrival_pct,
+            departure_soc_pct=departure_soc,
+            stop_route_km=stop_route_km,
+            station_max_kw=chosen.station.max_power_kw,
+            matches=matches,
+            profile=profile,
+            destination_distance_km=destination_distance_km,
+            used_station_ids=ids_after_stop,
+        )
+        if bumped_dep > departure_soc + 0.5:
+            warnings.append(
+                "Carga más alta en esta parada: con la carga intermedia no habría "
+                "cargador alcanzable en el siguiente tramo."
+            )
+            departure_soc = bumped_dep
+            charge_minutes = bumped_charge
+
         leg_driving_minutes = driving_minutes_for_distance(leg_distance_km, avg_speed_kmh)
         if leg_driving_minutes > MAX_DRIVING_LEG_MINUTES + 5:
             warnings.append(
@@ -1231,6 +1281,7 @@ def build_planned_route_stops_greedy(
         return planned, warnings, projected_clamped
 
     return planned, warnings, None
+
 
 
 def build_planned_route_stops(
