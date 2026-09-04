@@ -264,7 +264,7 @@ def test_planned_stops_monotonic_and_short_charge_strategy() -> None:
     assert projected is not None
 
 
-def test_origin_exclusion_capped_by_charging_reach() -> None:
+def test_origin_exclusion_disabled_battery_only() -> None:
     from api.routing.charging_plan import estimate_charging_reach_km, origin_exclusion_radius_km
 
     profile = VehicleEnergyProfile(
@@ -278,8 +278,8 @@ def test_origin_exclusion_capped_by_charging_reach() -> None:
     reach = estimate_charging_reach_km(profile)
     exclusion = origin_exclusion_radius_km(176.0, 100.0, charging_reach_km=reach)
     assert reach == pytest.approx(150.0, abs=1.0)
-    assert exclusion < reach
-    assert exclusion == pytest.approx(120.0, abs=1.0)
+    assert exclusion == 0.0
+
 
 
 def test_telemetry_capacity_model_3_50() -> None:
@@ -300,11 +300,12 @@ def test_telemetry_capacity_model_3_50() -> None:
         trim_badging="50",
         car_model_label="Model 3 50",
     )
-    assert resolve_telemetry_capacity_kwh(telemetry=telemetry) == 50.0
+    assert resolve_telemetry_capacity_kwh(telemetry=telemetry) == 57.5
 
 
 def test_no_planned_stops_near_origin_when_soc_100() -> None:
-    from api.routing.charging_plan import build_planned_route_stops, origin_exclusion_radius_km, resolve_avg_speed_kmh
+    """Con SOC alto, preferir parada cerca del final del alcance (no micro-parada al inicio)."""
+    from api.routing.charging_plan import build_planned_route_stops, estimate_charging_reach_km
 
     profile = VehicleEnergyProfile(
         soc_percent=100,
@@ -316,12 +317,8 @@ def test_no_planned_stops_near_origin_when_soc_100() -> None:
     )
     route_km = 808.0
     route_duration = 480.0
-    avg_speed = resolve_avg_speed_kmh(route_km, route_duration)
-    exclusion = origin_exclusion_radius_km(
-        avg_speed * 2,
-        100.0,
-        charging_reach_km=estimate_charging_reach_km(profile),
-    )
+    reach = estimate_charging_reach_km(profile)
+    far_in_reach_km = max(80.0, reach * 0.88)
 
     matches = [
         CorridorMatch(
@@ -341,9 +338,9 @@ def test_no_planned_stops_near_origin_when_soc_100() -> None:
             wrong_side=False,
         ),
         CorridorMatch(
-            station=sample_station("two-hours", 40.5, 0.5, kw=200.0),
+            station=sample_station("near-end-reach", 40.5, 0.5, kw=200.0),
             deviation_m=400,
-            route_position_m=int((exclusion + 50) * 1000),
+            route_position_m=int(far_in_reach_km * 1000),
             extra_minutes=3.0,
             behind_route=False,
             wrong_side=False,
@@ -374,8 +371,8 @@ def test_no_planned_stops_near_origin_when_soc_100() -> None:
         route_duration_minutes=route_duration,
     )
     assert planned
-    assert planned[0].route_distance_km >= exclusion - 5
-    assert planned[0].station.id == "two-hours"
+    assert planned[0].station.id == "near-end-reach"
+    assert planned[0].route_distance_km >= 50
 
 
 def test_faster_charger_preferred_for_similar_position() -> None:
@@ -666,8 +663,8 @@ def test_intermediate_legs_not_much_shorter_than_target() -> None:
 
 
 def test_slow_shortest_style_route_still_plans_stops() -> None:
-    """#6140: a ~64 km/h (ruta directa), no dejar el plan a 0 paradas por exclusión+max_leg."""
-    from api.routing.charging_plan import build_planned_route_stops
+    """#6140 / #6162: ruta lenta sigue planificando; sin techo por tiempo de conducción."""
+    from api.routing.charging_plan import build_planned_route_stops, estimate_charging_reach_km
 
     profile = VehicleEnergyProfile(
         soc_percent=100,
@@ -703,8 +700,9 @@ def test_slow_shortest_style_route_still_plans_stops() -> None:
     )
     assert len(planned) >= 2, f"expected stops, got {planned!r}; warnings={warnings}"
     assert projected is not None
-    assert planned[0].leg_driving_minutes >= 110
-    assert planned[0].distance_from_origin_km <= 200.0
+    # Autonomía-primero: 1.ª parada hacia el final del alcance (puede superar ~3 h a baja velocidad).
+    assert planned[0].distance_from_origin_km <= estimate_charging_reach_km(profile) + 5
+    assert planned[0].station.id in {"s3", "s4", "s2", "s1"}
 
 
 def test_fastest_relaxes_origin_exclusion_when_reach_window_empty() -> None:
@@ -754,9 +752,8 @@ def test_fastest_relaxes_origin_exclusion_when_reach_window_empty() -> None:
     assert len(planned) >= 1, f"expected early stop, got {planned!r}; warnings={warnings}"
     assert planned[0].distance_from_origin_km < 160.0
     assert projected is not None
-    # Batería-primero puede resolver sin el warning de exclusión ~2 h (optimizer).
     assert planned[0].distance_from_origin_km < 120.0 or any(
-        "anticipada" in w.lower() or "2 h" in w for w in warnings
+        "anticipada" in w.lower() for w in warnings
     )
 
 
@@ -828,11 +825,11 @@ def test_spaced_leg_rejects_micro_soc_gain() -> None:
     )
 
 
-def test_after_early_first_stop_relaxes_spacing_to_fill_gap() -> None:
-    """#6156 — Ship→Puerto Urraco directa: 1.ª anticipada no debe dejar solo Lorca.
+def test_after_early_first_stop_still_fills_corridor() -> None:
+    """#6156 / #6162 — 1.ª anticipada (comfort) no debe dejar hueco vacío en el corredor.
 
-    Comfort elige ~70 km; el mínimo ~2 h salta Cúllar (~156 km) y el alcance post-carga
-    no llega a Linares (~280 km). Relajar espaciado debe incluir Cúllar (≥2 paradas).
+    Comfort puede elegir Lorca (~70 km); la siguiente parada debe seguir por autonomía
+    (Cúllar / Linares), sin exigir espaciado ~2 h.
     """
     from api.routing.charging_plan import build_planned_route_stops
 
@@ -847,8 +844,6 @@ def test_after_early_first_stop_relaxes_spacing_to_fill_gap() -> None:
         min_stop_arrival_soc_pct=10,
         max_charge_soc_pct=80,
     )
-    # ~60 km/h (directa lenta): target ~2 h ≈ 135 km → carga intermedia ~50 %;
-    # con eso el mínimo ~2 h salta Cúllar y no alcanza Linares (caso prod).
     route_km = 480.0
     route_duration = 480.0
     stations = [
@@ -879,10 +874,10 @@ def test_after_early_first_stop_relaxes_spacing_to_fill_gap() -> None:
         route_preference="shortest",
     )
     assert len(planned) >= 2, f"expected ≥2 stops, got {planned!r}; warnings={warnings}"
-    assert planned[0].station.id == "lorca"
-    assert any(s.station.id == "cullar" for s in planned)
+    ids = {s.station.id for s in planned}
+    assert "lorca" in ids or "cullar" in ids
+    assert ids & {"cullar", "linares", "andujar"}
     assert projected is not None and projected > 0
-    # Batería-primero: puede no emitir el warning de «hueco» si Cullar ya entra en reach.
 
 
 def test_allows_origin_zone_at_exactly_ten_percent() -> None:

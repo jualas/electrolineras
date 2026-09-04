@@ -74,28 +74,15 @@ export function isChargingPlanComplete(plan: ChargingPlanResponse): boolean {
 }
 
 const ORIGIN_CHARGE_SOC_THRESHOLD = 10
-const MIN_ORIGIN_SKIP_KM = 40
+/** Fracción del alcance donde preferimos paradas (alineado con REACH_STOP_TARGET_FRACTION backend). */
+const REACH_STOP_FRACTION = 0.92
 
 function minDistanceFromOriginKm(plan: ChargingPlanResponse): number {
-  const routeKm =
-    plan.route_distance_km ??
-    plan.route_fastest_distance_km ??
-    plan.route_shortest_distance_km ??
-    0
-  const avgSpeedKmh =
-    routeKm > 0 && plan.route_duration_minutes != null && plan.route_duration_minutes > 0
-      ? routeKm / (plan.route_duration_minutes / 60)
-      : 90
-  const targetLegKm = avgSpeedKmh * 2
-  if (plan.vehicle.soc_percent < ORIGIN_CHARGE_SOC_THRESHOLD) {
+  // Solo autonomía: sin exclusión por ~2 h de conducción.
+  if (plan.vehicle.soc_percent <= ORIGIN_CHARGE_SOC_THRESHOLD) {
     return 0
   }
-  const exclusion = Math.max(MIN_ORIGIN_SKIP_KM, targetLegKm)
-  const reach = plan.charging_reach_km ?? 0
-  if (reach > 0) {
-    return Math.min(exclusion, Math.max(0, reach - 30))
-  }
-  return exclusion
+  return 0
 }
 
 function excludeOriginNearStops(
@@ -125,28 +112,26 @@ function estimateChargingStopCount(plan: ChargingPlanResponse): number {
     plan.route_shortest_distance_km ??
     plan.geodesic_distance_km ??
     0
-  const avgSpeedKmh =
-    routeKm > 0 && plan.route_duration_minutes != null && plan.route_duration_minutes > 0
-      ? routeKm / (plan.route_duration_minutes / 60)
-      : 90
-  const targetLegKm = avgSpeedKmh * 2
-  if (routeKm <= targetLegKm + 1) {
+  const rangeKm = plan.range_km ?? plan.charging_reach_km ?? 0
+  if (routeKm <= 0 || rangeKm <= 0 || routeKm <= rangeKm + 1) {
     return 0
   }
-  return Math.min(GOOGLE_MAPS_MAX_WAYPOINTS, Math.max(1, Math.ceil(routeKm / targetLegKm) - 1))
+  return Math.min(GOOGLE_MAPS_MAX_WAYPOINTS, Math.max(1, Math.ceil(routeKm / rangeKm) - 1))
 }
 
 function pickStopsByRouteDistance(
   stops: ChargingPlanStopResult[],
   count: number,
   routeKm: number,
+  reachKm?: number,
 ): ChargingPlanStopResult[] {
   if (stops.length === 0 || count <= 0 || routeKm <= 0) {
     return []
   }
+  const step = reachKm != null && reachKm > 0 ? reachKm * REACH_STOP_FRACTION : routeKm / (count + 1)
   const targets: number[] = []
   for (let index = 0; index < count; index += 1) {
-    targets.push(((index + 1) * routeKm) / (count + 1))
+    targets.push(Math.min(routeKm * 0.95, (index + 1) * step))
   }
   const picked: ChargingPlanStopResult[] = []
   const used = new Set<string>()
@@ -188,7 +173,12 @@ export function routeChargingStops(plan: ChargingPlanResponse): RouteChargingSto
     plan.route_shortest_distance_km ??
     0
   const count = estimateChargingStopCount(plan)
-  const picked = pickStopsByRouteDistance(viable, count, routeKm)
+  const picked = pickStopsByRouteDistance(
+    viable,
+    count,
+    routeKm,
+    plan.charging_reach_km ?? plan.range_km ?? undefined,
+  )
   if (picked.length > 0) {
     return picked
   }

@@ -11,16 +11,12 @@ from dataclasses import dataclass
 
 from api.routing.charging_plan import (
     CHARGING_MIN_ARRIVAL_SOC_PCT,
-    FIRST_STOP_COMFORT_ARRIVAL_SOC_PCT,
-    MAX_DRIVING_LEG_MINUTES,
     MAX_PLANNED_ROUTE_STOPS,
     MIN_FORWARD_PROGRESS_KM,
-    MIN_ORIGIN_SKIP_ABSOLUTE_KM,
     MIN_WORTHWHILE_CHARGE_MINUTES,
     MIN_WORTHWHILE_SOC_GAIN_PCT,
     ORIGIN_ZONE_MIN_FORWARD_KM,
     PREFERRED_ON_ROUTE_TIME_BONUS_MIN,
-    TARGET_DRIVING_LEG_MINUTES,
     PlannedRouteStop,
     VehicleEnergyProfile,
     _bump_departure_soc_for_next_hop,
@@ -38,9 +34,6 @@ from api.routing.charging_plan import (
     estimate_range_km,
     first_stop_comfort_matches,
     hop_min_forward_km,
-    leg_distance_for_driving_minutes,
-    min_leg_progress_fraction,
-    origin_exclusion_radius_km,
     resolve_avg_speed_kmh,
     soc_at_distance_km,
 )
@@ -125,19 +118,14 @@ def _reduce_corridor_candidates(
 
 def _min_leg_km_for_stop(
     *,
-    target_leg_km: float,
-    max_leg_km: float,
     profile: VehicleEnergyProfile,
     from_soc: float,
-    route_preference: str | None = None,
+    is_first_hop: bool = False,
+    trip_start_soc: float | None = None,
 ) -> float:
-    progress = min_leg_progress_fraction(route_preference)
-    min_leg_km = target_leg_km * progress
-    if from_soc >= 70.0:
-        min_leg_km = max(min_leg_km, target_leg_km * max(0.8, progress - 0.05))
-    min_leg_km = min(min_leg_km, max_leg_km)
-    charging_reach_km = estimate_charging_reach_km(_profile_at_soc(profile, from_soc))
-    return min(min_leg_km, charging_reach_km * 0.95)
+    """Avance mínimo entre paradas: solo autonomía / zona origen."""
+    start_soc = trip_start_soc if trip_start_soc is not None else from_soc
+    return hop_min_forward_km(trip_start_soc_pct=start_soc, is_first_hop=is_first_hop)
 
 
 def _worth_stop_transition(
@@ -152,17 +140,15 @@ def _worth_stop_transition(
     trip_start_route_km: float,
     origin_exclusion_km: float,
     is_first_hop: bool,
-    target_leg_km: float,
-    max_leg_km: float,
     avg_speed_kmh: float,
     route_preference: str | None = None,
 ) -> bool:
+    _ = route_preference
     min_leg_km = _min_leg_km_for_stop(
-        target_leg_km=target_leg_km,
-        max_leg_km=max_leg_km,
         profile=profile,
         from_soc=from_soc,
-        route_preference=route_preference,
+        is_first_hop=is_first_hop,
+        trip_start_soc=profile.soc_percent,
     )
     return _is_worth_charging_stop(
         arrival_soc_pct=arrival_soc,
@@ -193,9 +179,6 @@ def _drive_and_arrival(
     segment = _profile_at_soc(profile, from_soc)
     charging_reach = estimate_charging_reach_km(segment)
     if leg_km > charging_reach + 1e-6:
-        return None
-    max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
-    if leg_km > max_leg_km + 1e-6:
         return None
     arrival = soc_at_distance_km(segment, leg_km)
     if arrival < CHARGING_MIN_ARRIVAL_SOC_PCT - 1e-6:
@@ -281,15 +264,7 @@ def optimize_planned_route_stops(
     )
     trip_start = origin_position_km if trip_start_route_km is None else trip_start_route_km
     avg_speed_kmh = resolve_avg_speed_kmh(route_distance_km, route_duration_minutes)
-    target_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, TARGET_DRIVING_LEG_MINUTES)
-    max_leg_km = leg_distance_for_driving_minutes(avg_speed_kmh, MAX_DRIVING_LEG_MINUTES)
-    preferred_exclusion_km = origin_exclusion_radius_km(
-        target_leg_km,
-        profile.soc_percent,
-        charging_reach_km=estimate_charging_reach_km(profile),
-        max_leg_km=max_leg_km,
-    )
-    # Batería-primero (#6158): sin exclusión DGT dura al filtrar candidatos.
+    # Batería-primero (#6162): sin exclusión por tiempo de conducción.
     origin_exclusion_km = 0.0
 
     distance_to_dest = max(0.0, destination_distance_km - origin_position_km)
@@ -315,7 +290,7 @@ def optimize_planned_route_stops(
     if not candidates:
         return None
 
-    # Comfort (#6152): preferir 1.ª parada con llegada ≥20 % si existe en el alcance.
+    # Comfort: preferir 1.ª parada con llegada ≥20 % si existe en el alcance.
     reach_end = origin_position_km + charging_reach_km
     reachable_first = [c for c in candidates if c.route_km <= reach_end + 1e-6]
     comfort_matches = first_stop_comfort_matches(
@@ -345,14 +320,16 @@ def optimize_planned_route_stops(
             bonus_min=PREFERRED_ON_ROUTE_TIME_BONUS_MIN,
         )
         cost = drive_min + charge_min - bonus
-        # Preferencia suave ~2 h: penaliza 1.ª parada muy temprana con SOC sano.
+        # Preferencia suave por autonomía: penaliza 1.ª parada muy temprana (poco uso de batería).
         if (
             is_first_hop
             and not origin_zone
-            and leg_km + 1e-6 < target_leg_km * 0.55
+            and charging_reach_km > 0
+            and leg_km + 1e-6 < charging_reach_km * 0.45
             and profile.soc_percent > 10.0
         ):
-            cost += (target_leg_km * 0.55 - leg_km) / max(avg_speed_kmh, 1.0) * 60.0 * 0.35
+            shortfall_km = charging_reach_km * 0.45 - leg_km
+            cost += shortfall_km / max(avg_speed_kmh, 1.0) * 60.0 * 0.25
         return cost
 
     # Salida → primera parada (solo alcanzables; comfort si hay alternativa ≥20 %).
@@ -392,12 +369,9 @@ def optimize_planned_route_stops(
             trip_start_route_km=trip_start,
             origin_exclusion_km=0.0,
             is_first_hop=True,
-            target_leg_km=target_leg_km,
-            max_leg_km=max_leg_km,
             avg_speed_kmh=avg_speed_kmh,
             route_preference=route_preference,
         ):
-            # Batería-primero: aceptar 1.ª alcanzable con carga útil o zona origen.
             useful = (
                 charge_min + 1e-6 >= MIN_WORTHWHILE_CHARGE_MINUTES
                 or (dep_soc - arrival) + 1e-6 >= MIN_WORTHWHILE_SOC_GAIN_PCT
@@ -461,8 +435,6 @@ def optimize_planned_route_stops(
                     trip_start_route_km=trip_start,
                     origin_exclusion_km=origin_exclusion_km,
                     is_first_hop=False,
-                    target_leg_km=target_leg_km,
-                    max_leg_km=max_leg_km,
                     avg_speed_kmh=avg_speed_kmh,
                     route_preference=route_preference,
                 ):
@@ -545,8 +517,8 @@ def optimize_planned_route_stops(
     warnings: list[str] = []
     if early_first_stop_warning:
         warnings.append(
-            "Primera parada anticipada: el tramo ~2 h dejaría poca batería al llegar; "
-            "se sugiere cargar antes."
+            "Primera parada anticipada: al final del alcance de batería la llegada "
+            "sería crítica; se sugiere cargar antes."
         )
     planned: list[PlannedRouteStop] = []
     previous_km = origin_position_km
@@ -609,10 +581,10 @@ def optimize_planned_route_stops(
             charge_minutes=charge_min,
             leg_distance_km=leg_km,
             min_leg_km=_min_leg_km_for_stop(
-                target_leg_km=target_leg_km,
-                max_leg_km=max_leg_km,
                 profile=profile,
                 from_soc=from_soc,
+                is_first_hop=order == 1,
+                trip_start_soc=profile.soc_percent,
             ),
             stop_route_km=cand.route_km,
             trip_start_route_km=trip_start,
@@ -622,11 +594,6 @@ def optimize_planned_route_stops(
             # #6154: no publicar micro-paradas «por tiempo global»; invalidar y usar greedy.
             return None
         leg_driving = driving_minutes_for_distance(leg_km, avg_speed_kmh)
-        if leg_driving > MAX_DRIVING_LEG_MINUTES + 5:
-            warnings.append(
-                f"Tramo {order}: ~{leg_driving:.0f} min conducción "
-                f"(recomendado ≤{TARGET_DRIVING_LEG_MINUTES:.0f} min)."
-            )
         planned.append(
             PlannedRouteStop(
                 order=order,
