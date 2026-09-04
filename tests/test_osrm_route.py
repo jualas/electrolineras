@@ -87,18 +87,18 @@ def test_osrm_speed_factor_scales_duration() -> None:
 
     original = settings.osrm_speed_factor
     try:
-        settings.osrm_speed_factor = 1.15
+        settings.osrm_speed_factor = 1.25
         summary = summarize_osrm_alternatives(ROUTES, geodesic_km=GEODESIC_KM)
-        # 3000 s / 1.15 / 60 ≈ 43.5 min
-        assert summary.fastest_duration_minutes == 43.5
-        # 3600 s / 1.15 / 60 ≈ 52.2 min
-        assert summary.shortest_duration_minutes == 52.2
+        # 3000 s / 1.25 / 60 = 40.0 min
+        assert summary.fastest_duration_minutes == 40.0
+        # 3600 s / 1.25 / 60 = 48.0 min
+        assert summary.shortest_duration_minutes == 48.0
         route = osrm_route_from_payload(
             {"distance": 120_000, "duration": 3000, "geometry": {"coordinates": [[0, 0], [1, 1]]}},
             route_preference="fastest",
             avoid_highways=True,
         )
-        assert abs(route.duration_s - 3000 / 1.15) < 1e-6
+        assert abs(route.duration_s - 3000 / 1.25) < 1e-6
     finally:
         settings.osrm_speed_factor = original
 
