@@ -152,16 +152,157 @@ def vehicle_profile_from_inputs(
     )
 
 
+TRIP_PREFERRED_MIN_KW = 100.0
+"""Suelo de viaje (Model 3 / DC rápido): tiempos de carga razonables."""
+TRIP_FALLBACK_MIN_KW = 50.0
+"""Alternativa si con ≥100 kW el corredor no cierra el plan."""
+
+
 def resolve_planning_min_kw(
     min_kw: float | None,
     *,
     exclude_slow_chargers: bool,
 ) -> float | None:
-    """REVE: excluir AC / cargadores <50 kW del corredor de planificación."""
-    slow_floor = 50.0 if exclude_slow_chargers else 0.0
+    """REVE/viaje: excluir AC y DC &lt;100 kW del corredor de planificación."""
+    slow_floor = TRIP_PREFERRED_MIN_KW if exclude_slow_chargers else 0.0
     if min_kw is None:
         return slow_floor if exclude_slow_chargers else None
     return max(min_kw, slow_floor)
+
+
+def resolve_fallback_planning_min_kw(
+    min_kw: float | None,
+    *,
+    preferred_min_kw: float | None,
+) -> float | None:
+    """Si el plan ≥100 queda incompleto, permitir DC ≥50 (salvo min_kw explícito >100)."""
+    if preferred_min_kw is None:
+        return None
+    if preferred_min_kw + 1e-6 < TRIP_PREFERRED_MIN_KW:
+        return None
+    if preferred_min_kw <= TRIP_FALLBACK_MIN_KW + 1e-6:
+        return None
+    if min_kw is not None and min_kw > TRIP_PREFERRED_MIN_KW + 1e-6:
+        return None
+    return TRIP_FALLBACK_MIN_KW
+
+
+def route_plan_needs_power_fallback(computation: object, vehicle: VehicleEnergyProfile) -> bool:
+    """True si con el min_kw actual no hay plan usable hasta el destino."""
+    if getattr(computation, "reachable_without_stop", False):
+        return False
+    projected = getattr(computation, "projected_soc_at_destination_with_plan", None)
+    if projected is None:
+        return True
+    return float(projected) + 1e-6 < float(vehicle.min_destination_soc_pct)
+
+
+def _route_plan_viability_score(
+    computation: object,
+    vehicle: VehicleEnergyProfile,
+) -> tuple[bool, float, int]:
+    """Ordenación: plan completo > mayor SOC proyectado > más paradas útiles."""
+    complete = not route_plan_needs_power_fallback(computation, vehicle)
+    projected = getattr(computation, "projected_soc_at_destination_with_plan", None)
+    projected_v = float(projected) if projected is not None else -1.0
+    stops = getattr(computation, "stops", ()) or ()
+    return (complete, projected_v, len(stops))
+
+
+def _build_corridor_route_computation(
+    repo: StationRepository,
+    *,
+    polyline: RoutePolyline,
+    osrm_route,
+    origin_lat: float,
+    origin_lon: float,
+    vehicle: VehicleEnergyProfile,
+    planning_min_kw: float | None,
+    max_kw: float | None,
+    countries: list[str] | None,
+    corridor_km: float,
+    behind_margin_km: float,
+    limit: int,
+    emergency_radius_km: float,
+    range_km: float,
+    charging_reach_km: float,
+    safe_margin_pct: float,
+    adjusted_min_pct: float,
+    charging_preferences: ChargingPreferences,
+    route_preference: RoutePreference,
+) -> tuple[object, int]:
+    west, south, east, north = polyline.bbox_expanded(corridor_km * 1000)
+    candidates = repo.search(
+        west=west,
+        south=south,
+        east=east,
+        north=north,
+        min_kw=planning_min_kw,
+        max_kw=max_kw,
+        countries=countries,
+        limit=10_000,
+        offset=0,
+    )
+
+    wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
+    route_distance_km = osrm_route.distance_m / 1000.0
+    corridor_ranking = rank_stations_for_charging_plan(
+        polyline,
+        candidates,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        corridor_m=corridor_km * 1000,
+        behind_margin_m=behind_margin_km * 1000,
+        wrong_side_penalty_m=wrong_side_penalty_m,
+        average_speed_mps=osrm_route.average_speed_mps,
+        route_distance_km=route_distance_km,
+        display_limit=limit * 3,
+    )
+    planning_matches = corridor_ranking.planning
+    matches = corridor_ranking.display
+
+    origin_projection = polyline.project_point(origin_lat, origin_lon)
+    origin_position_km = origin_projection.route_position_m / 1000.0
+    destination_distance_km = polyline.length_m / 1000.0
+
+    origin_search_radius_m = max(emergency_radius_km, charging_reach_km, range_km) * 1000.0
+    origin_ranked = rank_stations_near_point(
+        repo,
+        lat=origin_lat,
+        lon=origin_lon,
+        min_kw=planning_min_kw,
+        max_kw=max_kw,
+        countries=countries,
+        search_radius_m=origin_search_radius_m,
+    )
+    origin_stops: list = []
+    if allows_origin_zone_charging(vehicle.soc_percent):
+        origin_computation = build_emergency_charging_plan(
+            origin_ranked,
+            profile=vehicle,
+            safe_margin_pct=safe_margin_pct,
+            adjusted_min_pct=adjusted_min_pct,
+            limit=min(limit, 15),
+            preferences=charging_preferences,
+        )
+        origin_stops = origin_computation.stops
+
+    computation = build_route_charging_plan(
+        planning_matches,
+        origin_position_km=origin_position_km,
+        destination_distance_km=destination_distance_km,
+        profile=vehicle,
+        origin_stops=origin_stops,
+        safe_margin_pct=safe_margin_pct,
+        adjusted_min_pct=adjusted_min_pct,
+        limit=limit,
+        preferences=charging_preferences,
+        route_distance_km=route_distance_km,
+        route_duration_minutes=osrm_route.duration_s / 60.0,
+        corridor_stops=matches,
+        route_preference=route_preference,
+    )
+    return computation, len(candidates)
 
 
 def resolve_consumption_wh_per_km(
@@ -380,79 +521,81 @@ def build_charging_plan(
         ) from exc
 
     polyline = RoutePolyline(osrm_route.coordinates)
-    west, south, east, north = polyline.bbox_expanded(corridor_km * 1000)
-    candidates = repo.search(
-        west=west,
-        south=south,
-        east=east,
-        north=north,
-        min_kw=planning_min_kw,
-        max_kw=max_kw,
-        countries=countries,
-        limit=10_000,
-        offset=0,
-    )
-
-    wrong_side_penalty_m = settings.route_wrong_side_penalty_km_default * 1000
-    route_distance_km = osrm_route.distance_m / 1000.0
-    corridor_ranking = rank_stations_for_charging_plan(
-        polyline,
-        candidates,
-        origin_lat=origin_lat,
-        origin_lon=origin_lon,
-        corridor_m=corridor_km * 1000,
-        behind_margin_m=behind_margin_km * 1000,
-        wrong_side_penalty_m=wrong_side_penalty_m,
-        average_speed_mps=osrm_route.average_speed_mps,
-        route_distance_km=route_distance_km,
-        display_limit=limit * 3,
-    )
-    planning_matches = corridor_ranking.planning
-    matches = corridor_ranking.display
-
-    origin_projection = polyline.project_point(origin_lat, origin_lon)
-    origin_position_km = origin_projection.route_position_m / 1000.0
-    destination_distance_km = polyline.length_m / 1000.0
-
     range_km = estimate_range_km(vehicle)
     charging_reach_km = estimate_charging_reach_km(vehicle)
-    origin_search_radius_m = max(emergency_radius_km, charging_reach_km, range_km) * 1000.0
-    origin_ranked = rank_stations_near_point(
+
+    computation, candidates_count = _build_corridor_route_computation(
         repo,
-        lat=origin_lat,
-        lon=origin_lon,
-        min_kw=planning_min_kw,
+        polyline=polyline,
+        osrm_route=osrm_route,
+        origin_lat=origin_lat,
+        origin_lon=origin_lon,
+        vehicle=vehicle,
+        planning_min_kw=planning_min_kw,
         max_kw=max_kw,
         countries=countries,
-        search_radius_m=origin_search_radius_m,
-    )
-    origin_stops: list = []
-    if allows_origin_zone_charging(vehicle.soc_percent):
-        origin_computation = build_emergency_charging_plan(
-            origin_ranked,
-            profile=vehicle,
-            safe_margin_pct=safe_margin_pct,
-            adjusted_min_pct=adjusted_min_pct,
-            limit=min(limit, 15),
-            preferences=charging_preferences,
-        )
-        origin_stops = origin_computation.stops
-
-    computation = build_route_charging_plan(
-        planning_matches,
-        origin_position_km=origin_position_km,
-        destination_distance_km=destination_distance_km,
-        profile=vehicle,
-        origin_stops=origin_stops,
+        corridor_km=corridor_km,
+        behind_margin_km=behind_margin_km,
+        limit=limit,
+        emergency_radius_km=emergency_radius_km,
+        range_km=range_km,
+        charging_reach_km=charging_reach_km,
         safe_margin_pct=safe_margin_pct,
         adjusted_min_pct=adjusted_min_pct,
-        limit=limit,
-        preferences=charging_preferences,
-        route_distance_km=route_distance_km,
-        route_duration_minutes=osrm_route.duration_s / 60.0,
-        corridor_stops=matches,
+        charging_preferences=charging_preferences,
         route_preference=route_preference,
     )
+
+    power_fallback_warnings: list[str] = []
+    fallback_min_kw = resolve_fallback_planning_min_kw(
+        min_kw,
+        preferred_min_kw=planning_min_kw,
+    )
+    if fallback_min_kw is not None and route_plan_needs_power_fallback(computation, vehicle):
+        fallback_computation, fallback_candidates = _build_corridor_route_computation(
+            repo,
+            polyline=polyline,
+            osrm_route=osrm_route,
+            origin_lat=origin_lat,
+            origin_lon=origin_lon,
+            vehicle=vehicle,
+            planning_min_kw=fallback_min_kw,
+            max_kw=max_kw,
+            countries=countries,
+            corridor_km=corridor_km,
+            behind_margin_km=behind_margin_km,
+            limit=limit,
+            emergency_radius_km=emergency_radius_km,
+            range_km=range_km,
+            charging_reach_km=charging_reach_km,
+            safe_margin_pct=safe_margin_pct,
+            adjusted_min_pct=adjusted_min_pct,
+            charging_preferences=charging_preferences,
+            route_preference=route_preference,
+        )
+        preferred_score = _route_plan_viability_score(computation, vehicle)
+        fallback_score = _route_plan_viability_score(fallback_computation, vehicle)
+        power_fallback_warnings.append(
+            "No hay suficientes cargadores ≥100 kW en el corredor para cerrar el viaje "
+            "con tiempos de carga cortos (Model 3 / DC rápido)."
+        )
+        if fallback_score > preferred_score:
+            computation = fallback_computation
+            candidates_count = fallback_candidates
+            if route_plan_needs_power_fallback(computation, vehicle):
+                power_fallback_warnings.append(
+                    "Alternativa con DC ≥50 kW tampoco completa el destino; "
+                    "valora parar antes, subir SOC de salida o ampliar el corredor."
+                )
+            else:
+                power_fallback_warnings.append(
+                    "Plan alternativo con DC ≥50 kW: puede implicar parar antes de tiempo "
+                    "o tramos de conducción más largos si el vehículo lo permite."
+                )
+        else:
+            power_fallback_warnings.append(
+                "Se mantiene el filtro ≥100 kW; la alternativa ≥50 kW no mejora el plan."
+            )
 
     computation, destination_stay = _enrich_with_destination_stay(
         repo,
@@ -466,10 +609,11 @@ def build_charging_plan(
         projected_soc_at_arrival_pct=computation.soc_at_destination_pct,
     )
 
-    if osrm_warnings:
+    extra_warnings = [*power_fallback_warnings, *(osrm_warnings or [])]
+    if extra_warnings:
         computation = replace(
             computation,
-            warnings=[*computation.warnings, *osrm_warnings],
+            warnings=[*computation.warnings, *extra_warnings],
         )
 
     return ChargingPlanBuildResult(
@@ -512,7 +656,7 @@ def build_charging_plan(
         avoid_highways=avoid_highways,
         exclude_slow_chargers=exclude_slow_chargers,
         computation=computation,
-        candidates_in_bbox=len(candidates),
+        candidates_in_bbox=candidates_count,
         destination_stay=destination_stay,
         preferred_operators=charging_preferences.preferred_operators,
         max_price_eur_kwh=charging_preferences.max_price_eur_kwh,

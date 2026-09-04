@@ -60,7 +60,7 @@ Nuevos query params en `GET /api/v1/stations/charging-plan` (y stack privado/age
 - `min_stop_arrival_soc_pct` (default **10**)
 - `max_charge_soc_pct` (default **80**)
 - `max_charge_power_kw` (default **100**)
-- `exclude_slow_chargers` (default **false**; UI REVE marcado por defecto)
+- `exclude_slow_chargers` (default **false**; UI REVE marcado por defecto → suelo **≥100 kW**; si el plan no cierra, alternativa **≥50 kW** con warnings)
 - Alias: `consumption_kwh_per_100km`, `battery_capacity_kwh`, `departure_soc_pct`
 
 UI colapsable en Plan de carga y Asistente.

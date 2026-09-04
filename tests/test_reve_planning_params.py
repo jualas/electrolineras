@@ -1,4 +1,12 @@
-from api.charging_plan_service import resolve_consumption_wh_per_km, resolve_planning_min_kw, vehicle_profile_from_inputs as build_profile
+from types import SimpleNamespace
+
+from api.charging_plan_service import (
+    resolve_consumption_wh_per_km,
+    resolve_fallback_planning_min_kw,
+    resolve_planning_min_kw,
+    route_plan_needs_power_fallback,
+    vehicle_profile_from_inputs as build_profile,
+)
 from api.routing.charging_plan import DEFAULT_DESTINATION_TARGET_SOC_PCT, VehicleEnergyProfile
 
 
@@ -13,9 +21,50 @@ def test_resolve_consumption_kwh_per_100km_alias() -> None:
 
 def test_resolve_planning_min_kw_exclude_slow() -> None:
     assert resolve_planning_min_kw(100.0, exclude_slow_chargers=True) == 100.0
-    assert resolve_planning_min_kw(22.0, exclude_slow_chargers=True) == 50.0
-    assert resolve_planning_min_kw(None, exclude_slow_chargers=True) == 50.0
+    assert resolve_planning_min_kw(22.0, exclude_slow_chargers=True) == 100.0
+    assert resolve_planning_min_kw(None, exclude_slow_chargers=True) == 100.0
+    assert resolve_planning_min_kw(150.0, exclude_slow_chargers=True) == 150.0
     assert resolve_planning_min_kw(22.0, exclude_slow_chargers=False) == 22.0
+
+
+def test_resolve_fallback_planning_min_kw() -> None:
+    assert resolve_fallback_planning_min_kw(None, preferred_min_kw=100.0) == 50.0
+    assert resolve_fallback_planning_min_kw(100.0, preferred_min_kw=100.0) == 50.0
+    assert resolve_fallback_planning_min_kw(150.0, preferred_min_kw=150.0) is None
+    assert resolve_fallback_planning_min_kw(22.0, preferred_min_kw=22.0) is None
+    assert resolve_fallback_planning_min_kw(50.0, preferred_min_kw=50.0) is None
+
+
+def test_route_plan_needs_power_fallback() -> None:
+    vehicle = build_profile(55.0, 57.5, 160.0, 1.0, 10.0)
+    assert not route_plan_needs_power_fallback(
+        SimpleNamespace(
+            reachable_without_stop=True,
+            projected_soc_at_destination_with_plan=None,
+        ),
+        vehicle,
+    )
+    assert route_plan_needs_power_fallback(
+        SimpleNamespace(
+            reachable_without_stop=False,
+            projected_soc_at_destination_with_plan=None,
+        ),
+        vehicle,
+    )
+    assert route_plan_needs_power_fallback(
+        SimpleNamespace(
+            reachable_without_stop=False,
+            projected_soc_at_destination_with_plan=5.0,
+        ),
+        vehicle,
+    )
+    assert not route_plan_needs_power_fallback(
+        SimpleNamespace(
+            reachable_without_stop=False,
+            projected_soc_at_destination_with_plan=12.0,
+        ),
+        vehicle,
+    )
 
 
 def test_vehicle_profile_reve_defaults() -> None:

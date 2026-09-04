@@ -128,12 +128,13 @@ export function RevePlanningFields({
               onChange({ ...options, excludeSlowChargers: event.target.checked })
             }
           />
-          <span>Excluir carga lenta (AC / &lt;50 kW) del plan</span>
+          <span>Excluir carga lenta (AC / &lt;100 kW) del plan</span>
         </label>
       </div>
       <p className="panel-hint reve-planning__hint">
         Valores por defecto alineados con mapareve.es: destino 10 %, paradas desde 10 %, carga hasta 80 %.
-        La potencia máx. se toma del preset del vehículo (pico DC).
+        La potencia máx. se toma del preset del vehículo (pico DC). Con «excluir lenta» el plan prioriza ≥100 kW;
+        si no hay hueco viable, ofrece alternativa ≥50 kW.
       </p>
     </details>
   )
