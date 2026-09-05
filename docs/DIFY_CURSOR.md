@@ -49,7 +49,7 @@ curl -s http://127.0.0.1:18765/health
 - Consola: http://<IP-LAN-SERVIDOR>:8590
 - App: **Electrolineras — guía de viaje EV** (publicada `v3-multi-parada-e2e`)
 - Grafo: **Start → Invoke Cursor bridge (Code) → End** — el nodo Code hace `POST` a `http://<IP-LAN-SERVIDOR>:18765/invoke` con `trip_context_json` + `agent_summary` (el nodo HTTP de Dify no sustituía variables en plantillas importadas).
-- El **puente** construye el prompt multi-parada (`planned_stops[]`, comparativa de rutas) antes de llamar a Cursor CLI.
+- El **puente** construye el prompt de experto EV desde `docs/agent/ev_expert_prompt.md` (`ELECTROLINERAS_EV_EXPERT_PROMPT`) antes de llamar a Cursor CLI.
 
 ## 3. Electrolineras
 

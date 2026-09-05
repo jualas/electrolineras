@@ -90,33 +90,27 @@ El LLM debe usar **solo** estos datos; no recalcular SOC ni inventar estaciones.
 |----------|------|
 | `guide_text` | string (markdown) |
 
-### Prompt del LLM (plantilla)
+### Prompt del LLM (experto EV #6155)
+
+Canonical: [`docs/agent/ev_expert_prompt.md`](agent/ev_expert_prompt.md) (el puente Cursor lo carga).  
+Playbook / knowledge: [`docs/agent/ev_travel_playbook.md`](agent/ev_travel_playbook.md).  
+Dataset Dify: `electrolineras-ev-travel-expert` (`9fd6aa22-117c-4d65-9810-2c1fd69c12a5`). El workflow actual redacta vía Cursor (prompt); el dataset sirve para RAG si se enlaza en consola.
+
+El LLM **interpreta** el plan como conductor EV (micro-paradas, buffer en destino, ETA OSRM vs Google). No recalcula.
+
+Campos extra en `plan_snapshot`:
+
+| Campo | Uso |
+|-------|-----|
+| `planned_stops[].wrong_side` | Cambio de sentido / lado de vía |
+| `planned_stops[].soc_gain_pct` | Ganancia de carga |
+| `planned_stops[].charge_worthwhile` / `micro_stop` | Criterio #6154 |
+| `ev_expert.eta_note` | OSRM sin tráfico, velocidad ajustada |
+| `ev_expert.eta_includes_charge` | El total suma recarga |
+| `ev_expert.destination_rural` | Destino con poca DC |
 
 ```
-Eres un asistente de viaje para un Tesla. Usa SOLO los datos del JSON.
-No inventes SOC, distancias ni estaciones que no aparezcan en trip_context_json.
-No recalcules autonomía ni paradas: redacta sobre plan_snapshot y agent_summary.
-
-Objetivos:
-1. Explica la ruta activa (route_preference) vs referencias corta/rápida/convencionales
-   y geodesic_distance_km cuando route_variants_approximate es false.
-2. Si hay planned_stops[], describe cada parada en orden: km, SOC llegada/salida,
-   charge_minutes, potencia y classification. Usa projected_soc_at_destination_with_plan
-   para el margen en destino con el plan.
-3. Garantía en destino: recommended_soc_at_arrival_pct y nearest_chargers.
-4. Si cultural_poi_enabled y hay poi_hints, propón ruta cultural o gastronómica
-   compatible con tiempos de carga (AC lento = más tiempo para visitas).
-5. Indica dónde comer cerca del cargador o del destino cuando sea razonable.
-6. Menciona alternativas del corredor (stops[]) solo si aportan contexto; no sustituyas planned_stops.
-
-trip_context_json:
-{{trip_context_json}}
-
-Resumen motor:
-{{agent_summary}}
-
-Responde en español, markdown, secciones: Resumen, Comparativa de rutas (si aplica),
-Paradas planificadas, Llegada al destino, Mientras cargas / visitas, Consejos.
+(ver docs/agent/ev_expert_prompt.md)
 ```
 
 ### Nodos HTTP opcionales en Dify

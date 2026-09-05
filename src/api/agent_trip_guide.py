@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from api.agent_ev_expert import enrich_planned_stop_snapshot, ev_expert_plan_hints
 from api.agent_narration import build_agent_narration
 from api.integrations.dify_client import (
     DifyError,
@@ -36,7 +37,7 @@ def _charging_while_visiting_hint(plan: ChargingPlanResponse) -> str | None:
 
 
 def _planned_stop_snapshot(stop: PlannedRouteStopResult) -> dict:
-    return {
+    base = {
         "order": stop.order,
         "station_id": stop.station.id,
         "label": stop.station.site_name or stop.station.location.address,
@@ -52,6 +53,7 @@ def _planned_stop_snapshot(stop: PlannedRouteStopResult) -> dict:
         "charge_minutes": stop.charge_minutes,
         "classification": stop.classification,
     }
+    return enrich_planned_stop_snapshot(stop, base)
 
 
 def _plan_snapshot(plan: ChargingPlanResponse) -> dict:
@@ -84,6 +86,7 @@ def _plan_snapshot(plan: ChargingPlanResponse) -> dict:
             for stop in plan.stops
         ],
         "planned_stops": [_planned_stop_snapshot(stop) for stop in plan.planned_stops],
+        "ev_expert": ev_expert_plan_hints(plan),
         "strategies": [
             {
                 "id": strategy.id,
@@ -178,6 +181,12 @@ def format_deterministic_guide(
             lines.append(f"- Referencia convencionales: ~{conventional:.0f} km")
         if snapshot.get("route_variants_approximate"):
             lines.append("- _Variantes de referencia aproximadas (OSRM no disponible)._")
+        expert = snapshot.get("ev_expert") or {}
+        if expert.get("eta_note"):
+            lines.append(
+                "- Tiempos OSRM sin tráfico en vivo (velocidad ajustada). "
+                "Google aplica tráfico al abrir la ruta; el total del plan suma recarga si hay paradas."
+            )
         lines.append("")
 
     if bullets:
@@ -187,6 +196,16 @@ def format_deterministic_guide(
 
     planned_stops = snapshot.get("planned_stops") or []
     if planned_stops:
+        lines.append("### Por qué estas paradas")
+        lines.append(
+            "El motor evita micro-cargas (poca ganancia de SOC con batería aún holgada) "
+            "y prioriza paradas que merezcan el desvío. Descansar ~2 h no implica enchufar."
+        )
+        if any(stop.get("micro_stop") for stop in planned_stops):
+            lines.append(
+                "- Hay alguna parada marcada `micro_stop`: no la trates como carga de viaje útil."
+            )
+        lines.append("")
         lines.append("### Paradas planificadas")
         for stop in planned_stops:
             charge_text = (
