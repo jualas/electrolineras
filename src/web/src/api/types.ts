@@ -350,6 +350,28 @@ export type TripGuideResponse = TripAdviceResponse & {
   context: TripGuideContext
 }
 
+export type TripChatMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type TripChatOverrides = {
+  route_preference?: 'shortest' | 'fastest' | 'conventional'
+  avoid_highways?: boolean
+  max_charge_soc_pct?: number
+  max_price_eur_kwh?: number
+  preferred_operators?: string[]
+}
+
+export type TripChatResponse = {
+  reply: string
+  reply_source: 'deterministic' | 'llm' | 'fallback'
+  intent_id?: string | null
+  needs_replan: boolean
+  overrides: TripChatOverrides
+  chips: Array<{ id: string; label: string; message: string }>
+}
+
 export type AuthConfigResponse = {
   private_stack_enabled: boolean
   login_enabled: boolean

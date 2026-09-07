@@ -213,3 +213,21 @@ export async function fetchTripGuideFromCar(params: {
   appendRevePlanningParams(query, params)
   return fetchApi(`/api/v1/private/trip-guide-from-car?${query}`)
 }
+
+export async function fetchTripChat(params: {
+  message: string
+  history?: import('./types').TripChatMessage[]
+  planSnapshot?: Record<string, unknown> | null
+  allowLlm?: boolean
+}): Promise<import('./types').TripChatResponse> {
+  return fetchApi('/api/v1/private/trip-chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: params.message,
+      history: params.history ?? [],
+      plan_snapshot: params.planSnapshot ?? null,
+      allow_llm: params.allowLlm !== false,
+    }),
+  })
+}

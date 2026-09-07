@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { fetchTripAdviceFromCar, fetchTripGuideFromCar } from '../api/auth'
-import type { GeocodeResult, TripGuideResponse } from '../api/types'
+import { fetchTripGuideFromCar } from '../api/auth'
+import type { GeocodeResult, TripChatOverrides, TripGuideResponse } from '../api/types'
 import { VehicleTelemetryStrip } from '../components/vehicle/VehicleTelemetryStrip'
 import {
   chargingReachFromNominal,
@@ -26,6 +26,7 @@ import {
   DepartureChargeSimulator,
   departureSocQueryParam,
 } from './DepartureChargeSimulator'
+import { AssistantChat } from './AssistantChat'
 import { useAuth } from './AuthContext'
 import { LoginPanel } from './LoginPanel'
 import { useActiveTrip } from '../hooks/useActiveTrip'
@@ -69,8 +70,6 @@ export function AssistantPanel({
   const [advice, setAdvice] = useState<TripGuideResponse | null>(null)
   const [planError, setPlanError] = useState<string | null>(null)
   const [loadingPlan, setLoadingPlan] = useState(false)
-  const [loadingGuide, setLoadingGuide] = useState(false)
-  const [culturalPoi, setCulturalPoi] = useState(true)
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
   const [avoidTolls, setAvoidTolls] = useState(true)
   const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
@@ -78,8 +77,12 @@ export function AssistantPanel({
   )
   const [simulateDeparture, setSimulateDeparture] = useState(false)
   const [departureSoc, setDepartureSoc] = useState(80)
-  const [aiNote, setAiNote] = useState('')
-  const [guideError, setGuideError] = useState<string | null>(null)
+  const [preferredOperators, setPreferredOperators] = useState<string[]>(
+    () => DEFAULT_CHARGING_PREFERENCES.preferredOperators,
+  )
+  const [maxPriceEurKwh, setMaxPriceEurKwh] = useState<number | null>(
+    () => DEFAULT_CHARGING_PREFERENCES.maxPriceEurKwh,
+  )
   const recalcOnPreferenceRef = useRef(false)
   const runMapPlanRef = useRef<() => void>(() => {})
   const tripRestoredRef = useRef(false)
@@ -152,7 +155,7 @@ export function AssistantPanel({
   }, [authenticated, activeTrip, stops])
 
   const destination = stops[stops.length - 1]?.point ?? null
-  const busy = loadingPlan || loadingGuide
+  const busy = loadingPlan
 
   // Debe ir antes de cualquier return: si no, al pasar a authenticated React
   // registra un hook de más y la UI queda en blanco.
@@ -319,85 +322,6 @@ export function AssistantPanel({
     onPlanStateChange?.('loading')
     onPlanResults(null)
     try {
-      const result = await fetchTripAdviceFromCar({
-        destLat: dest.lat,
-        destLon: dest.lon,
-        viaPoints: itinerary.viaPoints,
-        terrainFactor: terrain.factor,
-        reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
-        localMobilityKm: 40,
-        includeRoute: true,
-        routePreference,
-        avoidHighways: avoidTolls,
-        departureSocPercent: departureSocParam,
-        preferredOperators: DEFAULT_CHARGING_PREFERENCES.preferredOperators,
-        maxPriceEurKwh: DEFAULT_CHARGING_PREFERENCES.maxPriceEurKwh,
-        maxChargePowerKw: revePlanning.maxChargePowerKw,
-        minDestinationSocPct: revePlanning.minDestinationSocPct,
-        minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
-        maxChargeSocPct: revePlanning.maxChargeSocPct,
-        excludeSlowChargers: revePlanning.excludeSlowChargers,
-        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
-        vehiclePresetId: vehicleProfile.presetId,
-        minKw: 100,
-      })
-      setAdvice((prev) =>
-        prev
-          ? { ...prev, plan: result.plan, agent_summary: result.agent_summary, agent_bullets: result.agent_bullets, vehicle: result.vehicle ?? prev.vehicle }
-          : {
-              plan: result.plan,
-              agent_summary: result.agent_summary,
-              agent_bullets: result.agent_bullets,
-              vehicle: result.vehicle,
-              guide_text: '',
-              guide_source: 'deterministic',
-              context: {
-                cultural_poi_enabled: culturalPoi,
-                poi_hints: [],
-                nearest_destination_chargers: [],
-                vehicle_snapshot: {},
-                plan_snapshot: {},
-              },
-            },
-      )
-      onPlanResults(result.plan)
-      onPlanStateChange?.('ready')
-      persistTripFromPlan(dest, itinerary.waypoints, result.plan, { isReplan, replanReason })
-    } catch (err) {
-      setAdvice(null)
-      onPlanResults(null)
-      onPlanStateChange?.('error')
-      setPlanError(err instanceof Error ? err.message : 'Error al planificar')
-    } finally {
-      setLoadingPlan(false)
-    }
-  }
-
-  const runAiGuide = async () => {
-    const replanReason = pendingReplanReasonRef.current ?? 'manual'
-    pendingReplanReasonRef.current = null
-    const isReplan = Boolean(activeTrip?.lastPlan) || Boolean(advice?.plan)
-
-    let itinerary: {
-      destination: GeocodeResult
-      viaPoints: Array<{ lat: number; lon: number }>
-      waypoints: Array<{ label: string; lat: number; lon: number }>
-    }
-    try {
-      itinerary = await resolveItinerary()
-    } catch (err) {
-      setGuideError(err instanceof Error ? err.message : 'Indica un destino')
-      return
-    }
-    const dest = itinerary.destination
-    setLoadingGuide(true)
-    setGuideError(null)
-    setPlanError(null)
-    if (!advice?.plan) {
-      onPlanStateChange?.('loading')
-      onPlanResults(null)
-    }
-    try {
       const result = await fetchTripGuideFromCar({
         destLat: dest.lat,
         destLon: dest.lon,
@@ -407,14 +331,13 @@ export function AssistantPanel({
         reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
         localMobilityKm: 40,
         includeRoute: true,
-        culturalPoi,
-        invokeDify: true,
-        userNote: aiNote.trim() || undefined,
+        culturalPoi: false,
+        invokeDify: false,
         routePreference,
         avoidHighways: avoidTolls,
         departureSocPercent: departureSocParam,
-        preferredOperators: DEFAULT_CHARGING_PREFERENCES.preferredOperators,
-        maxPriceEurKwh: DEFAULT_CHARGING_PREFERENCES.maxPriceEurKwh,
+        preferredOperators,
+        maxPriceEurKwh,
         maxChargePowerKw: revePlanning.maxChargePowerKw,
         minDestinationSocPct: revePlanning.minDestinationSocPct,
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
@@ -429,10 +352,94 @@ export function AssistantPanel({
       onPlanStateChange?.('ready')
       persistTripFromPlan(dest, itinerary.waypoints, result.plan, { isReplan, replanReason })
     } catch (err) {
+      setAdvice(null)
+      onPlanResults(null)
       onPlanStateChange?.('error')
-      setGuideError(err instanceof Error ? err.message : 'Error al generar la guía IA')
+      setPlanError(err instanceof Error ? err.message : 'Error al planificar')
     } finally {
-      setLoadingGuide(false)
+      setLoadingPlan(false)
+    }
+  }
+
+  const applyChatOverrides = async (overrides: TripChatOverrides) => {
+    const nextPreference = overrides.route_preference ?? routePreference
+    const nextAvoidTolls =
+      overrides.avoid_highways !== undefined ? overrides.avoid_highways : avoidTolls
+    const nextMaxCharge =
+      overrides.max_charge_soc_pct != null ? overrides.max_charge_soc_pct : revePlanning.maxChargeSocPct
+    const nextMaxPrice =
+      overrides.max_price_eur_kwh != null ? overrides.max_price_eur_kwh : maxPriceEurKwh
+    const nextOperators = overrides.preferred_operators ?? preferredOperators
+
+    if (overrides.route_preference) {
+      setRoutePreference(overrides.route_preference)
+    }
+    if (overrides.avoid_highways !== undefined) {
+      setAvoidTolls(overrides.avoid_highways)
+    }
+    if (overrides.max_charge_soc_pct != null) {
+      setRevePlanning((prev) => ({ ...prev, maxChargeSocPct: overrides.max_charge_soc_pct! }))
+    }
+    if (overrides.max_price_eur_kwh != null) {
+      setMaxPriceEurKwh(overrides.max_price_eur_kwh)
+    }
+    if (overrides.preferred_operators) {
+      setPreferredOperators(overrides.preferred_operators)
+    }
+
+    let itinerary: {
+      destination: GeocodeResult
+      viaPoints: Array<{ lat: number; lon: number }>
+      waypoints: Array<{ label: string; lat: number; lon: number }>
+    }
+    try {
+      itinerary = await resolveItinerary()
+    } catch (err) {
+      setPlanError(err instanceof Error ? err.message : 'Indica un destino')
+      return
+    }
+    const dest = itinerary.destination
+    setLoadingPlan(true)
+    setPlanError(null)
+    onPlanStateChange?.('loading')
+    try {
+      const result = await fetchTripGuideFromCar({
+        destLat: dest.lat,
+        destLon: dest.lon,
+        destLabel: dest.label,
+        viaPoints: itinerary.viaPoints,
+        terrainFactor: terrain.factor,
+        reserveSocPercent: DEFAULT_RESERVE_SOC_PERCENT,
+        localMobilityKm: 40,
+        includeRoute: true,
+        culturalPoi: false,
+        invokeDify: false,
+        routePreference: nextPreference,
+        avoidHighways: nextAvoidTolls,
+        departureSocPercent: departureSocParam,
+        preferredOperators: nextOperators,
+        maxPriceEurKwh: nextMaxPrice,
+        maxChargePowerKw: revePlanning.maxChargePowerKw,
+        minDestinationSocPct: revePlanning.minDestinationSocPct,
+        minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
+        maxChargeSocPct: nextMaxCharge,
+        excludeSlowChargers: revePlanning.excludeSlowChargers,
+        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
+        vehiclePresetId: vehicleProfile.presetId,
+        minKw: 100,
+      })
+      setAdvice(result)
+      onPlanResults(result.plan)
+      onPlanStateChange?.('ready')
+      persistTripFromPlan(dest, itinerary.waypoints, result.plan, {
+        isReplan: true,
+        replanReason: 'manual',
+      })
+    } catch (err) {
+      onPlanStateChange?.('error')
+      setPlanError(err instanceof Error ? err.message : 'Error al recalcular el plan')
+    } finally {
+      setLoadingPlan(false)
     }
   }
 
@@ -598,59 +605,24 @@ export function AssistantPanel({
           disabled={busy}
         />
 
-        <label className="field field--checkbox">
-          <input
-            type="checkbox"
-            checked={culturalPoi}
-            onChange={(e) => setCulturalPoi(e.target.checked)}
-          />
-          <span>Incluir ideas culturales y gastronomía en la guía</span>
-        </label>
-
-        <label className="field" htmlFor="assistant-ai-note">
-          <span className="field__label">Pregunta o nota para la IA (opcional)</span>
-          <textarea
-            id="assistant-ai-note"
-            className="assistant-ai-note"
-            rows={3}
-            placeholder="Ej.: ¿Dónde comer cerca del cargador? ¿Ruta cultural mientras cargo?"
-            value={aiNote}
-            onChange={(e) => setAiNote(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-
         <div className="route-form__actions">
           <button
             type="button"
             className="btn btn--primary"
             disabled={busy || vehicle == null || !hasDestinationInput}
-            onClick={() => void runAiGuide()}
-          >
-            {loadingGuide ? 'Generando guía IA…' : 'Guía de viaje con IA'}
-          </button>
-          <button
-            type="button"
-            className="btn btn--secondary"
-            disabled={busy || vehicle == null || !hasDestinationInput}
             onClick={() => void runMapPlan()}
           >
-            {loadingPlan ? 'Calculando mapa…' : 'Solo plan en mapa (rápido)'}
+            {loadingPlan ? 'Calculando plan…' : 'Calcular plan'}
           </button>
         </div>
         <p className="panel-hint">
-          El mapa es rápido (motor local). La guía IA usa Dify + Cursor y puede tardar 1–2 minutos.
+          El plan (mapa y paradas) es la fuente de verdad. Después puedes chatear para cambiar preferencias.
         </p>
       </form>
 
       {planError && (
         <p className="route-message route-message--error" role="alert">
           {planError}
-        </p>
-      )}
-      {guideError && (
-        <p className="route-message route-message--error" role="alert">
-          {guideError}
         </p>
       )}
 
@@ -691,40 +663,6 @@ export function AssistantPanel({
               replanLoading={loadingPlan}
             />
           ) : null}
-          {advice.guide_text && (
-            <div className="assistant-guide">
-              <div className="assistant-guide__header">
-                <h3 className="assistant-guide__title">Guía de viaje</h3>
-                <span className="assistant-guide__badge">
-                  {advice.guide_source === 'dify' ? 'IA · Cursor' : 'Motor local'}
-                </span>
-              </div>
-              <pre className="assistant-guide__text">{advice.guide_text}</pre>
-              <button
-                type="button"
-                className="assistant-guide__refresh"
-                disabled={busy || !hasDestinationInput}
-                onClick={() => void runAiGuide()}
-              >
-                {loadingGuide ? 'Regenerando…' : 'Actualizar guía IA'}
-              </button>
-            </div>
-          )}
-          {!advice.guide_text && advice.plan && (advice.plan.planned_stops?.length ?? 0) === 0 && (
-            <p className="assistant-panel__muted">
-              Plan listo en el mapa. Pulsa <strong>Guía de viaje con IA</strong> para la narrativa.
-            </p>
-          )}
-          {!advice.plan?.route_trip_summary && advice.agent_summary ? (
-            <p className="assistant-advice__summary">{advice.agent_summary}</p>
-          ) : null}
-          {!advice.plan?.planned_stops?.length && advice.agent_bullets.length > 0 && (
-            <ul className="assistant-advice__bullets">
-              {advice.agent_bullets.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          )}
           <ChargingPlanResults
             plan={advice.plan}
             selectedStationId={selectedStationId}
@@ -733,6 +671,11 @@ export function AssistantPanel({
             originLabel="Tu coche"
             destinationLabel={destination?.label}
             currentLegIndex={activeTrip?.progress.currentLegIndex}
+          />
+          <AssistantChat
+            planSnapshot={advice.context?.plan_snapshot}
+            disabled={busy || !hasDestinationInput}
+            onApplyOverrides={applyChatOverrides}
           />
         </div>
       )}

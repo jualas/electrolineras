@@ -316,6 +316,27 @@ class TripGuideResponse(TripAdviceResponse):
     context: TripGuideContext
 
 
+class TripChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=4000)
+
+
+class TripChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    history: list[TripChatMessage] = Field(default_factory=list, max_length=20)
+    plan_snapshot: dict[str, Any] | None = None
+    allow_llm: bool = True
+
+
+class TripChatResponse(BaseModel):
+    reply: str
+    reply_source: Literal["deterministic", "llm", "fallback"]
+    intent_id: str | None = None
+    needs_replan: bool = False
+    overrides: dict[str, Any] = Field(default_factory=dict)
+    chips: list[dict[str, str]] = Field(default_factory=list)
+
+
 class PrivateStackStatusResult(BaseModel):
     private_stack_enabled: bool
     token_required: bool
@@ -325,6 +346,7 @@ class PrivateStackStatusResult(BaseModel):
     mqtt_configured: bool = False
     teslamate_api_configured: bool = False
     dify_trip_guide_configured: bool = False
+    cursor_bridge_configured: bool = False
 
 
 class AuthConfigResponse(BaseModel):

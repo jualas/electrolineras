@@ -6,9 +6,9 @@
 
 Superar el enfoque del planificador Tesla («llegar al destino con SOC mínimo») recomendando **SOC de llegada** según la infraestructura **en la zona de destino**: potencia (11/22 kW vs 100+ kW), distancia al cargador más cercano y movilidad local prevista (pueblo en sierra, desvíos, etc.).
 
-**Principio:** el motor determinista calcula números; el LLM (Dify o Cursor CLI) **interpreta** el plan como experto en viajes EV (playbook + prompt) y no inventa estaciones ni SOC.
+**Principio:** el motor determinista calcula números; la IA **interactúa** (chat + chips) sobre el plan ya visible en la app — no reexplica el itinerario en un monólogo. Ver #6166.
 
-Persona y playbook: [`docs/agent/ev_expert_prompt.md`](agent/ev_expert_prompt.md), [`docs/agent/ev_travel_playbook.md`](agent/ev_travel_playbook.md) (#6155).
+Persona y playbook: [`docs/agent/ev_expert_prompt.md`](agent/ev_expert_prompt.md), chat corto [`docs/agent/ev_chat_prompt.md`](agent/ev_chat_prompt.md), [`docs/agent/ev_travel_playbook.md`](agent/ev_travel_playbook.md) (#6155).
 
 ## Arquitectura
 

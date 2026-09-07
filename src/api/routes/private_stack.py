@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from api.agent_trip_chat import chat_action_chips, handle_trip_chat_turn
 from api.agent_trip_guide import build_trip_guide_response
 from api.auth.private_access import (
     private_stack_configured,
@@ -12,6 +13,7 @@ from api.auth.private_access import (
 )
 from api.config import settings
 from api.dependencies import get_repository
+from api.integrations.cursor_bridge_client import cursor_bridge_configured
 from api.integrations.dify_client import dify_trip_guide_configured
 from api.integrations.telemetry_energy import vehicle_energy_from_telemetry
 from api.integrations.teslamate import TeslaMateError, VehicleTelemetry
@@ -27,6 +29,8 @@ from api.schemas import (
     PrivateStackStatusResult,
     RoutePreference,
     TripAdviceResponse,
+    TripChatRequest,
+    TripChatResponse,
     TripGuideResponse,
     VehicleTelemetryResult,
 )
@@ -91,6 +95,7 @@ def private_stack_status() -> PrivateStackStatusResult:
         mqtt_configured=mqtt_configured(),
         teslamate_api_configured=teslamate_api_configured(),
         dify_trip_guide_configured=dify_trip_guide_configured(),
+        cursor_bridge_configured=cursor_bridge_configured(),
     )
 
 
@@ -338,3 +343,27 @@ def private_trip_guide_from_car(
             "departure_soc_percent": advice.departure_soc_percent,
         }
     )
+
+
+@router.post("/trip-chat")
+def private_trip_chat(body: TripChatRequest) -> TripChatResponse:
+    """Turno de chat sobre el plan activo (#6166). No genera guía monólogo."""
+    if not settings.charging_agent_enabled:
+        raise HTTPException(status_code=503, detail="Asistente de viaje desactivado")
+
+    history = [{"role": item.role, "content": item.content} for item in body.history]
+    turn = handle_trip_chat_turn(
+        body.message,
+        plan_snapshot=body.plan_snapshot,
+        history=history,
+        allow_llm=body.allow_llm,
+    )
+    return TripChatResponse(
+        reply=turn.reply,
+        reply_source=turn.reply_source,
+        intent_id=turn.intent_id,
+        needs_replan=turn.needs_replan or turn.overrides.needs_replan(),
+        overrides=turn.overrides.as_dict(),
+        chips=chat_action_chips(),
+    )
+
