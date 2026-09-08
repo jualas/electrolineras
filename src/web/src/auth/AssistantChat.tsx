@@ -10,12 +10,10 @@ export type AssistantChatChip = {
 }
 
 const DEFAULT_CHIPS: AssistantChatChip[] = [
-  { id: 'why_stop', label: '¿Por qué esta parada?', message: '¿Por qué elegiste estas paradas?' },
-  { id: 'avoid_tolls', label: 'Evitar peajes', message: 'Quiero evitar peajes' },
-  { id: 'fastest', label: 'Ruta más rápida', message: 'Prefiero la ruta más rápida por autopista' },
-  { id: 'cheaper', label: 'Más barata', message: 'Prioriza cargadores más baratos' },
+  { id: 'avoid_tolls', label: 'Sin peajes', message: 'Quiero evitar peajes' },
+  { id: 'fastest', label: 'Más rápida', message: 'Prefiero la ruta más rápida por autopista' },
   { id: 'fewer_stops', label: 'Parar menos', message: 'Quiero parar menos veces, aunque cargue más en cada parada' },
-  { id: 'less_charge', label: 'Cargar menos / parada', message: 'Carga menos en cada parada (zona rápida DC)' },
+  { id: 'why_stop', label: '¿Por qué estas?', message: '¿Por qué elegiste estas paradas?' },
 ]
 
 type AssistantChatProps = {
@@ -28,8 +26,7 @@ export function AssistantChat({ planSnapshot, disabled, onApplyOverrides }: Assi
   const [messages, setMessages] = useState<TripChatMessage[]>([
     {
       role: 'assistant',
-      content:
-        'El plan está en el mapa y en el panel. ¿Qué quieres cambiar? Usa un chip o escribe en una frase.',
+      content: '¿Qué cambias? Chip o una frase.',
     },
   ])
   const [draft, setDraft] = useState('')
@@ -87,12 +84,8 @@ export function AssistantChat({ planSnapshot, disabled, onApplyOverrides }: Assi
   return (
     <div className="assistant-chat">
       <div className="assistant-chat__header">
-        <h3 className="assistant-chat__title">Chat del viaje</h3>
-        <span className="assistant-chat__badge">IA · interacción</span>
+        <h3 className="assistant-chat__title">¿Qué hacemos?</h3>
       </div>
-      <p className="assistant-chat__hint">
-        El detalle del plan lo ves arriba. Aquí solo cambios y dudas puntuales.
-      </p>
       <div className="assistant-chat__chips" role="group" aria-label="Acciones rápidas">
         {chips.map((chip) => (
           <button

@@ -5,7 +5,8 @@ from api.agent_trip_chat import chat_action_chips, handle_trip_chat_turn, interp
 
 def test_chips_include_core_actions() -> None:
     ids = {chip["id"] for chip in chat_action_chips()}
-    assert {"why_stop", "avoid_tolls", "fastest", "cheaper", "fewer_stops", "less_charge"} <= ids
+    assert {"why_stop", "avoid_tolls", "fastest", "fewer_stops"} <= ids
+    assert len(ids) == 4
 
 
 def test_avoid_tolls_intent_replans() -> None:

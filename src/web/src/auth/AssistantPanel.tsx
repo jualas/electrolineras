@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { fetchTripGuideFromCar } from '../api/auth'
-import type { GeocodeResult, TripChatOverrides, TripGuideResponse } from '../api/types'
+import type { GeocodeResult, RoutePreference, TripChatOverrides, TripGuideResponse } from '../api/types'
 import { VehicleTelemetryStrip } from '../components/vehicle/VehicleTelemetryStrip'
 import {
   chargingReachFromNominal,
@@ -19,14 +19,13 @@ import {
 } from '../search/ItineraryFields'
 import { revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
-import type { RoutePreference } from '../api/types'
-import { ChargingPlanResults } from '../search/ChargingPlanResults'
 import {
   defaultDepartureSoc,
   DepartureChargeSimulator,
   departureSocQueryParam,
 } from './DepartureChargeSimulator'
 import { AssistantChat } from './AssistantChat'
+import { AssistantPlanBrief } from './AssistantPlanBrief'
 import { useAuth } from './AuthContext'
 import { LoginPanel } from './LoginPanel'
 import { useActiveTrip } from '../hooks/useActiveTrip'
@@ -615,9 +614,7 @@ export function AssistantPanel({
             {loadingPlan ? 'Calculando plan…' : 'Calcular plan'}
           </button>
         </div>
-        <p className="panel-hint">
-          El plan (mapa y paradas) es la fuente de verdad. Después puedes chatear para cambiar preferencias.
-        </p>
+        <p className="panel-hint">Calcula el plan; el chat sirve para cambiarlo. El mapa enseña la ruta.</p>
       </form>
 
       {planError && (
@@ -628,55 +625,60 @@ export function AssistantPanel({
 
       {advice && (
         <div className="assistant-advice">
-          {activeTrip && advice.plan && vehicle ? (
-            <ReplanOnRouteBar
-              destinationLabel={activeTrip.destination.label}
-              originLabel={vehicleOrigin?.label ?? 'Coche'}
-              socPercent={Math.round(vehicle.battery_level_pct)}
-              socSourceLabel="TeslaMate"
-              loading={loadingPlan}
-              autoFollow={enMarchaSettings.autoFollow}
-              onAutoFollowChange={setAutoFollow}
-              onReplan={() => triggerMapPlan('manual')}
-              canReplan={!busy && hasDestinationInput}
-              lastUpdatedAt={activeTrip.updatedAt}
-              routeDeviationKm={distancePointToRouteKm(
-                { lat: vehicle.lat, lon: vehicle.lon },
-                advice.plan.route_geometry,
-              )}
-              consumptionDivergencePct={consumptionDivergencePct}
-              plannedConsumptionWhPerKm={plannedConsumptionWhPerKm}
-              currentConsumptionWhPerKm={currentConsumptionWhPerKm}
-              replanCount={activeTrip.replan.count}
-              lastReplanReason={replanReasonLabel(activeTrip.replan.lastReason)}
-            />
-          ) : null}
-          {activeTrip && advice.plan && routeChargingStops(advice.plan).length > 0 ? (
-            <ActiveTripProgressBar
-              plan={advice.plan}
-              progress={activeTrip.progress}
-              userLocation={{ lat: vehicle!.lat, lon: vehicle!.lon }}
-              onMarkStopCompleted={(stopOrder) =>
-                markStopCompleted(stopOrder, routeChargingStops(advice.plan).length)
-              }
-              onReplan={() => triggerMapPlan('stop_completed')}
-              replanLoading={loadingPlan}
-            />
-          ) : null}
-          <ChargingPlanResults
-            plan={advice.plan}
-            selectedStationId={selectedStationId}
-            onSelectStation={onSelectStation}
-            variant="assistant"
-            originLabel="Tu coche"
-            destinationLabel={destination?.label}
-            currentLegIndex={activeTrip?.progress.currentLegIndex}
-          />
           <AssistantChat
             planSnapshot={advice.context?.plan_snapshot}
             disabled={busy || !hasDestinationInput}
             onApplyOverrides={applyChatOverrides}
           />
+          <AssistantPlanBrief
+            plan={advice.plan}
+            originLabel="Tu coche"
+            destinationLabel={destination?.label}
+            selectedStationId={selectedStationId}
+            onSelectStation={onSelectStation}
+          />
+          {activeTrip &&
+            advice.plan &&
+            vehicle &&
+            (activeTrip.replan.count > 0 ||
+              (activeTrip.progress.currentLegIndex ?? 0) > 0 ||
+              enMarchaSettings.autoFollow) && (
+              <>
+                <ReplanOnRouteBar
+                  destinationLabel={activeTrip.destination.label}
+                  originLabel={vehicleOrigin?.label ?? 'Coche'}
+                  socPercent={Math.round(vehicle.battery_level_pct)}
+                  socSourceLabel="TeslaMate"
+                  loading={loadingPlan}
+                  autoFollow={enMarchaSettings.autoFollow}
+                  onAutoFollowChange={setAutoFollow}
+                  onReplan={() => triggerMapPlan('manual')}
+                  canReplan={!busy && hasDestinationInput}
+                  lastUpdatedAt={activeTrip.updatedAt}
+                  routeDeviationKm={distancePointToRouteKm(
+                    { lat: vehicle.lat, lon: vehicle.lon },
+                    advice.plan.route_geometry,
+                  )}
+                  consumptionDivergencePct={consumptionDivergencePct}
+                  plannedConsumptionWhPerKm={plannedConsumptionWhPerKm}
+                  currentConsumptionWhPerKm={currentConsumptionWhPerKm}
+                  replanCount={activeTrip.replan.count}
+                  lastReplanReason={replanReasonLabel(activeTrip.replan.lastReason)}
+                />
+                {routeChargingStops(advice.plan).length > 0 ? (
+                  <ActiveTripProgressBar
+                    plan={advice.plan}
+                    progress={activeTrip.progress}
+                    userLocation={{ lat: vehicle.lat, lon: vehicle.lon }}
+                    onMarkStopCompleted={(stopOrder) =>
+                      markStopCompleted(stopOrder, routeChargingStops(advice.plan).length)
+                    }
+                    onReplan={() => triggerMapPlan('stop_completed')}
+                    replanLoading={loadingPlan}
+                  />
+                ) : null}
+              </>
+            )}
         </div>
       )}
     </section>

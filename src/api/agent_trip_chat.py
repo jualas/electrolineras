@@ -65,12 +65,10 @@ class ChatTurnResult:
 
 def chat_action_chips() -> list[dict[str, str]]:
     return [
-        {"id": "why_stop", "label": "¿Por qué esta parada?", "message": _CHIP_MESSAGES["why_stop"]},
-        {"id": "avoid_tolls", "label": "Evitar peajes", "message": _CHIP_MESSAGES["avoid_tolls"]},
-        {"id": "fastest", "label": "Ruta más rápida", "message": _CHIP_MESSAGES["fastest"]},
-        {"id": "cheaper", "label": "Más barata", "message": _CHIP_MESSAGES["cheaper"]},
+        {"id": "avoid_tolls", "label": "Sin peajes", "message": _CHIP_MESSAGES["avoid_tolls"]},
+        {"id": "fastest", "label": "Más rápida", "message": _CHIP_MESSAGES["fastest"]},
         {"id": "fewer_stops", "label": "Parar menos", "message": _CHIP_MESSAGES["fewer_stops"]},
-        {"id": "less_charge", "label": "Cargar menos / parada", "message": _CHIP_MESSAGES["less_charge"]},
+        {"id": "why_stop", "label": "¿Por qué estas?", "message": _CHIP_MESSAGES["why_stop"]},
     ]
 
 
