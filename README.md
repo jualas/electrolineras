@@ -5,6 +5,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![React 19 + TypeScript](https://img.shields.io/badge/React_19-TypeScript-3178C6?logo=react&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
+[![Licencia MIT](https://img.shields.io/badge/licencia-MIT-yellow)](LICENSE)
 
 **Demo en producción: <https://electro.jualas.es>**
 
@@ -237,3 +238,5 @@ Avance detallado: [`docs/STATUS.md`](docs/STATUS.md) · backlog: [`TASKBOARD.md`
 ## Autor
 
 **jualas** · proyecto personal posterior al ciclo de DAM · [GitHub @jualas](https://github.com/jualas)
+
+Licencia [MIT](LICENSE).
