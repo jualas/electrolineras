@@ -33,6 +33,9 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
+# Servicio de prod por defecto: IP LAN del host (sin IP fija en el repo); se puede fijar en el entorno.
+export PROD_ORIGIN_SERVICE="${PROD_ORIGIN_SERVICE:-http://$(hostname -I | awk '{print $1}'):8015}"
+
 exec python3 - "$REPO_ROOT" "$ENV_FILE" "$STAGING_HOST" "$STAGING_ORIGIN" "$PROD_HOST" "$ZONE_NAME" <<'PY'
 from __future__ import annotations
 
@@ -118,7 +121,7 @@ def service_for(hostname: str, default: str) -> str:
             return rule["service"]
     return default
 
-prod_service = service_for(prod_host, "http://<IP-LAN-SERVIDOR>:8015")
+prod_service = service_for(prod_host, os.environ["PROD_ORIGIN_SERVICE"])
 ingress = [
     {"hostname": prod_host, "service": prod_service},
     {"hostname": staging_host, "service": staging_origin},

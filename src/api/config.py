@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     dify_trip_workflow_api_key: str = ""
     dify_timeout_seconds: float = 90.0
     # Chat interactivo (#6166): puente Cursor directo (sin monólogo Dify).
-    cursor_bridge_url: str = "http://<IP-LAN-SERVIDOR>:18765"
+    cursor_bridge_url: str = "http://host.docker.internal:18765"
     cursor_bridge_token: str = ""
     cursor_bridge_timeout_seconds: float = 90.0
 

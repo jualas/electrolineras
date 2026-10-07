@@ -17,6 +17,8 @@ export DEPLOY_COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-docker-compose.staging.yml}"
 export DEPLOY_SERVICES="${DEPLOY_SERVICES:-electrolineras-staging-api electrolineras-staging-nginx}"
 export DEPLOY_HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:8016/health}"
 export ELECTROLINERAS_STAGING_DATA="${ELECTROLINERAS_STAGING_DATA:-/mnt/datos/docker/volumes/electrolineras-staging-data}"
+# Origen CORS por IP LAN del host (sin IP fija en el repo); se puede fijar en deploy.env.
+export STAGING_LAN_ORIGIN="${STAGING_LAN_ORIGIN:-http://$(hostname -I | awk '{print $1}'):8016}"
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
@@ -73,7 +75,7 @@ compose_file=docker-compose.staging.yml
 services=$DEPLOY_SERVICES
 health_url=$DEPLOY_HEALTH_URL
 EOF
-    log "Staging listo: http://127.0.0.1:8016  (LAN: http://<IP-LAN-SERVIDOR>:8016)"
+    log "Staging listo: http://127.0.0.1:8016  (LAN: $STAGING_LAN_ORIGIN)"
     log "Prod intacto en :8015 / https://electro.jualas.es"
     exit 0
   fi

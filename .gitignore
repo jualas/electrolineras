@@ -51,3 +51,6 @@ img/*
 
 # Worktrees y estado local de Claude Code
 .claude/
+
+# Config local del puente Cursor (usar cursor-bridge.env.example)
+scripts/dify/cursor-bridge.env

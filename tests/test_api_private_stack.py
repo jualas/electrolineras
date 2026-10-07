@@ -76,7 +76,7 @@ def test_private_vehicle_state(mock_fetch, private_client: TestClient) -> None:
     original_mqtt_user = settings.teslamate_mqtt_username
     settings.private_stack_enabled = True
     settings.private_api_token = "test-private-token-min-32-chars-long"
-    settings.teslamate_mqtt_host = "<IP-LAN-SERVIDOR>"
+    settings.teslamate_mqtt_host = "192.0.2.10"
     settings.teslamate_mqtt_username = "jualas"
     try:
         response = private_client.get(
@@ -123,7 +123,7 @@ def test_private_trip_advice_from_car(mock_fetch, mock_osrm, private_client: Tes
     original_mqtt_user = settings.teslamate_mqtt_username
     settings.private_stack_enabled = True
     settings.private_api_token = "test-private-token-min-32-chars-long"
-    settings.teslamate_mqtt_host = "<IP-LAN-SERVIDOR>"
+    settings.teslamate_mqtt_host = "192.0.2.10"
     settings.teslamate_mqtt_username = "jualas"
     try:
         response = private_client.get(
@@ -173,7 +173,7 @@ def test_private_trip_advice_departure_soc_simulation(
     original_mqtt_user = settings.teslamate_mqtt_username
     settings.private_stack_enabled = True
     settings.private_api_token = "test-private-token-min-32-chars-long"
-    settings.teslamate_mqtt_host = "<IP-LAN-SERVIDOR>"
+    settings.teslamate_mqtt_host = "192.0.2.10"
     settings.teslamate_mqtt_username = "jualas"
     try:
         response = private_client.get(
@@ -220,7 +220,7 @@ def test_private_trip_guide_from_car(mock_fetch, mock_osrm, private_client: Test
     original_mqtt_user = settings.teslamate_mqtt_username
     settings.private_stack_enabled = True
     settings.private_api_token = "test-private-token-min-32-chars-long"
-    settings.teslamate_mqtt_host = "<IP-LAN-SERVIDOR>"
+    settings.teslamate_mqtt_host = "192.0.2.10"
     settings.teslamate_mqtt_username = "jualas"
     try:
         response = private_client.get(
