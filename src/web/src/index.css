@@ -315,8 +315,11 @@ button {
   position: absolute;
   left: 0.75rem;
   bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
-  z-index: 3;
+  z-index: 12;
   pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 
 .map-follow-btn {
@@ -336,8 +339,94 @@ button {
   color: #1a73e8;
 }
 
+.map-follow-btn--live {
+  border-color: #c62828;
+  color: #c62828;
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
 .map-follow-btn:hover {
   border-color: #1a73e8;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(198, 40, 40, 0);
+  }
+}
+
+.live-nearest-panel {
+  margin: 0.75rem 0.85rem 0.25rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(198, 40, 40, 0.35);
+  background: color-mix(in srgb, var(--color-surface) 92%, #c62828 8%);
+}
+
+.live-nearest-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.live-nearest-panel__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.live-nearest-panel__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.live-nearest-panel__badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c62828;
+  border: 1px solid rgba(198, 40, 40, 0.4);
+  border-radius: 999px;
+  padding: 0.1rem 0.4rem;
+}
+
+.live-nearest-panel__pulse {
+  color: #c62828;
+}
+
+.live-nearest-panel__actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.live-nearest-panel__actions .btn {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.live-nearest-panel__hint,
+.live-nearest-panel__error {
+  margin: 0.35rem 0;
+  font-size: 0.82rem;
+}
+
+.live-nearest-panel__error {
+  color: #c62828;
+}
+
+.live-nearest-panel__card {
+  width: 100%;
+  text-align: left;
+  margin-top: 0.35rem;
 }
 
 .map-badge {

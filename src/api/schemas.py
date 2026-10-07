@@ -377,6 +377,19 @@ class NearbyResponse(BaseModel):
     results: list[NearbyStationResult]
 
 
+class NearestLiveResponse(BaseModel):
+    """Cargador de alta potencia más cercano a una posición GPS (modo En vivo)."""
+
+    reference: RouteEndpoint
+    radius_m: float
+    min_kw: float
+    used_min_kw: float
+    station: Station | None = None
+    distance_m: float | None = None
+    distance_km: float | None = None
+    access_class: str | None = None
+
+
 DEFAULT_NEARBY_LIMIT = 50
 MAX_NEARBY_LIMIT = 200
 

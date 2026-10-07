@@ -93,6 +93,7 @@ type MapViewProps = {
   minKw?: number
   maxKw?: number
   publicOpenOnly?: boolean
+  excludeParking?: boolean
   adHocOnly?: boolean
   availableOnly?: boolean
   maxPriceEurKwh?: number | null
@@ -114,6 +115,9 @@ type MapViewProps = {
   tripTrackingActive?: boolean
   centerOnMe?: boolean
   onCenterOnMeChange?: (value: boolean) => void
+  liveActive?: boolean
+  onLiveActiveChange?: (value: boolean) => void
+  livePowerHint?: string
 }
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
@@ -204,6 +208,7 @@ export function MapView({
   minKw,
   maxKw,
   publicOpenOnly = false,
+  excludeParking = false,
   adHocOnly = false,
   availableOnly = false,
   maxPriceEurKwh = null,
@@ -225,6 +230,9 @@ export function MapView({
   tripTrackingActive = false,
   centerOnMe = false,
   onCenterOnMeChange,
+  liveActive = false,
+  onLiveActiveChange,
+  livePowerHint = 'filtro de potencia',
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -242,6 +250,7 @@ export function MapView({
     minKw,
     maxKw,
     publicOpenOnly,
+    excludeParking,
     adHocOnly,
     availableOnly,
     maxPriceEurKwh,
@@ -269,6 +278,7 @@ export function MapView({
     minKw,
     maxKw,
     publicOpenOnly,
+    excludeParking,
     adHocOnly,
     availableOnly,
     maxPriceEurKwh,
@@ -622,6 +632,7 @@ export function MapView({
           minKw: filters.minKw,
           maxKw: filters.maxKw,
           publicOpenOnly: filters.publicOpenOnly,
+          excludeParking: filters.excludeParking,
           adHocOnly: filters.adHocOnly,
           availableOnly: filters.availableOnly,
           maxPriceEurKwh: filters.maxPriceEurKwh,
@@ -949,31 +960,32 @@ export function MapView({
     coverageBoundsRef.current = null
     lastLoadedZoomRef.current = null
     scheduleLoad(map, true)
-  }, [minKw, maxKw, publicOpenOnly, adHocOnly, availableOnly, maxPriceEurKwh, connectorTypes.join('|'), loadStations, scheduleLoad])
+  }, [minKw, maxKw, publicOpenOnly, excludeParking, adHocOnly, availableOnly, maxPriceEurKwh, connectorTypes.join('|'), loadStations, scheduleLoad])
 
   useEffect(() => {
-    if (!tripTrackingActive) {
+    if (!tripTrackingActive && !liveActive) {
       userMovedMapRef.current = false
       lastCenteredUserRef.current = null
     }
-  }, [tripTrackingActive])
+  }, [tripTrackingActive, liveActive])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map) {
       return
     }
+    const tracking = tripTrackingActive || liveActive
     runWhenMapReady(map, (readyMap) => {
-      if (!tripTrackingActive || !tripUserLocation) {
+      if (!tracking || !tripUserLocation) {
         clearUserLocationMarker(readyMap)
         return
       }
       setUserLocationMarker(readyMap, tripUserLocation)
-      if (centerOnMe) {
+      if (centerOnMe || liveActive) {
         easeMapToUser(readyMap, tripUserLocation)
       }
     })
-  }, [tripTrackingActive, tripUserLocation, centerOnMe, easeMapToUser, runWhenMapReady])
+  }, [tripTrackingActive, liveActive, tripUserLocation, centerOnMe, easeMapToUser, runWhenMapReady])
 
   const showMapBadge =
     loadStations ||
@@ -997,8 +1009,21 @@ export function MapView({
       {showLayerControl && mapLayers && onMapLayersChange && (
         <MapLayerControl value={mapLayers} onChange={onMapLayersChange} />
       )}
-      {tripTrackingActive ? (
-        <div className="map-follow-controls" aria-label="Seguimiento en mapa">
+      <div className="map-follow-controls" aria-label="Cargador más cercano">
+        <button
+          type="button"
+          className={`map-follow-btn ${liveActive ? 'map-follow-btn--live' : ''}`}
+          aria-pressed={liveActive}
+          title={
+            liveActive
+              ? `Desactivar: más cercano (${livePowerHint})`
+              : `Más cercano a tu GPS según potencia: ${livePowerHint}`
+          }
+          onClick={() => onLiveActiveChange?.(!liveActive)}
+        >
+          {liveActive ? 'Más cercano · ON' : 'Más cercano'}
+        </button>
+        {tripTrackingActive ? (
           <button
             type="button"
             className={`map-follow-btn ${centerOnMe ? 'map-follow-btn--active' : ''}`}
@@ -1014,8 +1039,8 @@ export function MapView({
           >
             {centerOnMe ? 'Centrado en mí' : 'Centrar en mí'}
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       {showMapBadge && (
         <div className="map-overlay" aria-live="polite">
           {routeSearching && <span className="map-badge">Calculando ruta…</span>}

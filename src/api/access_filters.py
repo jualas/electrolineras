@@ -69,11 +69,15 @@ def passes_access_filters(
     *,
     public_open_only: bool = False,
     exclude_commercial: bool = False,
+    exclude_parking: bool = False,
     ad_hoc_only: bool = False,
 ) -> bool:
     access_class = classify_access(station)
 
     if exclude_commercial and access_class == "commercial_parking":
+        return False
+
+    if exclude_parking and access_class == "public_parking":
         return False
 
     if public_open_only and access_class == "indoor":

@@ -11,6 +11,7 @@ export type NearbyQuery = {
   maxKw?: number
   publicOpenOnly?: boolean
   excludeCommercial?: boolean
+  excludeParking?: boolean
   adHocOnly?: boolean
   limit?: number
 }
@@ -46,6 +47,9 @@ export async function fetchNearbyStations(query: NearbyQuery, init?: RequestInit
   }
   if (query.excludeCommercial) {
     params.set('exclude_commercial', 'true')
+  }
+  if (query.excludeParking) {
+    params.set('exclude_parking', 'true')
   }
   if (query.adHocOnly) {
     params.set('ad_hoc_only', 'true')

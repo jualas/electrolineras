@@ -149,6 +149,7 @@ export function useDeviceLocation(options: UseDeviceLocationOptions = {}): UseDe
 
   useEffect(() => {
     if (!autoStart) {
+      stopWatch()
       return undefined
     }
     if (watch) {

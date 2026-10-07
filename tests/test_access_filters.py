@@ -59,3 +59,18 @@ def test_public_open_only_keeps_high_power_commercial() -> None:
 def test_exclude_commercial_still_drops_all_commercial() -> None:
     cc_fast = _station(site_name="CC Mazarrón Park", max_power_kw=90.0)
     assert passes_access_filters(cc_fast, exclude_commercial=True) is False
+
+
+def test_exclude_parking_filter() -> None:
+    parking = _station(site_name="Parking Almadrabillas", address="C. Ángel Jover 2")
+    street = _station(site_name="Plaza del Carmen", address="Plaza del Carmen 1")
+    assert classify_access(parking) == "public_parking"
+    assert passes_access_filters(parking, exclude_parking=True) is False
+    assert passes_access_filters(street, exclude_parking=True) is True
+
+
+def test_public_open_with_exclude_parking() -> None:
+    parking = _station(site_name="ALPARKING Rambla", access="public")
+    street = _station(site_name="Calle Real", access="public")
+    assert passes_access_filters(parking, public_open_only=True, exclude_parking=True) is False
+    assert passes_access_filters(street, public_open_only=True, exclude_parking=True) is True

@@ -24,7 +24,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "geolocation=(self), microphone=(), camera=()",
         )
         response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
+        # cross-origin: permite fetch desde WebView Capacitor (https://localhost)
+        # y orígenes CORS explícitos; same-site bloqueaba la APK Android.
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "cross-origin")
 
         if self.hsts:
             forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()

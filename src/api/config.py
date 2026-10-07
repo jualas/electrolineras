@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     nominatim_cache_max_entries: int = 2048
     nearby_radius_m_default: float = 1000.0
     nearby_radius_m_max: float = 10000.0
+    # Modo «En vivo»: radio amplio para HPC más cercano en carretera
+    live_nearest_radius_m_default: float = 50000.0
+    live_nearest_radius_m_max: float = 100000.0
+    live_nearest_min_kw: float = 100.0
+    live_nearest_fallback_min_kw: float = 50.0
     serve_web_static: bool = False
     web_dist_path: str = "src/web/dist"
     charging_agent_enabled: bool = True
@@ -137,7 +142,8 @@ class Settings(BaseSettings):
 
     def cors_allow_headers(self) -> list[str]:
         if self.is_production():
-            return ["Authorization", "Content-Type", "Accept"]
+            # X-Private-Token: app Capacitor / clientes de servicio
+            return ["Authorization", "Content-Type", "Accept", "X-Private-Token"]
         return ["*"]
 
     def rate_limit_active(self) -> bool:

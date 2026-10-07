@@ -102,9 +102,10 @@ def _apply_access_filters_to_stations(
     *,
     public_open_only: bool,
     exclude_commercial: bool,
+    exclude_parking: bool,
     ad_hoc_only: bool,
 ) -> list[Station]:
-    if not public_open_only and not exclude_commercial and not ad_hoc_only:
+    if not public_open_only and not exclude_commercial and not exclude_parking and not ad_hoc_only:
         return stations
     return [
         station
@@ -113,6 +114,7 @@ def _apply_access_filters_to_stations(
             station,
             public_open_only=public_open_only,
             exclude_commercial=exclude_commercial,
+            exclude_parking=exclude_parking,
             ad_hoc_only=ad_hoc_only,
         )
     ]
@@ -135,10 +137,11 @@ def _search_stations_respecting_access_filters(
     offset: int,
     public_open_only: bool,
     exclude_commercial: bool,
+    exclude_parking: bool,
     ad_hoc_only: bool,
     order_by: str = "power",
 ) -> tuple[list[Station], Pagination]:
-    use_access_filters = public_open_only or exclude_commercial or ad_hoc_only
+    use_access_filters = public_open_only or exclude_commercial or exclude_parking or ad_hoc_only
     if not use_access_filters:
         return _search_stations(
             repo,
@@ -196,6 +199,7 @@ def _search_stations_respecting_access_filters(
                 batch,
                 public_open_only=public_open_only,
                 exclude_commercial=exclude_commercial,
+                exclude_parking=exclude_parking,
                 ad_hoc_only=ad_hoc_only,
             )
         )
@@ -233,6 +237,10 @@ def list_stations(
     exclude_commercial: Annotated[
         bool,
         Query(description="Excluir centros comerciales (heurística)"),
+    ] = False,
+    exclude_parking: Annotated[
+        bool,
+        Query(description="Excluir parkings/garajes (heurística por nombre/dirección)"),
     ] = False,
     ad_hoc_only: Annotated[
         bool,
@@ -279,6 +287,7 @@ def list_stations(
         offset=offset,
         public_open_only=public_open_only,
         exclude_commercial=exclude_commercial,
+        exclude_parking=exclude_parking,
         ad_hoc_only=ad_hoc_only,
         order_by=order_by,
     )

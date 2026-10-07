@@ -43,7 +43,11 @@ def rate_limit_bucket(path: str) -> str:
         "/api/v1/stations/charging-plan",
     } or path.startswith("/api/v1/agent/") or path.startswith("/api/v1/private/"):
         return "routing"
-    if path in {"/api/v1/stations/nearby", "/api/v1/meta/geocode"}:
+    if path in {
+        "/api/v1/stations/nearby",
+        "/api/v1/stations/nearest-live",
+        "/api/v1/meta/geocode",
+    }:
         return "geocode"
     if path.startswith("/api/"):
         return "api"

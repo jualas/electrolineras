@@ -67,6 +67,7 @@ export type StationQuery = {
   limit?: number
   publicOpenOnly?: boolean
   excludeCommercial?: boolean
+  excludeParking?: boolean
   adHocOnly?: boolean
   availableOnly?: boolean
   maxPriceEurKwh?: number | null

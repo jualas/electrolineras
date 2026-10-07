@@ -8,6 +8,8 @@ const CONNECTOR_OPTIONS = [
 export type MapStationFilterState = {
   availableOnly: boolean
   adHocOnly: boolean
+  /** Acceso público en superficie: oculta parkings/garajes. */
+  excludeParking: boolean
   connectorTypes: string[]
   maxPriceEurKwh: number | null
 }
@@ -19,6 +21,9 @@ type MapStationFiltersProps = {
 
 function summarizeFilters(filter: MapStationFilterState): string {
   const parts: string[] = []
+  if (filter.excludeParking) {
+    parts.push('sin parkings')
+  }
   if (filter.availableOnly) {
     parts.push('solo disponibles')
   }
@@ -51,6 +56,14 @@ export function MapStationFilters({ filter, onChange }: MapStationFiltersProps) 
 
       <div className="collapsible-panel__body">
         <div className="map-station-filters__toggles">
+          <label className="map-station-filters__toggle">
+            <input
+              type="checkbox"
+              checked={filter.excludeParking}
+              onChange={(event) => onChange({ ...filter, excludeParking: event.target.checked })}
+            />
+            <span>Acceso público (sin parkings)</span>
+          </label>
           <label className="map-station-filters__toggle">
             <input
               type="checkbox"

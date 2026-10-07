@@ -129,3 +129,94 @@ def test_nearby_bbox_mode(api_client: TestClient) -> None:
 def test_nearby_requires_location(api_client: TestClient) -> None:
     response = api_client.get("/api/v1/stations/nearby")
     assert response.status_code == 422
+
+
+@pytest.fixture
+def live_api_client() -> TestClient:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station("slow-near", 40.4169, -3.7038, kw=22.0, site_name="Lento cerca"),
+            sample_station("hpc-near", 40.4200, -3.7000, kw=150.0, site_name="HPC cerca"),
+            sample_station("hpc-far", 40.4500, -3.6500, kw=350.0, site_name="HPC lejos"),
+            sample_station("mid", 40.4180, -3.7020, kw=50.0, site_name="50 kW"),
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+
+
+def test_nearest_live_prefers_nearest_hpc(live_api_client: TestClient) -> None:
+    response = live_api_client.get(
+        "/api/v1/stations/nearest-live",
+        params={"lat": 40.4168, "lon": -3.7038, "radius_m": 50000, "min_kw": 100},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["station"]["id"] == "hpc-near"
+    assert payload["used_min_kw"] == 100
+    assert payload["distance_m"] is not None
+    assert payload["distance_m"] < 2000
+
+
+def test_nearest_live_fallback_to_50kw(live_api_client: TestClient) -> None:
+    response = live_api_client.get(
+        "/api/v1/stations/nearest-live",
+        params={"lat": 41.0, "lon": -3.7, "radius_m": 5000, "min_kw": 100},
+    )
+    # Ningún ≥100 cerca de 41.0; el fixture no tiene estaciones ahí → null
+    assert response.status_code == 200
+    assert response.json()["station"] is None
+
+
+def test_nearest_live_respects_max_kw(live_api_client: TestClient) -> None:
+    response = live_api_client.get(
+        "/api/v1/stations/nearest-live",
+        params={"lat": 40.4168, "lon": -3.7038, "radius_m": 50000, "min_kw": 0, "max_kw": 30},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["station"]["id"] == "slow-near"
+    assert payload["station"]["max_power_kw"] <= 30
+
+
+def test_nearest_live_all_powers(live_api_client: TestClient) -> None:
+    response = live_api_client.get(
+        "/api/v1/stations/nearest-live",
+        params={"lat": 40.4168, "lon": -3.7038, "radius_m": 5000, "min_kw": 0},
+    )
+    assert response.status_code == 200
+    # El más cercano sin filtro de potencia es slow-near (22 kW en el mismo punto)
+    assert response.json()["station"]["id"] == "slow-near"
+
+
+def test_nearest_live_fallback_when_only_50(live_api_client: TestClient) -> None:
+    repo = memory_repo()
+    repo.upsert_stations(
+        [
+            sample_station("only-50", 40.4169, -3.7038, kw=50.0, site_name="Solo 50"),
+        ]
+    )
+
+    def override_repo():
+        yield repo
+
+    app.dependency_overrides[get_repository] = override_repo
+    client = TestClient(app)
+    try:
+        response = client.get(
+            "/api/v1/stations/nearest-live",
+            params={"lat": 40.4168, "lon": -3.7038, "radius_m": 5000, "min_kw": 100},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["station"]["id"] == "only-50"
+        assert payload["used_min_kw"] == 50
+    finally:
+        app.dependency_overrides.clear()

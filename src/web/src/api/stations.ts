@@ -30,6 +30,9 @@ export async function fetchStationsGeoJSON(
   if (query.excludeCommercial) {
     params.set('exclude_commercial', 'true')
   }
+  if (query.excludeParking) {
+    params.set('exclude_parking', 'true')
+  }
   if (query.adHocOnly) {
     params.set('ad_hoc_only', 'true')
   }

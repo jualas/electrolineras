@@ -8,10 +8,12 @@ import { routeChargingStops, type RouteChargingStop } from '../../charging/planR
 import { MapStationFilters, type MapStationFilterState } from '../../filters/MapStationFilters'
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
+import { useLiveNearestCharger } from '../../hooks/useLiveNearestCharger'
 import { useVehicleProfile } from '../../hooks/useVehicleProfile'
 import { useActiveTrip } from '../../hooks/useActiveTrip'
 import { useActiveTripMapLocation } from '../../hooks/useActiveTripMapLocation'
 import type { MapLayerToggles } from '../../map/MapLayerControl'
+import { LiveNearestPanel } from '../../map/LiveNearestPanel'
 import { MapView } from '../../map/MapView'
 import { MapFloatingSearch } from '../../map/MapFloatingSearch'
 import {
@@ -31,6 +33,7 @@ const DEFAULT_MAP_LAYERS: MapLayerToggles = {
 const DEFAULT_MAP_STATION_FILTERS: MapStationFilterState = {
   availableOnly: false,
   adHocOnly: false,
+  excludeParking: false,
   connectorTypes: [],
   maxPriceEurKwh: null,
 }
@@ -66,9 +69,52 @@ export function AppShell() {
   } = useVehicleProfile()
   const { setCenterOnMe } = useActiveTrip()
   const { trackingActive, location: tripMapLocation, centerOnMe } = useActiveTripMapLocation()
+  const [liveActive, setLiveActive] = useState(false)
+  const live = useLiveNearestCharger({
+    active: liveActive,
+    minKw: apiQuery.minKw,
+    maxKw: apiQuery.maxKw,
+    adHocOnly: mapStationFilters.adHocOnly,
+    excludeParking: mapStationFilters.excludeParking,
+  })
+  const powerHint =
+    filter.presetId === 'all'
+      ? 'cualquier potencia'
+      : filter.minKw != null && filter.maxKw != null
+        ? `${filter.minKw}–${filter.maxKw} kW`
+        : filter.minKw != null
+          ? `≥${filter.minKw} kW`
+          : filter.maxKw != null
+            ? `≤${filter.maxKw} kW`
+            : 'filtro de potencia'
+  const mapUserLocation = liveActive && live.location
+    ? {
+        lat: live.location.lat,
+        lon: live.location.lon,
+        accuracyM: live.location.accuracyM,
+      }
+    : tripMapLocation
+
   useEffect(() => {
     checkApiHealth().then(setApiOk)
   }, [])
+
+  useEffect(() => {
+    if (!liveActive || !live.station) {
+      return
+    }
+    setSelectedStation(live.station)
+    setSelectedPlannedStopOrder(null)
+    setPanelOpen(true)
+  }, [liveActive, live.station])
+
+  useEffect(() => {
+    if (!liveActive) {
+      return
+    }
+    // Mantener panel abierto mientras En vivo esté activo
+    setPanelOpen(true)
+  }, [liveActive])
 
   useEffect(() => {
     if (!isNavModeEnabled(mode)) {
@@ -225,6 +271,7 @@ export function AppShell() {
         minKw={apiQuery.minKw}
         maxKw={apiQuery.maxKw}
         publicOpenOnly
+        excludeParking={mapStationFilters.excludeParking}
         adHocOnly={mapStationFilters.adHocOnly}
         availableOnly={mapStationFilters.availableOnly}
         maxPriceEurKwh={mapStationFilters.maxPriceEurKwh}
@@ -246,10 +293,13 @@ export function AppShell() {
         onPlannedStopSelect={handlePlannedStopSelect}
         mapFocusPlace={mapFocusPlace}
         onRegisterMapBounds={handleRegisterMapBounds}
-        tripTrackingActive={trackingActive}
-        tripUserLocation={tripMapLocation}
-        centerOnMe={centerOnMe}
+        tripTrackingActive={trackingActive || liveActive}
+        tripUserLocation={mapUserLocation}
+        centerOnMe={liveActive ? true : centerOnMe}
         onCenterOnMeChange={setCenterOnMe}
+        liveActive={liveActive}
+        onLiveActiveChange={setLiveActive}
+        livePowerHint={powerHint}
       />
 
       <div className="map-ui-layer">
@@ -324,6 +374,19 @@ export function AppShell() {
           className={`map-side-panel${panelOpen ? ' map-side-panel--open' : ''}${mode === 'assistant' || (CHARGE_PLAN_NAV_ENABLED && mode === 'charge') ? ' map-side-panel--charge' : ''}`}
           aria-hidden={!panelOpen}
         >
+          <LiveNearestPanel
+            active={liveActive}
+            status={live.status}
+            station={live.station}
+            distanceKm={live.distanceKm}
+            distanceM={live.distanceM}
+            usedMinKw={live.usedMinKw}
+            powerHint={powerHint}
+            error={live.error}
+            onSelectStation={handleSelectStation}
+            onToggle={() => setLiveActive(false)}
+            onRefresh={live.refresh}
+          />
           <SearchPanel
             mode={mode}
             vehicleProfile={vehicleProfile}
