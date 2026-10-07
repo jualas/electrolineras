@@ -79,7 +79,11 @@ def test_summarize_osrm_alternatives() -> None:
 
 def test_osrm_speed_factor_scales_duration() -> None:
     from api.config import settings
-    from api.routing.osrm import osrm_route_from_payload, scale_osrm_duration_s, summarize_osrm_alternatives
+    from api.routing.osrm import (
+        osrm_route_from_payload,
+        scale_osrm_duration_s,
+        summarize_osrm_alternatives,
+    )
 
     assert scale_osrm_duration_s(3600.0, speed_factor=1.0) == 3600.0
     assert abs(scale_osrm_duration_s(3600.0, speed_factor=1.2) - 3000.0) < 1e-6

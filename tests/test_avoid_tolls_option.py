@@ -10,12 +10,11 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from test_api_charging_plan import memory_repo, sample_station
 
 from api.dependencies import get_repository
 from api.main import app
 from api.routing.osrm import OsrmRoute, RouteAlternativesSummary, build_osrm_exclude_param
-from test_api_charging_plan import memory_repo, sample_station
-
 
 SHORT_ROUTE = OsrmRoute(
     coordinates=[(2.17, 41.39), (-0.38, 39.47)],

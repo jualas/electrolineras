@@ -3,8 +3,13 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from api.agent_narration import nearest_destination_chargers_from_ranked
-from api.agent_trip_guide import build_trip_guide_response, build_trip_guide_context
-from api.schemas import ChargingPlanResponse, PlannedRouteStopResult, RouteEndpoint, VehicleEnergyInput
+from api.agent_trip_guide import build_trip_guide_context, build_trip_guide_response
+from api.schemas import (
+    ChargingPlanResponse,
+    PlannedRouteStopResult,
+    RouteEndpoint,
+    VehicleEnergyInput,
+)
 from models.station import Connector, Station, StationLocation
 
 

@@ -5,6 +5,8 @@ from api.charging_plan_service import (
     resolve_fallback_planning_min_kw,
     resolve_planning_min_kw,
     route_plan_needs_power_fallback,
+)
+from api.charging_plan_service import (
     vehicle_profile_from_inputs as build_profile,
 )
 from api.routing.charging_plan import DEFAULT_DESTINATION_TARGET_SOC_PCT, VehicleEnergyProfile

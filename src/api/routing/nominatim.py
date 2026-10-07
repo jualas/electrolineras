@@ -5,7 +5,6 @@ import httpx
 from api.config import settings
 from api.routing.nominatim_cache import cache_key, geocode_cache
 
-
 PUBLIC_NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org"
 
 

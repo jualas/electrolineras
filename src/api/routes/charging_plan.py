@@ -16,7 +16,6 @@ from api.schemas import (
     ChargingPlanStopResult,
     ChargingPlanStrategyResult,
     DestinationStayAdviceResult,
-    PlannedRouteStopResult,
     RouteEndpoint,
     RoutePreference,
     VehicleEnergyInput,

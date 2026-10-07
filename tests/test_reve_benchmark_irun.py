@@ -4,14 +4,13 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from test_api_charging_plan import memory_repo, sample_station
 
 from api.dependencies import get_repository
 from api.main import app
 from api.routing.charging_plan import VehicleEnergyProfile
 from api.routing.osrm import OsrmRoute, RouteAlternativesSummary
 from api.routing.trip_metrics import build_route_trip_summary
-from test_api_charging_plan import memory_repo, sample_station
-
 
 IRUN_LONG_ROUTE = OsrmRoute(
     coordinates=[(-0.996, 37.625), (-2.0, 40.0), (-1.79, 43.34)],

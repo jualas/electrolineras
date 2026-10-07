@@ -4,12 +4,12 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from test_api_charging_plan import memory_repo, sample_station
 
 from api.dependencies import get_repository
 from api.main import app
 from api.routing.charging_plan import HIGH_ARRIVAL_MICRO_STOP_SOC_PCT
 from api.routing.osrm import OsrmRoute, RouteAlternativesSummary
-from test_api_charging_plan import memory_repo, sample_station
 
 # Cartagena → Mundaka (~868 km, referencia Tesla jul-2026: 3 paradas, ~74 min recarga)
 MUNDAKA_ROUTE = OsrmRoute(

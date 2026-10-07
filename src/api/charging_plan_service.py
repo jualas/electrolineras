@@ -8,7 +8,6 @@ from fastapi import HTTPException
 
 from api.config import settings
 from api.query_params import parse_country_list
-from api.routing.charging_preferences import ChargingPreferences, parse_preferred_operators
 from api.routing.charging_plan import (
     VehicleEnergyProfile,
     allows_origin_zone_charging,
@@ -17,6 +16,7 @@ from api.routing.charging_plan import (
     estimate_charging_reach_km,
     estimate_range_km,
 )
+from api.routing.charging_preferences import ChargingPreferences, parse_preferred_operators
 from api.routing.corridor import RoutePolyline, rank_stations_for_charging_plan
 from api.routing.destination_stay import analyze_destination_stay, append_destination_strategy
 from api.routing.osrm import (

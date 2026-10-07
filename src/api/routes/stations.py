@@ -8,16 +8,17 @@ from api.access_filters import passes_access_filters
 from api.converters import stations_to_geojson
 from api.dependencies import get_repository
 from api.query_params import (
+    expand_connector_types_for_sql,
     operators_limit_query,
     parse_bbox,
     parse_connector_types,
     parse_country_list,
-    expand_connector_types_for_sql,
     stations_limit_query,
     stations_offset_query,
 )
 from api.routing.nominatim import GeocodingError, search_places
 from api.schemas import (
+    MAX_STATIONS_LIMIT,
     CountryStats,
     GeocodeResultItem,
     GeoJSONStationCollection,
@@ -29,7 +30,6 @@ from api.schemas import (
     PowerBandStats,
     StationListResponse,
 )
-from api.schemas import MAX_STATIONS_LIMIT
 from db.repository import StationRepository
 from ingest.config import settings as ingest_settings
 from ingest.ocm_parser import OCM_SOURCE

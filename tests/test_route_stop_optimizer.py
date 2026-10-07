@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from test_charging_plan import sample_station
+
 from api.routing.charging_plan import (
     HIGH_ARRIVAL_MICRO_STOP_SOC_PCT,
     VehicleEnergyProfile,
@@ -7,7 +9,6 @@ from api.routing.charging_plan import (
     build_planned_route_stops,
 )
 from api.routing.corridor import CorridorMatch
-from test_charging_plan import sample_station
 
 
 def test_optimizer_prefers_more_short_stops_over_few_long_ones() -> None:

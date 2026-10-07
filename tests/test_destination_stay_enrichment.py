@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock
 
+from test_charging_plan import sample_station
+
 from api.charging_plan_service import _enrich_with_destination_stay
 from api.routing.charging_plan import ChargingPlanComputation, PlannedRouteStop
-from test_charging_plan import sample_station
 
 
 def test_enrich_with_destination_stay_keeps_planned_stops() -> None:

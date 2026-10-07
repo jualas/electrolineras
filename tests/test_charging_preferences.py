@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from test_charging_plan import sample_station
+
 from api.routing.charging_plan import (
     VehicleEnergyProfile,
     build_emergency_charging_plan,
@@ -12,7 +14,6 @@ from api.routing.charging_preferences import (
     price_preference_rank,
 )
 from api.routing.corridor import CorridorMatch
-from test_charging_plan import sample_station
 
 
 def test_parse_preferred_operators_deduplicates() -> None:

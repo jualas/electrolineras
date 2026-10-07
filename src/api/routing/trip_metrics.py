@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from api.routing.charging_plan import PlannedRouteStop, VehicleEnergyProfile, effective_consumption_wh_per_km
+from api.routing.charging_plan import (
+    PlannedRouteStop,
+    VehicleEnergyProfile,
+    effective_consumption_wh_per_km,
+)
 from api.schemas import PlannedRouteStopResult, RouteTripSummaryResult
 
 

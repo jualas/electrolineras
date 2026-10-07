@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from api.agent_trip_chat import chat_action_chips, handle_trip_chat_turn, interpret_trip_chat_message
+from api.agent_trip_chat import (
+    chat_action_chips,
+    handle_trip_chat_turn,
+    interpret_trip_chat_message,
+)
 
 
 def test_chips_include_core_actions() -> None:
