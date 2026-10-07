@@ -48,3 +48,6 @@ img/*
 .vscode/
 *.swp
 *.swo
+
+# Worktrees y estado local de Claude Code
+.claude/
