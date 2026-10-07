@@ -1,44 +1,96 @@
-# Electrolineras de la Península Ibérica
+# Electrolineras ⚡ — cargadores de VE en España y Portugal
 
-Mapa unificado de **puntos de recarga de vehículos eléctricos** en España y Portugal, con filtro por potencia y datos agregados de fuentes oficiales.
+[![CI](https://github.com/jualas/electrolineras/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jualas/electrolineras/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React 19 + TypeScript](https://img.shields.io/badge/React_19-TypeScript-3178C6?logo=react&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 
-## Problema que resolvemos
+**Demo en producción: <https://electro.jualas.es>**
 
-Hoy la información está dispersa y el **navegador del coche** (p. ej. Tesla) elige paradas que en la práctica son malas:
+Mapa unificado de los **~22 000 puntos de recarga** de España y Portugal a partir de los datos abiertos oficiales (DATEX II), con estado en tiempo real, búsqueda de cargadores **en el corredor de una ruta** y planificador de paradas de carga. Pensado para usarse desde el móvil y desde el navegador del coche (Tesla).
 
-- Desvíos largos a Superchargers “de paso” cuando ya vas orientado al destino.
-- Paradas que obligan a **salir, cambiar de sentido y volver a incorporarse** (ej. Granada → Cartagena con parada en Cullar).
+| Escritorio | Móvil |
+|---|---|
+| ![Mapa de la península con clústeres de cargadores](docs/screenshots/mapa-peninsula.png) | ![Detalle de un cargador en Granada: potencia, estado en tiempo real y precio](docs/screenshots/movil-detalle-cargador.png) |
 
-**Caso típico:** desde Granada con 44 % hacia Cartagena, buscar en segundos cargadores **≥ 100 kW en la carretera**, en sentido de marcha, con el menor desvío posible — desde el móvil (web o Android).
+## Problema que resuelve
 
-Detalle del caso de uso: [`docs/ROUTE_CORRIDOR_SEARCH.md`](docs/ROUTE_CORRIDOR_SEARCH.md).
+La información de recarga está dispersa y el **navegador del coche** suele proponer paradas malas: desvíos largos a cargadores «de paso» o paradas que obligan a salir de la autovía, cambiar de sentido y volver a incorporarse.
 
-## Objetivo del producto
+**Caso típico:** desde Granada con 44 % de batería hacia Cartagena, encontrar en segundos cargadores **≥ 100 kW en la carretera**, en sentido de marcha y con el menor desvío posible. Detalle: [`docs/ROUTE_CORRIDOR_SEARCH.md`](docs/ROUTE_CORRIDOR_SEARCH.md).
 
-**Aplicación web móvil** (y opcionalmente Android) que permita:
+## Qué hace
 
-1. **Búsqueda rápida en ruta:** cargadores ≥ X kW **en el corredor de la carretera** hacia un destino, sin paradas en sentido contrario ni desvíos absurdos.
-2. **Mapa peninsular** con filtro por potencia y operador (datos oficiales NAP).
+**Zona pública**
+- Mapa de España y Portugal con clústeres, filtros por **potencia**, operador y acceso público.
+- Búsqueda por ciudad o dirección (geocodificación con Nominatim *self-hosted*) y botón **«Más cercano»** con disponibilidad en vivo.
+- Detalle de cada punto: potencia, conectores, **estado en tiempo real** y precio, con enlaces a Google Maps / Apple Maps.
+- **Búsqueda en corredor de ruta**: cargadores a lo largo del trazado OSRM, descartando los que quedan detrás o en sentido contrario.
+- **Plan de carga**: paradas y SOC de llegada según autonomía, curva de carga en DC y potencia disponible.
 
-En una fase posterior, ampliar a **otros países de la UE** cuando publiquen su NAP (reglamento AFIR).
+**Zona privada** (login con usuario + código TOTP)
+- Telemetría del coche desde TeslaMate (MQTT) para planificar desde el SOC real del vehículo.
+- **Asistente de viaje con IA**: un workflow de Dify usa la API como herramientas; el motor determinista calcula los números y el LLM conversa sobre el plan ([`docs/CHARGING_AGENT.md`](docs/CHARGING_AGENT.md)).
 
-## Fuentes de datos principales
+## Stack
+
+| Capa | Tecnología |
+|---|---|
+| Backend | Python 3.12, **FastAPI**, Pydantic v2, httpx, lxml (DATEX II), SQLite |
+| Frontend | **React 19 + TypeScript**, Vite, MapLibre GL, Vitest |
+| Rutas y geocodificación | **OSRM** y **Nominatim** autoalojados (península ibérica) |
+| Seguridad | Sesión firmada (itsdangerous), TOTP (pyotp), bcrypt, rutas privadas protegidas |
+| IA | Dify (workflow con herramientas HTTP sobre la API) y Cursor CLI como agente local |
+| Infraestructura | Docker Compose (API + nginx + OSRM + Nominatim), Cloudflare Tunnel, cron de ingestión |
+| Calidad | pytest (230+ tests), Ruff, oxlint, **GitHub Actions** (lint, tests, build Docker) |
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+  subgraph fuentes [Fuentes oficiales]
+    ES[NAP DGT · DATEX II]
+    PT[MOBI.E · DATEX II]
+    REVE[REVE · estado en vivo]
+  end
+  subgraph servidor [Servidor · Docker Compose]
+    ING[Ingestión programada<br/>fetch → parse → normaliza]
+    DB[(SQLite)]
+    API[FastAPI]
+    OSRM[OSRM]
+    NOM[Nominatim]
+    NGINX[nginx + SPA React]
+  end
+  DIFY[Dify · agente IA]
+  TM[TeslaMate · MQTT]
+  ES & PT --> ING --> DB --> API
+  REVE --> API
+  API --> OSRM
+  API --> NOM
+  TM -.zona privada.-> API
+  DIFY -->|herramientas HTTP| API
+  NGINX --> API
+  USER[Móvil / navegador del coche] -->|Cloudflare Tunnel| NGINX
+```
+
+## Decisiones técnicas destacables
+
+- **Ingestión ETL de DATEX II** (descarga en *streaming* y parseo incremental con `lxml.iterparse` del XML de ~180 MB de Portugal) normalizada a un modelo común ES/PT y exportada a SQLite + GeoJSON.
+- **Corredor de ruta** sobre la geometría de OSRM: distancia a la polilínea, progreso a lo largo de la ruta y margen «detrás» para no proponer paradas en sentido contrario.
+- **Motor de plan de carga determinista** (curvas DC, autonomía, estancia en destino) separado del LLM, que solo explica y conversa: los números no dependen de la IA.
+- **Despliegue reproducible**: `make deploy` construye las imágenes, guarda una etiqueta `:previous` para *rollback* y verifica `/health` antes de dar el despliegue por bueno. Staging separado en otro puerto.
+- **Privacidad**: datos personales (ubicación de casa, telemetría) solo a través de endpoints privados autenticados, nunca en el bundle público.
+
+## Fuentes de datos
 
 | País | Fuente oficial | Formato | Actualización |
 |------|----------------|---------|---------------|
 | España (estático) | [NAP DGT / MITECO](https://nap.dgt.es/dataset/puntos-de-recarga-electrica-para-vehiculos) | DATEX II v3 | ~24 h |
-| España (dinámico) | [REVE / mapareve.es](https://www.mapareve.es/) (Red Eléctrica) | Web + app; protocolo OCPI entre operadores | Tiempo real |
+| España (dinámico) | [REVE / mapareve.es](https://www.mapareve.es/) (Red Eléctrica) | Web + OCPI entre operadores | Tiempo real |
 | Portugal | [MOBI.E NAP](https://pgm.mobie.pt/integration/nap/evChargingInfra) | DATEX II | Tiempo real |
 
 Detalle técnico en [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md).
-
-## Clientes previstos
-
-1. **Web / PWA** — mapa interactivo en móvil y escritorio (MVP).
-2. **Navegador Tesla** — misma web optimizada para pantalla del coche (sin instalar app nativa).
-3. **Futuro** — app nativa o integración con planificadores de ruta si aporta valor.
-
-> Tesla no permite sustituir su navegación nativa por apps de terceros. La vía realista es una **web usable en el coche** o enviar destinos al navegador del vehículo.
 
 ## Documentación
 
@@ -178,6 +230,10 @@ curl 'http://127.0.0.1:8000/api/v1/meta/stats'
 
 ## Estado
 
-**Fase 1 — MVP datos + mapa** ✅ completada ([#6022](TASKBOARD.md#task-6022)–[#6036](TASKBOARD.md#task-6036)). Siguiente: Fase Prod ([#6037](TASKBOARD.md#task-6037) OSRM self-hosted, etc.).
+En producción en <https://electro.jualas.es> desde la v0.2.0. Hecho: mapa ES+PT, búsqueda en corredor, plan de carga, estado en vivo, zona privada con TOTP, telemetría TeslaMate, asistente IA y despliegue con staging y *rollback*.
 
-Detalle del avance: [`docs/STATUS.md`](docs/STATUS.md) · backlog completo: [`TASKBOARD.md`](TASKBOARD.md) · pruebas y prod: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+Avance detallado: [`docs/STATUS.md`](docs/STATUS.md) · backlog: [`TASKBOARD.md`](TASKBOARD.md) · operación: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
+
+## Autor
+
+**jualas** · proyecto personal posterior al ciclo de DAM · [GitHub @jualas](https://github.com/jualas)
