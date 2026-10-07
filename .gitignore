@@ -4,8 +4,8 @@ __pycache__/
 *.so
 .Python
 .venv/
-venv/
-env/
+/venv/
+/env/
 .env
 !.env.example
 !.env.production.example
