@@ -3,6 +3,8 @@ services:
     image: ghcr.io/project-osrm/osrm-backend:v5.27.1
     container_name: electrolineras-osrm-car
     restart: unless-stopped
+    mem_limit: 4g
+    memswap_limit: 4g
     ports:
       - "${OSRM_CAR_PORT:-127.0.0.1:5000:5000}"
     volumes:
@@ -23,6 +25,8 @@ services:
     image: ghcr.io/project-osrm/osrm-backend:v5.27.1
     container_name: electrolineras-osrm-shortest
     restart: unless-stopped
+    mem_limit: 4g
+    memswap_limit: 4g
     ports:
       - "${OSRM_SHORTEST_PORT:-127.0.0.1:5001:5000}"
     volumes:
