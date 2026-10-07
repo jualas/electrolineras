@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     session_secret: str = ""
     auth_session_max_age_seconds: int = 604800
     session_cookie_secure: bool = False
+    # Ubicación de casa (atajo «Mi casa» del planificador). Solo en .env; la sirve el API privado.
+    home_label: str = "Mi casa"
+    home_lat: float | None = None
+    home_lon: float | None = None
     teslamate_api_base_url: str = ""
     teslamate_api_token: str = ""
     teslamate_car_id: int = 1

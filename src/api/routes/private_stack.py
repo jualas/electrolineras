@@ -26,6 +26,7 @@ from api.integrations.vehicle_telemetry import (
 from api.routes.agent_tools import agent_trip_advice
 from api.schemas import (
     MAX_CORRIDOR_KM,
+    HomeLocationResult,
     PrivateStackStatusResult,
     RoutePreference,
     TripAdviceResponse,
@@ -97,6 +98,13 @@ def private_stack_status() -> PrivateStackStatusResult:
         dify_trip_guide_configured=dify_trip_guide_configured(),
         cursor_bridge_configured=cursor_bridge_configured(),
     )
+
+
+@router.get("/home-location")
+def private_home_location() -> HomeLocationResult:
+    if settings.home_lat is None or settings.home_lon is None:
+        raise HTTPException(status_code=404, detail="Ubicación de casa no configurada")
+    return HomeLocationResult(label=settings.home_label, lat=settings.home_lat, lon=settings.home_lon)
 
 
 @router.get("/vehicle/state")

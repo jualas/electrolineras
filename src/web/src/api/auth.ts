@@ -23,6 +23,10 @@ export async function logoutSession(): Promise<void> {
   await fetchApi('/api/v1/auth/logout', { method: 'POST' })
 }
 
+export async function fetchHomeLocation(): Promise<import('../search/homeLocation').HomeLocation> {
+  return fetchApi('/api/v1/private/home-location')
+}
+
 export async function fetchVehicleState(): Promise<import('../api/types').VehicleTelemetryResult> {
   return fetchApi('/api/v1/private/vehicle/state')
 }

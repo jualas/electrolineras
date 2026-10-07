@@ -2,7 +2,6 @@ import { MapPin, Navigation, Plus, Trash2 } from 'lucide-react'
 
 import type { GeocodeResult } from '../api/types'
 import { PlaceAutocomplete } from './PlaceAutocomplete'
-import { HOME_LOCATION } from './homeLocation'
 
 export type ItineraryPoint = {
   label: string
@@ -134,8 +133,8 @@ export function ItineraryFields({
             {onUseHomeOrigin && (
               <button
                 type="button"
-                className={`chip chip--compact ${originSource === 'manual' && originText === HOME_LOCATION.label ? 'chip--active' : ''}`}
-                aria-pressed={originSource === 'manual' && originText === HOME_LOCATION.label}
+                className={`chip chip--compact ${originSource === 'manual' && originText === originAnchorLabel ? 'chip--active' : ''}`}
+                aria-pressed={originSource === 'manual' && originText === originAnchorLabel}
                 disabled={disabled}
                 onClick={onUseHomeOrigin}
               >

@@ -18,7 +18,7 @@ import {
   telemetryToChargingPlanQuery,
 } from '../vehicle/telemetryProfile'
 import { RoutePreferenceFields } from './RoutePreferenceFields'
-import { HOME_LOCATION } from './homeLocation'
+import { useHomeLocation } from './homeLocation'
 import {
   ItineraryFields,
   createEmptyStop,
@@ -89,10 +89,16 @@ export function ChargingPlanPanel({
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastResponse, setLastResponse] = useState<ChargingPlanResponse | null>(null)
-  const [manualOriginText, setManualOriginText] = useState(HOME_LOCATION.label)
+  const homeLocation = useHomeLocation()
+  const [manualOriginText, setManualOriginText] = useState('')
   const [manualOriginPoint, setManualOriginPoint] = useState<{ label: string; lat: number; lon: number } | null>(
-    HOME_LOCATION,
+    null,
   )
+  useEffect(() => {
+    if (!homeLocation || originModeTouchedRef.current) return
+    setManualOriginText((text) => text || homeLocation.label)
+    setManualOriginPoint((point) => point ?? homeLocation)
+  }, [homeLocation])
   const lastSearchKeyRef = useRef<string | null>(null)
   const lastAutoReplanRef = useRef<AutoReplanSnapshot | null>(null)
   const recalcOnPreferenceRef = useRef(false)
@@ -772,7 +778,7 @@ export function ChargingPlanPanel({
         <ItineraryFields
           originText={manualOriginText}
           originPoint={itineraryOriginPoint}
-          originAnchorLabel={HOME_LOCATION.label}
+          originAnchorLabel={homeLocation?.label}
           vehicleOrigin={vehicleOriginPoint}
           gpsOrigin={gpsOriginPoint}
           originSource={itineraryOriginSource}
@@ -808,14 +814,18 @@ export function ChargingPlanPanel({
             setLastResponse(null)
             onResults(null)
           }}
-          onUseHomeOrigin={() => {
-            originModeTouchedRef.current = true
-            setOriginMode('simulation')
-            setManualOriginText(HOME_LOCATION.label)
-            setManualOriginPoint(HOME_LOCATION)
-            setManualLocation(HOME_LOCATION)
-            lastSearchKeyRef.current = null
-          }}
+          onUseHomeOrigin={
+            homeLocation
+              ? () => {
+                  originModeTouchedRef.current = true
+                  setOriginMode('simulation')
+                  setManualOriginText(homeLocation.label)
+                  setManualOriginPoint(homeLocation)
+                  setManualLocation(homeLocation)
+                  lastSearchKeyRef.current = null
+                }
+              : undefined
+          }
           onEditOriginManual={() => {
             originModeTouchedRef.current = true
             setOriginMode('simulation')

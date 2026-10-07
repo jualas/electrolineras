@@ -337,6 +337,14 @@ class TripChatResponse(BaseModel):
     chips: list[dict[str, str]] = Field(default_factory=list)
 
 
+class HomeLocationResult(BaseModel):
+    """Ubicación de casa del usuario (solo API privado; no se incluye en el frontend público)."""
+
+    label: str
+    lat: float
+    lon: float
+
+
 class PrivateStackStatusResult(BaseModel):
     private_stack_enabled: bool
     token_required: bool

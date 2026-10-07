@@ -245,3 +245,34 @@ def test_private_trip_guide_from_car(mock_fetch, mock_osrm, private_client: Test
         settings.private_api_token = original_token
         settings.teslamate_mqtt_host = original_mqtt_host
         settings.teslamate_mqtt_username = original_mqtt_user
+
+
+def test_private_home_location(private_client: TestClient) -> None:
+    original = (
+        settings.private_stack_enabled,
+        settings.private_api_token,
+        settings.home_lat,
+        settings.home_lon,
+    )
+    settings.private_stack_enabled = True
+    settings.private_api_token = "test-private-token-min-32-chars-long"
+    headers = {"Authorization": "Bearer test-private-token-min-32-chars-long"}
+    try:
+        assert private_client.get("/api/v1/private/home-location").status_code == 401
+
+        settings.home_lat = None
+        settings.home_lon = None
+        assert private_client.get("/api/v1/private/home-location", headers=headers).status_code == 404
+
+        settings.home_lat = 40.4168
+        settings.home_lon = -3.7038
+        response = private_client.get("/api/v1/private/home-location", headers=headers)
+        assert response.status_code == 200
+        assert response.json() == {"label": settings.home_label, "lat": 40.4168, "lon": -3.7038}
+    finally:
+        (
+            settings.private_stack_enabled,
+            settings.private_api_token,
+            settings.home_lat,
+            settings.home_lon,
+        ) = original
