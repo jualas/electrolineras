@@ -7,6 +7,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 REQUIRED_KEYS = (
     "DATABASE_URL",
@@ -86,7 +87,8 @@ def validate(values: dict[str, str], *, strict_secrets: bool) -> list[str]:
 
     nominatim_url = values.get("NOMINATIM_BASE_URL", "")
     if values.get("API_ENVIRONMENT", "").lower() == "production":
-        if "openstreetmap.org" in nominatim_url.lower():
+        host = (urlparse(nominatim_url).hostname or "").lower()
+        if host == "openstreetmap.org" or host.endswith(".openstreetmap.org"):
             errors.append(
                 "NOMINATIM_BASE_URL no debe ser el servicio público en producción (#6046)"
             )

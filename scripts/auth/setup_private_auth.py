@@ -66,6 +66,11 @@ def main() -> None:
         help="Si el usuario ya existe, regenera su secreto en vez de fallar",
     )
     parser.add_argument(
+        "--print-secrets",
+        action="store_true",
+        help="Muestra en pantalla los valores secretos (sin --apply, o si no se genera el QR)",
+    )
+    parser.add_argument(
         "--list",
         action="store_true",
         help="Lista los usuarios ya configurados en --apply ENV_FILE y sale",
@@ -140,12 +145,19 @@ def main() -> None:
     else:
         print("\n# Copia SOLO las líneas KEY=valor (sin comentarios) a tu .env")
         print("# Mejor: vuelve a ejecutar con --apply /ruta/al/.env\n")
-        for key, val in env_values.items():
-            print(f"{key}={val}")
+        if args.print_secrets:
+            for key, val in env_values.items():
+                print(f"{key}={val}")
+        else:
+            for key in env_values:
+                print(f"{key}=<oculto: añade --print-secrets para verlo>")
 
     print("\n--- Microsoft Authenticator ---")
     print(f"1. Agregar cuenta → Otra cuenta → escanear QR o clave manual (cuenta «{account}»).")
-    print(f"   Clave: {secret}")
+    if args.print_secrets:
+        print(f"   Clave: {secret}")
+    elif not qr_path:
+        print("   Clave: oculta; vuelve a ejecutar con --print-secrets para la clave manual")
     if qr_path:
         print(f"   QR: {qr_path}")
     print(f"\nUsuario web: {username}")
