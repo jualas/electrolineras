@@ -67,7 +67,7 @@ def main() -> None:
         help="Si el usuario ya existe, regenera su secreto en vez de fallar",
     )
     parser.add_argument(
-        "--secrets-out",
+        "--env-out",
         metavar="FILE",
         help="Sin --apply: fichero (permisos 600) donde dejar las líneas KEY=valor "
         "(por defecto .env.auth-<usuario>, ignorado por git). Los secretos nunca se imprimen.",
@@ -145,11 +145,11 @@ def main() -> None:
         print("Reinicia la API:")
         print("  cd /mnt/datos/docker/electrolineras && docker compose up -d --force-recreate electrolineras-api")
     else:
-        out_path = Path(args.secrets_out or f".env.auth-{username}")
+        out_path = Path(args.env_out or f".env.auth-{username}")
         try:
             os.close(os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
         except FileExistsError:
-            print(f"ERROR: {out_path} ya existe; bórralo o usa --secrets-out", file=sys.stderr)
+            print(f"ERROR: {out_path} ya existe; bórralo o usa --env-out", file=sys.stderr)
             sys.exit(1)
         apply_auth_to_env(out_path, env_values)
         print(f"\nValores escritos en {out_path} (permisos 600): copia sus líneas KEY=valor a tu .env y bórralo.")
