@@ -1,4 +1,4 @@
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 
 import type { LatLon, RouteLineGeometry } from '../api/types'
 import { CLUSTER_LAYER_ID, POINT_LAYER_ID } from './stationLayers'

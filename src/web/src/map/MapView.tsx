@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 
 import { chargingPlanRouteMapFeatures, routeChargingStops, routeMapFitPoints, type RouteChargingStop } from '../charging/planRouteStops'
 import { alongRouteToFeatures } from '../api/route'
