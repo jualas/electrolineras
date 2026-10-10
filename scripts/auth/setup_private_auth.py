@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -66,9 +67,10 @@ def main() -> None:
         help="Si el usuario ya existe, regenera su secreto en vez de fallar",
     )
     parser.add_argument(
-        "--print-secrets",
-        action="store_true",
-        help="Muestra en pantalla los valores secretos (sin --apply, o si no se genera el QR)",
+        "--secrets-out",
+        metavar="FILE",
+        help="Sin --apply: fichero (permisos 600) donde dejar las líneas KEY=valor "
+        "(por defecto .env.auth-<usuario>, ignorado por git). Los secretos nunca se imprimen.",
     )
     parser.add_argument(
         "--list",
@@ -143,21 +145,20 @@ def main() -> None:
         print("Reinicia la API:")
         print("  cd /mnt/datos/docker/electrolineras && docker compose up -d --force-recreate electrolineras-api")
     else:
-        print("\n# Copia SOLO las líneas KEY=valor (sin comentarios) a tu .env")
-        print("# Mejor: vuelve a ejecutar con --apply /ruta/al/.env\n")
-        if args.print_secrets:
-            for key, val in env_values.items():
-                print(f"{key}={val}")
-        else:
-            for key in env_values:
-                print(f"{key}=<oculto: añade --print-secrets para verlo>")
+        out_path = Path(args.secrets_out or f".env.auth-{username}")
+        try:
+            os.close(os.open(out_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        except FileExistsError:
+            print(f"ERROR: {out_path} ya existe; bórralo o usa --secrets-out", file=sys.stderr)
+            sys.exit(1)
+        apply_auth_to_env(out_path, env_values)
+        print(f"\nValores escritos en {out_path} (permisos 600): copia sus líneas KEY=valor a tu .env y bórralo.")
+        print("Mejor: vuelve a ejecutar con --apply /ruta/al/.env")
 
     print("\n--- Microsoft Authenticator ---")
     print(f"1. Agregar cuenta → Otra cuenta → escanear QR o clave manual (cuenta «{account}»).")
-    if args.print_secrets:
-        print(f"   Clave: {secret}")
-    elif not qr_path:
-        print("   Clave: oculta; vuelve a ejecutar con --print-secrets para la clave manual")
+    if not qr_path:
+        print(f"   Clave manual: la parte tras «{username}:» en PRIVATE_AUTH_USERS del fichero de destino")
     if qr_path:
         print(f"   QR: {qr_path}")
     print(f"\nUsuario web: {username}")
