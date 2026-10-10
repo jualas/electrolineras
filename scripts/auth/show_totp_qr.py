@@ -79,7 +79,6 @@ def main() -> None:
     print(f"QR guardado en: {output}")
     print(f"Usuario: {username}  |  Cuenta Authenticator: {account}")
     print("Microsoft Authenticator → Agregar cuenta → Otra cuenta → Escanear código QR")
-    print(f"URI (referencia): {uri}")
 
 
 if __name__ == "__main__":

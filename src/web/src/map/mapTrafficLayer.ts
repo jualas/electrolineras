@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl'
+import type * as maplibregl from 'maplibre-gl'
 
 export const TRAFFIC_SOURCE_ID = 'traffic-flow'
 export const TRAFFIC_LAYER_ID = 'traffic-flow-layer'

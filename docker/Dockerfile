@@ -27,6 +27,14 @@ RUN pip install --no-cache-dir .
 
 COPY --from=web-build /build/dist ./src/web/dist
 
+# Sin root: uid 1000 coincide con el dueño del volumen de datos en el host
+RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin app \
+    && mkdir -p /app/data && chown 1000:1000 /app/data
+USER 1000:1000
+
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
 
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
