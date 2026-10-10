@@ -1,0 +1,23 @@
+# Dependabot: actualizaciones agrupadas una vez por semana (las de seguridad llegan al momento).
+# secure-repo.sh añade un bloque por cada manifiesto detectado; revisa los directorios.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups: { actions: { patterns: ["*"] } }
+  - package-ecosystem: docker
+    directory: /docker
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups: { docker: { patterns: ["*"] } }
+  - package-ecosystem: pip
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups: { pip: { patterns: ["*"] } }
+  - package-ecosystem: npm
+    directory: /src/web
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups: { npm: { patterns: ["*"] } }
