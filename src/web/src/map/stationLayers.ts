@@ -1,4 +1,4 @@
-import type maplibregl from 'maplibre-gl'
+import type * as maplibregl from 'maplibre-gl'
 
 import { navigationPopupHtml } from '../navigation/externalMaps'
 import { dynamicStatusClassName, formatDynamicStatusLabel } from '../stations/dynamicDisplay'
@@ -380,7 +380,7 @@ export function stationPopupHtml(
   const socDeparture = properties.soc_departure_pct
   const chargeMinutes = properties.charge_minutes
 
-  const addressLine = address ? `<p class="station-popup__address">${address}</p>` : ''
+  const addressLine = address ? `<p class="station-popup__address">${escapeHtml(address)}</p>` : ''
   const dynamicLine = formatDynamicLine(dynamicStatus, dynamicPrice)
   const externalLine = formatExternalReviewsLine(properties)
   const chargeLine = formatChargeLine(chargingClass, socArrival, plannedOrder, socDeparture, chargeMinutes)
@@ -480,7 +480,7 @@ function formatDynamicLine(status: string, price: unknown): string {
   const parts: string[] = []
   if (status) {
     parts.push(
-      `<span class="station-popup__status ${dynamicStatusClassName(status, 'station-popup')}">${escapeHtml(formatDynamicStatusLabel(status))}</span>`,
+      `<span class="station-popup__status ${escapeHtml(dynamicStatusClassName(status, 'station-popup'))}">${escapeHtml(formatDynamicStatusLabel(status))}</span>`,
     )
   }
   if (price !== null && price !== undefined && !Number.isNaN(Number(price))) {
