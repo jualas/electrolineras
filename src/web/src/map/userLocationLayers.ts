@@ -1,4 +1,4 @@
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 
 export const USER_LOCATION_SOURCE_ID = 'user-location'
 export const USER_LOCATION_ACCURACY_LAYER_ID = 'user-location-accuracy'

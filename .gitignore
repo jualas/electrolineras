@@ -54,3 +54,26 @@ img/*
 
 # Config local del puente Cursor (usar cursor-bridge.env.example)
 scripts/dify/cursor-bridge.env
+
+# --- seguridad (secure-repo) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+id_rsa*
+id_ed25519*
+.cursor/mcp.json
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+__pycache__/
+*.pyc
+trivy*.sarif
+gitleaks-report*.json

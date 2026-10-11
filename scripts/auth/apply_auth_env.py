@@ -113,6 +113,7 @@ def apply_auth_to_env(env_path: Path, values: dict[str, str]) -> None:
             out.append(f"{key}={values[key]}")
 
     env_path.write_text("\n".join(out).rstrip() + "\n")
+    env_path.chmod(0o600)
 
 
 def main() -> None:
