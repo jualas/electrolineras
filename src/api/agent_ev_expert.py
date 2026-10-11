@@ -10,7 +10,7 @@ from api.routing.charging_plan import (
 )
 from api.schemas import ChargingPlanResponse, PlannedRouteStopResult
 
-# Alineado con docs/agent/ev_expert_prompt.md (el puente Cursor carga el markdown).
+# Alineado con docs/agent/ev_expert_prompt.md.
 EV_EXPERT_PROMPT_RELATIVE = "docs/agent/ev_expert_prompt.md"
 
 
