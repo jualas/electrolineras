@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import time
+
 import httpx
 
 from api.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class CursorBridgeError(Exception):
@@ -20,12 +25,36 @@ def run_cursor_bridge_prompt(
     *,
     timeout_seconds: float | None = None,
 ) -> str:
+    """Llama al puente y deja una línea de log por llamada (duración y tamaños, sin contenido)."""
+    started = time.monotonic()
+    try:
+        output = _call_bridge(prompt, timeout_seconds=timeout_seconds)
+    except CursorBridgeError as e:
+        logger.warning(
+            "puente_cursor resultado=error ms=%d prompt_chars=%d motivo=%s",
+            (time.monotonic() - started) * 1000,
+            len(prompt),
+            str(e)[:80],
+        )
+        raise
+    logger.info(
+        "puente_cursor resultado=ok ms=%d prompt_chars=%d output_chars=%d",
+        (time.monotonic() - started) * 1000,
+        len(prompt),
+        len(output),
+    )
+    return output
+
+
+def _call_bridge(prompt: str, *, timeout_seconds: float | None) -> str:
     if not cursor_bridge_configured():
         raise CursorBridgeError("CURSOR_BRIDGE_URL no configurado")
 
     base = settings.cursor_bridge_url.rstrip("/")
     url = f"{base}/invoke" if not base.endswith("/invoke") else base
-    timeout = timeout_seconds if timeout_seconds is not None else settings.cursor_bridge_timeout_seconds
+    timeout = (
+        timeout_seconds if timeout_seconds is not None else settings.cursor_bridge_timeout_seconds
+    )
     headers = {"Content-Type": "application/json"}
     token = settings.cursor_bridge_token.strip()
     if token:
@@ -40,7 +69,8 @@ def run_cursor_bridge_prompt(
         raise CursorBridgeError(f"Puente no disponible: {type(e).__name__}") from e
 
     if response.status_code != 200:
-        raise CursorBridgeError(f"Puente HTTP {response.status_code}: {response.text[:300]}")
+        # Sin el cuerpo: puede llevar salida del modelo y este mensaje acaba en el log
+        raise CursorBridgeError(f"Puente HTTP {response.status_code}")
 
     try:
         body = response.json()

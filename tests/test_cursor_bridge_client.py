@@ -60,3 +60,28 @@ def test_chat_cae_en_respuesta_local_si_el_puente_esta_caido(bridge):
 def test_respuesta_correcta(bridge):
     bridge(lambda request: httpx.Response(200, json={"output": " OK \n", "error": None}))
     assert run_cursor_bridge_prompt("hola") == "OK"
+
+
+def test_log_por_llamada_sin_contenido(bridge, caplog):
+    caplog.set_level("INFO", logger="api.integrations.cursor_bridge_client")
+    bridge(
+        lambda request: httpx.Response(
+            200, json={"output": "respuesta secreta del modelo", "error": None}
+        )
+    )
+    run_cursor_bridge_prompt("pregunta privada del usuario")
+    bridge(
+        lambda request: httpx.Response(
+            502, json={"output": "", "stderr": "detalle interno", "error": "cli_nonzero"}
+        )
+    )
+    with pytest.raises(CursorBridgeError):
+        run_cursor_bridge_prompt("otra pregunta privada")
+
+    lines = [r.getMessage() for r in caplog.records]
+    assert len(lines) == 2
+    assert "resultado=ok" in lines[0] and "output_chars=28" in lines[0]
+    assert "resultado=error" in lines[1] and "Puente HTTP 502" in lines[1]
+    texto = " ".join(lines)
+    for privado in ("pregunta privada", "respuesta secreta", "detalle interno"):
+        assert privado not in texto
