@@ -33,10 +33,7 @@ flowchart LR
 | `destination_stay` | Analiza cargadores cerca del destino (sin filtro min kW) y recomienda SOC de llegada |
 | `GET /api/v1/stations/charging-plan` | Plan de ruta + `destination_stay` en modo route |
 | `GET /api/v1/agent/trip-advice` | Plan + `agent_summary` y `agent_bullets` para agentes |
-| `GET /api/v1/agent/trip-guide` | Contexto JSON + guía del motor local para agentes |
 | `GET /api/v1/private/trip-guide-from-car` | Igual desde telemetría TeslaMate (Asistente web) |
-| `GET /api/v1/agent/score-charging-plan` | Alias reducido para Dify (#6056) |
-| Dify (mini PC) | Workflow: llamar API → LLM redacta explicación |
 | Cursor CLI | Script local que consulta la API y pide narrativa ampliada |
 
 ## Análisis de destino (`destination_stay`)
@@ -92,15 +89,9 @@ terrain_factor=1.25&local_mobility_km=50&destination_radius_km=15"
 
 El script llama a `trip-advice` y puede pasar el JSON a `cursor agent` para una explicación en lenguaje natural (sin recalcular SOC).
 
-## Dify (#6057)
+## Acceso
 
-Workflow MVP recomendado:
-
-1. Nodo HTTP → `score-charging-plan` con origen, destino, SOC, terreno
-2. Nodo LLM con prompt fijo: «Explica al conductor las estrategias y el SOC recomendado en destino; no inventes estaciones ni porcentajes»
-3. Salida: texto + JSON del plan original
-
-Auth: red LAN o `AGENT_API_TOKEN` / `PRIVATE_API_TOKEN` en el nodo HTTP. Ver [`PHASE3_PRIVATE_STACK.md`](PHASE3_PRIVATE_STACK.md).
+`/api/v1/agent/*` solo existe con `PRIVATE_STACK_ENABLED=true` (si no, 404) y pide sesión TOTP o token de servicio (`AGENT_API_TOKEN`). Las rutas `trip-guide` y `score-charging-plan`, pensadas para Dify, se retiraron el 2026-10-11 (#6287).
 
 ## Referencias
 

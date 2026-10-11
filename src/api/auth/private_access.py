@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 from typing import Annotated
 
 from fastapi import Header, HTTPException, Request
@@ -41,9 +42,11 @@ def require_private_access(
     x_agent_token: Annotated[str | None, Header(alias="X-Agent-Token")] = None,
     x_private_token: Annotated[str | None, Header(alias="X-Private-Token")] = None,
 ) -> None:
-    """Sesión TOTP (navegador) o token de servicio (Dify / Cursor CLI)."""
+    """Sesión TOTP (navegador) o token de servicio (scripts de agente)."""
+    # Con el stack privado desactivado (valor por defecto) estas rutas no existen:
+    # así un despliegue con TeslaMate configurado no las deja abiertas por olvido.
     if not settings.private_stack_enabled:
-        return
+        raise HTTPException(status_code=404, detail="Not Found")
 
     if session_authenticated(request):
         return
@@ -57,7 +60,7 @@ def require_private_access(
             presented = x_private_token.strip()
         elif x_agent_token:
             presented = x_agent_token.strip()
-        if presented == expected:
+        if presented and hmac.compare_digest(presented.encode(), expected.encode()):
             return
 
     if not private_totp_auth_configured() and not expected:

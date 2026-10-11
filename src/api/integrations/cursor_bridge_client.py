@@ -31,13 +31,21 @@ def run_cursor_bridge_prompt(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    with httpx.Client(timeout=timeout) as client:
-        response = client.post(url, headers=headers, json={"prompt": prompt})
+    # Cualquier fallo del puente (caído, tiempo agotado, JSON roto) es CursorBridgeError:
+    # el chat cae entonces en la respuesta local en vez de devolver 500.
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(url, headers=headers, json={"prompt": prompt})
+    except httpx.HTTPError as e:
+        raise CursorBridgeError(f"Puente no disponible: {type(e).__name__}") from e
 
     if response.status_code != 200:
         raise CursorBridgeError(f"Puente HTTP {response.status_code}: {response.text[:300]}")
 
-    body = response.json()
+    try:
+        body = response.json()
+    except ValueError as e:
+        raise CursorBridgeError("Respuesta del puente no es JSON") from e
     if not isinstance(body, dict):
         raise CursorBridgeError("Respuesta del puente inválida")
     if body.get("error"):

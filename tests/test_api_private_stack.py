@@ -275,3 +275,45 @@ def test_private_home_location(private_client: TestClient) -> None:
             settings.home_lat,
             settings.home_lon,
         ) = original
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/private/status",
+        "/api/v1/private/vehicle/state",
+        "/api/v1/agent/trip-advice?origin_lat=40&origin_lon=-3&soc_percent=80"
+        "&usable_capacity_kwh=60&consumption_wh_per_km=150",
+    ],
+)
+def test_stack_privado_desactivado_devuelve_404(private_client: TestClient, monkeypatch, path: str) -> None:
+    # Valor por defecto: aunque haya TeslaMate o token configurados, las rutas no existen.
+    monkeypatch.setattr(settings, "private_stack_enabled", False)
+    monkeypatch.setattr(settings, "private_api_token", "test-private-token-min-32-chars-long")
+    response = private_client.get(path, headers={"Authorization": "Bearer test-private-token-min-32-chars-long"})
+    assert response.status_code == 404
+
+
+def test_valor_por_defecto_del_stack_privado_es_desactivado() -> None:
+    from api.config import Settings
+
+    assert Settings.model_fields["private_stack_enabled"].default is False
+
+
+def test_token_incorrecto_401_y_correcto_200(private_client: TestClient, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "private_stack_enabled", True)
+    monkeypatch.setattr(settings, "private_api_token", "test-private-token-min-32-chars-long")
+    bad = private_client.get("/api/v1/private/status", headers={"Authorization": "Bearer otro-token"})
+    assert bad.status_code == 401
+    ok = private_client.get(
+        "/api/v1/private/status", headers={"Authorization": "Bearer test-private-token-min-32-chars-long"}
+    )
+    assert ok.status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/api/v1/agent/trip-guide", "/api/v1/agent/score-charging-plan"])
+def test_rutas_agent_de_dify_retiradas(private_client: TestClient, monkeypatch, path: str) -> None:
+    monkeypatch.setattr(settings, "private_stack_enabled", True)
+    monkeypatch.setattr(settings, "private_api_token", "test-private-token-min-32-chars-long")
+    response = private_client.get(path, headers={"Authorization": "Bearer test-private-token-min-32-chars-long"})
+    assert response.status_code == 404

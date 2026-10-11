@@ -96,7 +96,7 @@ Generar stack privado (TOTP + sesión):
 | `PRIVATE_AUTH_USERS` | Multiusuario: `usuario1:SECRETO1,usuario2:SECRETO2` (un miembro por par, generado por el script) |
 | `PRIVATE_AUTH_USERNAME` / `PRIVATE_TOTP_SECRET` | **Obsoletos** — formato mono-usuario anterior, se mantienen solo como fallback si `PRIVATE_AUTH_USERS` está vacío |
 | `PRIVATE_AUTH_PASSWORD_HASH` | **Obsoleto** — ya no se usa |
-| `PRIVATE_API_TOKEN` | Automatización / agente |
+| `PRIVATE_API_TOKEN` | Opcional: acceso sin TOTP para scripts; vacío = solo sesión TOTP |
 | `CLOUDFLARED_TOKEN` | Túnel Cloudflare |
 | `TESLAMATE_MQTT_PASSWORD` | Telemetría coche |
 | `OCM_API_KEY` | Sync Open Charge Map (cron) |
