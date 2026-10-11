@@ -354,6 +354,8 @@ export type TripGuideResponse = TripAdviceResponse & {
 export type TripChatMessage = {
   role: 'user' | 'assistant'
   content: string
+  /** Solo en la web: de dónde sale la respuesta. No se envía al API. */
+  source?: TripChatResponse['reply_source']
 }
 
 export type TripChatOverrides = {

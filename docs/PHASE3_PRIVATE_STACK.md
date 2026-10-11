@@ -70,9 +70,9 @@ Contraseña + código de 6 dígitos (Microsoft Authenticator). Ver [`PHASE3_AUTH
 Variables:
 
 ```env
-PRIVATE_STACK_ENABLED=true
-PRIVATE_API_TOKEN=<mín. 32 caracteres, generar con openssl rand -hex 32>
-AGENT_API_TOKEN=          # opcional; si vacío, usa PRIVATE_API_TOKEN
+PRIVATE_STACK_ENABLED=true   # si es false, /api/v1/private/* y /api/v1/agent/* devuelven 404
+PRIVATE_API_TOKEN=           # opcional: solo si un script necesita entrar sin TOTP (mín. 32 caracteres)
+AGENT_API_TOKEN=             # opcional: token para scripts/agent/trip_advice.sh
 CHARGING_AGENT_ENABLED=true
 ```
 
@@ -124,8 +124,7 @@ Con `TESLAMATE_DATA_SOURCE=auto`, si MQTT falla se intenta la API.
 ### 4. Dify y Cursor CLI
 
 - **La guía de viaje la genera el motor local** (sin IA). La IA está en el chat del asistente, que llama al puente Cursor directamente (ver [`DIFY_CURSOR.md`](DIFY_CURSOR.md)). El flujo Dify de guía se retiró el 2026-10-11 (#6297): nunca llegó a funcionar y la web no lo usaba.
-- Nodos HTTP en Dify hacia Electrolineras: `Authorization: Bearer $PRIVATE_API_TOKEN` o `X-Private-Token`.
-- Cursor CLI: `AGENT_API_TOKEN` o `PRIVATE_API_TOKEN` en el script (`scripts/agent/trip_advice.sh`).
+- Cursor CLI: `AGENT_API_TOKEN` en el script (`scripts/agent/trip_advice.sh`). Sin token de servicio configurado, la parte privada solo admite la sesión TOTP.
 - El LLM **no calcula** SOC; solo narra JSON del motor ([`CHARGING_AGENT.md`](CHARGING_AGENT.md)).
 
 ## Endpoints privados
@@ -137,7 +136,6 @@ Con `TESLAMATE_DATA_SOURCE=auto`, si MQTT falla se intenta la API.
 | GET | `/api/v1/private/trip-advice-from-car` | Plan de carga: origen/SOC del coche + destino |
 | GET | `/api/v1/private/trip-guide-from-car` | Plan + guía de viaje (motor local) |
 | GET | `/api/v1/agent/trip-advice` | Plan + narrativa (requiere token si privado activo) |
-| GET | `/api/v1/agent/score-charging-plan` | Alias Dify |
 
 Ejemplo — plan desde el coche:
 

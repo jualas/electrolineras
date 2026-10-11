@@ -53,7 +53,7 @@ export function AssistantChat({ planSnapshot, disabled, onApplyOverrides }: Assi
     try {
       const result = await fetchTripChat({
         message: content,
-        history: messages,
+        history: messages.map(({ role, content: text }) => ({ role, content: text })),
         planSnapshot: planSnapshot ?? null,
       })
       if (result.chips?.length) {
@@ -65,7 +65,7 @@ export function AssistantChat({ planSnapshot, disabled, onApplyOverrides }: Assi
           })),
         )
       }
-      setMessages((prev) => [...prev, { role: 'assistant', content: result.reply }])
+      setMessages((prev) => [...prev, { role: 'assistant', content: result.reply, source: result.reply_source }])
       if (result.needs_replan && result.overrides && Object.keys(result.overrides).length > 0) {
         await onApplyOverrides(result.overrides)
       }
@@ -105,6 +105,11 @@ export function AssistantChat({ planSnapshot, disabled, onApplyOverrides }: Assi
             key={`${msg.role}-${index}`}
             className={`assistant-chat__bubble assistant-chat__bubble--${msg.role}`}
           >
+            {msg.source === 'llm' && (
+              <span className="assistant-chat__ai-badge" title="Respuesta generada por IA: puede equivocarse">
+                IA
+              </span>
+            )}
             {msg.content}
           </div>
         ))}

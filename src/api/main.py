@@ -30,7 +30,19 @@ def _warn_if_auth_misconfigured() -> None:
         logger.warning("PRIVATE_AUTH_USERS vacío; el login TOTP no estará disponible.")
 
 
+def _configure_app_logging() -> None:
+    """Los logs propios (logger «api.*») a stderr en INFO; uvicorn configura solo los suyos."""
+    app_logger = logging.getLogger("api")
+    if app_logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+
+
 def create_app() -> FastAPI:
+    _configure_app_logging()
     docs_enabled = settings.docs_enabled()
     app = FastAPI(
         title="Electrolineras API",

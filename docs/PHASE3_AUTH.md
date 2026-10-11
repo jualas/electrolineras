@@ -14,7 +14,7 @@ Un solo sitio (`electro.jualas.es`), un solo Docker:
   cuenta compartida. `PRIVATE_AUTH_USERS` guarda `usuario:SECRETO` por persona,
   separados por comas.
 - Sesión en cookie `httpOnly` (7 días por defecto); recuerda qué usuario inició sesión.
-- **Dify / Cursor CLI** → opcional `PRIVATE_API_TOKEN` (Bearer) sin TOTP.
+- **Scripts de agente** → opcional `AGENT_API_TOKEN` / `PRIVATE_API_TOKEN` (Bearer) sin TOTP. Vacíos, solo vale la sesión TOTP.
 
 Compatible con [Microsoft Authenticator](https://www.microsoft.com/security/mobile-authenticator-app): escaneas la clave TOTP al configurar (RFC 6238), igual que Tesla/Meta en modo «otra cuenta».
 

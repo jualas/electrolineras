@@ -11,9 +11,15 @@ from api.config import settings
 from api.dependencies import get_repository
 from api.main import app
 
+AGENT_TOKEN = "test-agent-token-min-32-chars-long-xx"
+
 
 @pytest.fixture
-def agent_client() -> TestClient:
+def agent_client(monkeypatch) -> TestClient:
+    # /agent/* solo existe con el stack privado activo y pide token de servicio
+    monkeypatch.setattr(settings, "private_stack_enabled", True)
+    monkeypatch.setattr(settings, "private_api_token", "")
+    monkeypatch.setattr(settings, "agent_api_token", AGENT_TOKEN)
     repo = memory_repo()
     repo.upsert_stations(
         [
@@ -26,7 +32,7 @@ def agent_client() -> TestClient:
         yield repo
 
     app.dependency_overrides[get_repository] = override_repo
-    client = TestClient(app)
+    client = TestClient(app, headers={"X-Agent-Token": AGENT_TOKEN})
     yield client
     app.dependency_overrides.clear()
 

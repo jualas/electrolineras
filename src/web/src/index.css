@@ -2610,6 +2610,17 @@ button {
   border: 1px solid var(--color-border);
 }
 
+.assistant-chat__ai-badge {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-border);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  vertical-align: 0.05em;
+}
+
 .assistant-chat__composer {
   display: flex;
   gap: 0.4rem;
