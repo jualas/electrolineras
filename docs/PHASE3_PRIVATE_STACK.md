@@ -123,7 +123,7 @@ Con `TESLAMATE_DATA_SOURCE=auto`, si MQTT falla se intenta la API.
 
 ### 4. Dify y Cursor CLI
 
-- **Dify solo en LAN del minipc** (sin túnel): consola `http://<IP-LAN-SERVIDOR>:8590`, API workflow `http://<IP-LAN-SERVIDOR>:8590/v1`. Electrolineras llama a Dify desde el contenedor con `DIFY_API_BASE_URL` (ver [`DIFY_TRIP_GUIDE.md`](DIFY_TRIP_GUIDE.md)).
+- **La guía de viaje la genera el motor local** (sin IA). La IA está en el chat del asistente, que llama al puente Cursor directamente (ver [`DIFY_CURSOR.md`](DIFY_CURSOR.md)). El flujo Dify de guía se retiró el 2026-10-11 (#6297): nunca llegó a funcionar y la web no lo usaba.
 - Nodos HTTP en Dify hacia Electrolineras: `Authorization: Bearer $PRIVATE_API_TOKEN` o `X-Private-Token`.
 - Cursor CLI: `AGENT_API_TOKEN` o `PRIVATE_API_TOKEN` en el script (`scripts/agent/trip_advice.sh`).
 - El LLM **no calcula** SOC; solo narra JSON del motor ([`CHARGING_AGENT.md`](CHARGING_AGENT.md)).
@@ -135,7 +135,7 @@ Con `TESLAMATE_DATA_SOURCE=auto`, si MQTT falla se intenta la API.
 | GET | `/api/v1/private/status` | Estado del stack privado |
 | GET | `/api/v1/private/vehicle/state` | Posición + SOC vía TeslaMate |
 | GET | `/api/v1/private/trip-advice-from-car` | Plan de carga: origen/SOC del coche + destino |
-| GET | `/api/v1/private/trip-guide-from-car` | Plan + guía IA (Dify LAN o fallback local) |
+| GET | `/api/v1/private/trip-guide-from-car` | Plan + guía de viaje (motor local) |
 | GET | `/api/v1/agent/trip-advice` | Plan + narrativa (requiere token si privado activo) |
 | GET | `/api/v1/agent/score-charging-plan` | Alias Dify |
 

@@ -127,5 +127,4 @@ Ver [`docker/osrm/README.md`](../docker/osrm/README.md) y [`ROUTE_CORRIDOR_SEARC
 ## Enlaces
 
 - [EV_RANGE_PLAN.md](EV_RANGE_PLAN.md) — visión plan de carga
-- [DIFY_TRIP_GUIDE.md](DIFY_TRIP_GUIDE.md) — agente IA
 - [TASKBOARD.md](../TASKBOARD.md#task-6085) — tareas #6085–#6093

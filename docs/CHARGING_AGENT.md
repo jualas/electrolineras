@@ -33,7 +33,7 @@ flowchart LR
 | `destination_stay` | Analiza cargadores cerca del destino (sin filtro min kW) y recomienda SOC de llegada |
 | `GET /api/v1/stations/charging-plan` | Plan de ruta + `destination_stay` en modo route |
 | `GET /api/v1/agent/trip-advice` | Plan + `agent_summary` y `agent_bullets` para agentes |
-| `GET /api/v1/agent/trip-guide` | Contexto JSON + guía (local o Dify) para workflows |
+| `GET /api/v1/agent/trip-guide` | Contexto JSON + guía del motor local para agentes |
 | `GET /api/v1/private/trip-guide-from-car` | Igual desde telemetría TeslaMate (Asistente web) |
 | `GET /api/v1/agent/score-charging-plan` | Alias reducido para Dify (#6056) |
 | Dify (mini PC) | Workflow: llamar API → LLM redacta explicación |
@@ -69,11 +69,9 @@ Variables de entorno (`.env` o docker):
 ```env
 CHARGING_AGENT_ENABLED=true
 AGENT_API_TOKEN=          # opcional; si se define, header X-Agent-Token
-DIFY_API_BASE_URL=        # opcional; ver docs/DIFY_TRIP_GUIDE.md
-DIFY_TRIP_WORKFLOW_API_KEY=
 ```
 
-Guía de viaje con IA: [DIFY_TRIP_GUIDE.md](./DIFY_TRIP_GUIDE.md).
+Chat con IA (puente Cursor): [DIFY_CURSOR.md](./DIFY_CURSOR.md).
 
 ## Uso — API
 

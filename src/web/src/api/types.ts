@@ -347,7 +347,7 @@ export type TripAdviceResponse = {
 
 export type TripGuideResponse = TripAdviceResponse & {
   guide_text: string
-  guide_source: 'deterministic' | 'dify'
+  guide_source: 'deterministic'
   context: TripGuideContext
 }
 

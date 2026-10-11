@@ -118,10 +118,6 @@ def validate(values: dict[str, str], *, strict_secrets: bool) -> list[str]:
                 if looks_like_placeholder(value):
                     errors.append(f"{key} parece un placeholder, no un secreto real")
 
-    dify_url = values.get("DIFY_API_BASE_URL", "")
-    if dify_url and not values.get("DIFY_TRIP_WORKFLOW_API_KEY"):
-        warnings.append("DIFY_API_BASE_URL definido pero falta DIFY_TRIP_WORKFLOW_API_KEY")
-
     return errors + [f"AVISO: {item}" for item in warnings]
 
 
