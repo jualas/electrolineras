@@ -148,7 +148,6 @@ export async function fetchTripGuideFromCar(params: {
   localMobilityKm?: number
   includeRoute?: boolean
   culturalPoi?: boolean
-  invokeDify?: boolean
   userNote?: string
   routePreference?: import('./types').RoutePreference
   avoidHighways?: boolean
@@ -190,9 +189,6 @@ export async function fetchTripGuideFromCar(params: {
   }
   if (params.culturalPoi === false) {
     query.set('cultural_poi', 'false')
-  }
-  if (params.invokeDify === false) {
-    query.set('invoke_dify', 'false')
   }
   if (params.userNote) {
     query.set('user_note', params.userNote)

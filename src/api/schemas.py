@@ -298,7 +298,7 @@ class TripAdviceResponse(BaseModel):
 
 
 class TripGuideContext(BaseModel):
-    """Contexto estructurado para workflow Dify (no inventar SOC/estaciones)."""
+    """Contexto estructurado de la guía de viaje (no inventar SOC/estaciones)."""
 
     destination_label: str | None = None
     cultural_poi_enabled: bool = False
@@ -312,7 +312,7 @@ class TripGuideContext(BaseModel):
 
 class TripGuideResponse(TripAdviceResponse):
     guide_text: str
-    guide_source: Literal["deterministic", "dify"]
+    guide_source: Literal["deterministic"]
     context: TripGuideContext
 
 
@@ -353,7 +353,6 @@ class PrivateStackStatusResult(BaseModel):
     login_enabled: bool = False
     mqtt_configured: bool = False
     teslamate_api_configured: bool = False
-    dify_trip_guide_configured: bool = False
     cursor_bridge_configured: bool = False
 
 

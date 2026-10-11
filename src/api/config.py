@@ -98,10 +98,7 @@ class Settings(BaseSettings):
     teslamate_efficiency_kwh_per_km: float | None = None
     teslamate_usable_capacity_kwh: float | None = None
 
-    dify_api_base_url: str = ""
-    dify_trip_workflow_api_key: str = ""
-    dify_timeout_seconds: float = 90.0
-    # Chat interactivo (#6166): puente Cursor directo (sin monólogo Dify).
+    # Chat interactivo (#6166): puente Cursor directo.
     cursor_bridge_url: str = "http://host.docker.internal:18765"
     cursor_bridge_token: str = ""
     cursor_bridge_timeout_seconds: float = 90.0

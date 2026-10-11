@@ -1,15 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from api.agent_ev_expert import enrich_planned_stop_snapshot, ev_expert_plan_hints
 from api.agent_narration import build_agent_narration
-from api.integrations.dify_client import (
-    DifyError,
-    dify_trip_guide_configured,
-    run_trip_guide_workflow,
-    trip_context_payload,
-)
 from api.integrations.poi_hints import fetch_destination_poi_hints
 from api.schemas import (
     ChargingPlanResponse,
@@ -260,12 +252,6 @@ def format_deterministic_guide(
         lines.extend(f"- {hint}" for hint in context.poi_hints)
         lines.append("")
 
-    if not dify_trip_guide_configured():
-        lines.append(
-            "_Guía generada por el motor local. Configura `DIFY_API_BASE_URL` y "
-            "`DIFY_TRIP_WORKFLOW_API_KEY` para narrativa IA._"
-        )
-
     return "\n".join(lines).strip()
 
 
@@ -276,7 +262,6 @@ def build_trip_guide_response(
     destination_label: str | None = None,
     cultural_poi_enabled: bool = False,
     user_note: str | None = None,
-    invoke_dify: bool = True,
 ) -> TripGuideResponse:
     summary, bullets = build_agent_narration(plan)
     context = build_trip_guide_context(
@@ -287,19 +272,7 @@ def build_trip_guide_response(
         user_note=user_note,
     )
 
-    guide_source: Literal["deterministic", "dify"] = "deterministic"
     guide_text = format_deterministic_guide(summary, bullets, context)
-
-    if invoke_dify and dify_trip_guide_configured():
-        try:
-            context_dict = context.model_dump()
-            guide_text = run_trip_guide_workflow(
-                trip_context_json=trip_context_payload(context_dict),
-                agent_summary=summary,
-            )
-            guide_source = "dify"
-        except DifyError:
-            pass
 
     return TripGuideResponse(
         plan=plan,
@@ -307,6 +280,6 @@ def build_trip_guide_response(
         agent_bullets=bullets,
         vehicle=vehicle,
         guide_text=guide_text,
-        guide_source=guide_source,
+        guide_source="deterministic",
         context=context,
     )

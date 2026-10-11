@@ -97,7 +97,6 @@ Generar stack privado (TOTP + sesión):
 | `PRIVATE_AUTH_USERNAME` / `PRIVATE_TOTP_SECRET` | **Obsoletos** — formato mono-usuario anterior, se mantienen solo como fallback si `PRIVATE_AUTH_USERS` está vacío |
 | `PRIVATE_AUTH_PASSWORD_HASH` | **Obsoleto** — ya no se usa |
 | `PRIVATE_API_TOKEN` | Automatización / agente |
-| `DIFY_TRIP_WORKFLOW_API_KEY` | Guía IA (solo LAN) |
 | `CLOUDFLARED_TOKEN` | Túnel Cloudflare |
 | `TESLAMATE_MQTT_PASSWORD` | Telemetría coche |
 | `OCM_API_KEY` | Sync Open Charge Map (cron) |

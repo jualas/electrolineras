@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import patch
-
 from api.agent_narration import nearest_destination_chargers_from_ranked
 from api.agent_trip_guide import build_trip_guide_context, build_trip_guide_response
 from api.schemas import (
@@ -62,8 +60,7 @@ def test_build_trip_guide_response_deterministic() -> None:
         warnings=[],
         candidates_in_bbox=1,
     )
-    with patch("api.agent_trip_guide.dify_trip_guide_configured", return_value=False):
-        guide = build_trip_guide_response(plan, destination_label="Barcelona", cultural_poi_enabled=False)
+    guide = build_trip_guide_response(plan, destination_label="Barcelona", cultural_poi_enabled=False)
     assert guide.guide_source == "deterministic"
     assert "Resumen del viaje" in guide.guide_text
     assert guide.context.destination_label == "Barcelona"

@@ -196,9 +196,8 @@ def agent_trip_guide(
     max_price_eur_kwh: Annotated[float | None, Query(gt=0, le=2)] = None,
     dest_label: Annotated[str | None, Query(max_length=500)] = None,
     cultural_poi: Annotated[bool, Query()] = True,
-    invoke_dify: Annotated[bool, Query()] = False,
 ) -> TripGuideResponse:
-    """Contexto + guía para workflow Dify (HTTP tool). invoke_dify=false devuelve guía local."""
+    """Contexto + guía de viaje del motor local (HTTP tool para agentes)."""
     if not settings.charging_agent_enabled:
         raise HTTPException(status_code=503, detail="Asistente de viaje desactivado")
 
@@ -234,5 +233,4 @@ def agent_trip_guide(
         advice.plan,
         destination_label=dest_label,
         cultural_poi_enabled=cultural_poi,
-        invoke_dify=invoke_dify,
     )

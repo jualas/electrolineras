@@ -229,7 +229,6 @@ def test_private_trip_guide_from_car(mock_fetch, mock_osrm, private_client: Test
                 "dest_lat": 40.0,
                 "dest_lon": 1.0,
                 "dest_label": "Test dest",
-                "invoke_dify": "false",
                 "cultural_poi": "false",
             },
             headers={"X-Private-Token": "test-private-token-min-32-chars-long"},

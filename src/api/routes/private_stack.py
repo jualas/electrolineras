@@ -14,7 +14,6 @@ from api.auth.private_access import (
 from api.config import settings
 from api.dependencies import get_repository
 from api.integrations.cursor_bridge_client import cursor_bridge_configured
-from api.integrations.dify_client import dify_trip_guide_configured
 from api.integrations.telemetry_energy import vehicle_energy_from_telemetry
 from api.integrations.teslamate import TeslaMateError, VehicleTelemetry
 from api.integrations.vehicle_telemetry import (
@@ -95,7 +94,6 @@ def private_stack_status() -> PrivateStackStatusResult:
         login_enabled=private_totp_auth_configured(),
         mqtt_configured=mqtt_configured(),
         teslamate_api_configured=teslamate_api_configured(),
-        dify_trip_guide_configured=dify_trip_guide_configured(),
         cursor_bridge_configured=cursor_bridge_configured(),
     )
 
@@ -284,7 +282,6 @@ def private_trip_guide_from_car(
     include_route: Annotated[bool, Query()] = False,
     dest_label: Annotated[str | None, Query(max_length=500)] = None,
     cultural_poi: Annotated[bool, Query(description="Incluir ideas culturales y gastronomía")] = True,
-    invoke_dify: Annotated[bool, Query(description="Llamar workflow Dify si está configurado")] = True,
     user_note: Annotated[str | None, Query(max_length=2000, description="Pregunta o nota para la guía IA")] = None,
     route_preference: Annotated[RoutePreference, Query()] = "fastest",
     avoid_highways: Annotated[bool, Query(description="Evitar peajes (OSRM exclude=toll). Default true.")] = True,
@@ -303,7 +300,7 @@ def private_trip_guide_from_car(
     vehicle_preset_id: Annotated[str | None, Query(max_length=64)] = None,
     usable_capacity_kwh: Annotated[float | None, Query(gt=0, le=200)] = None,
 ) -> TripGuideResponse:
-    """Plan de carga + guía de viaje (motor local o Dify) desde telemetría del coche."""
+    """Plan de carga + guía de viaje (motor local) desde telemetría del coche."""
     if not settings.charging_agent_enabled:
         raise HTTPException(status_code=503, detail="Asistente de viaje desactivado")
 
@@ -342,7 +339,6 @@ def private_trip_guide_from_car(
         destination_label=dest_label,
         cultural_poi_enabled=cultural_poi,
         user_note=user_note,
-        invoke_dify=invoke_dify,
     )
     return guide.model_copy(
         update={
