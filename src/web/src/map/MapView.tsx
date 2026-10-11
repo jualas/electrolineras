@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as maplibregl from 'maplibre-gl'
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 
 import { chargingPlanRouteMapFeatures, routeChargingStops, routeMapFitPoints, type RouteChargingStop } from '../charging/planRouteStops'
 import { alongRouteToFeatures } from '../api/route'
@@ -65,6 +66,10 @@ import {
   MAP_FOLLOW_ZOOM,
   shouldRecenterMapOnUserMove,
 } from './mapFollowUser'
+
+// maplibre 6 carga su worker desde un fichero aparte que Vite no copia por sí solo:
+// sin esto el mapa base sale vacío ("Worker failed to load").
+maplibregl.setWorkerUrl(workerUrl)
 
 const IBERIAN_CENTER: [number, number] = [-4.5, 40.2]
 const DEFAULT_ZOOM = 5.8
