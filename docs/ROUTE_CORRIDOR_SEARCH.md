@@ -148,15 +148,15 @@ Algoritmo (`src/api/routing/osrm.py`):
 
 1. Pedir `alternatives=N` (máx. 3 en OSRM Iberia).
 2. `min_duration` = menor `duration` entre alternativas.
-3. **Ventana de tolerancia:** candidatas con `duration ≤ min_duration × (1 + T)`, donde `T = OSRM_FASTEST_ALTERNATIVE_TOLERANCE` (default **0.05** = 5 %).
+3. **Ventana de tolerancia:** candidatas con `duration ≤ min_duration × (1 + T)`, donde `T = OSRM_FASTEST_ALTERNATIVE_TOLERANCE` (default **0.01** = 1 %).
 4. Entre candidatas, gana la de **mayor velocidad media** `distance / duration`.
 
-**Caso de referencia — Cartagena → Zaragoza:** OSRM a veces marca ~3 min menos por interior (N-330 / Teruel), pero la ruta por **A-7 + A-23 Mudéjar** (vía Valencia) queda dentro del 5 % de tiempo y tiene mejor velocidad media; el motor elige la segunda. Tests: `tests/test_osrm_route.py` (`test_select_fastest_route_prefers_similar_time_higher_avg_speed`).
+**Caso de referencia — Cartagena → Zaragoza:** OSRM a veces marca ~3 min menos por interior (N-330 / Teruel), pero la ruta por **A-7 + A-23 Mudéjar** (vía Valencia) queda dentro del 1 % de tiempo (~0,8 %) y tiene mejor velocidad media; el motor elige la segunda. Tests: `tests/test_osrm_route.py` (`test_select_fastest_route_prefers_similar_time_higher_avg_speed`).
 
-**Limitación (Cartagena/Murcia → Úbeda, ago 2026):** Google ~3h35 / 309 km por **A-315**
-porque evita **cortes en A-401**. OSRM (mapa estático) sigue prefiriendo ~4h / 348 km:
-no ve el corte. Forzar vía Baza en OSRM tampoco iguala el tiempo de Google. Paridad real
-requiere API con tráfico (#6067).
+**Contraejemplo — Cartagena → Úbeda (oct 2026):** OSRM da 298 km / 251 min por
+A-7 + A-91 + A-92N y 361 km / 266 min por A-30 + N-322 (Albacete), un 6 % más lenta pero con
+más velocidad media. Con tolerancia 5–8 % ganaba el rodeo de 63 km; por eso el default es 1 %.
+Google va por A-315 (~309 km). Test: `test_select_fastest_route_ignores_detour_outside_tolerance`.
 
 **Peajes (default):** se evitan (`avoid_highways` / `exclude=toll`). En UI el check es
 **«Permitir autopistas de peaje»** (opt-in). Autovías libres siguen permitidas.
@@ -174,7 +174,7 @@ ETA, velocidad media y ventanas ~2 h de paradas. Rango clamp 0.85–1.5.
 | Variable | Default | Efecto |
 |----------|---------|--------|
 | `OSRM_FASTEST_REQUEST_ALTERNATIVES` | `true` | Pide `alternatives=true` al calcular la variante fastest. |
-| `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.05` | Ventana ±5 % sobre el mínimo tiempo para desempate por velocidad media (#6069). |
+| `OSRM_FASTEST_ALTERNATIVE_TOLERANCE` | `0.01` | Ventana ±1 % sobre el mínimo tiempo para desempate por velocidad media (#6069). |
 | `OSRM_SHORTEST_DIRECTNESS_PENALTY` | `0.35` | Penaliza rutas «circulares» en modo shortest. |
 | `OSRM_USE_MULTI_PROFILE` | `true` en prod | Tres perfiles OSRM (`fastest` / `shortest` / `conventional`); convencionales con `exclude=motorway` en perfil propio. |
 | `OSRM_PROFILE_CONVENTIONAL` | `conventional` | Nombre del perfil Lua en OSRM self-hosted (`docker/osrm/`). |

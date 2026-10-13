@@ -43,6 +43,21 @@ def test_select_fastest_route_prefers_similar_time_higher_avg_speed() -> None:
     assert selected["distance"] == 581_400
 
 
+def test_select_fastest_route_ignores_detour_outside_tolerance() -> None:
+    from api.config import Settings
+    from api.routing.osrm import select_fastest_route_payload
+
+    assert Settings.model_fields["osrm_fastest_alternative_tolerance"].default == 0.01
+    # Cartagena → Úbeda (OSRM Iberia, oct 2026)
+    routes = [
+        {"distance": 298_000, "duration": 15_060},  # A-7 + A-91 + A-92N
+        {"distance": 361_000, "duration": 15_960},  # A-30 + N-322 vía Albacete (~6% más lenta)
+        {"distance": 389_000, "duration": 17_100},
+    ]
+    selected = select_fastest_route_payload(routes)
+    assert selected["distance"] == 298_000
+
+
 def test_select_fastest_route_keeps_clear_winner() -> None:
     from api.routing.osrm import select_fastest_route_payload
 
