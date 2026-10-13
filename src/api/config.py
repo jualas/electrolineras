@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     osrm_fastest_request_alternatives: bool = True
     # OSRM acepta alternatives=true|N (máx. 3 en backend Iberia). N>1 saca más corredores.
     osrm_fastest_alternatives_count: int = 3
-    osrm_fastest_alternative_tolerance: float = 0.05
+    # Ventana sobre el menor tiempo para desempatar por velocidad media. Con 5–8 % ganaban
+    # rodeos por autovía (Cartagena→Úbeda: 361 km vía Albacete en vez de 298 km directos).
+    osrm_fastest_alternative_tolerance: float = 0.01
     # Multiplica la velocidad efectiva OSRM (duration /= factor). >1 acerca tiempos a
     # Google/autovía real; 1.0 = bruto OSM. Rango útil ~1.10–1.25 (#6153).
     osrm_speed_factor: float = 1.25
