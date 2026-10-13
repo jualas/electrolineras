@@ -377,6 +377,7 @@ export function MapView({
   const [stationCount, setStationCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [mapInitError, setMapInitError] = useState(false)
   const [overlayMode, setOverlayMode] = useState<'map' | 'route' | 'charge' | 'none'>('none')
 
   const setStationMapModeState = useCallback((map: maplibregl.Map, mode: StationMapMode) => {
@@ -711,13 +712,22 @@ export function MapView({
       return undefined
     }
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: MAP_STYLE,
-      center: IBERIAN_CENTER,
-      zoom: DEFAULT_ZOOM,
-      attributionControl: false,
-    })
+    // Sin WebGL2 (aceleración gráfica desactivada, GPU en lista negra…) el constructor lanza
+    // y, sin capturarlo, React desmonta toda la app y la página queda en blanco.
+    let map: maplibregl.Map
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: MAP_STYLE,
+        center: IBERIAN_CENTER,
+        zoom: DEFAULT_ZOOM,
+        attributionControl: false,
+      })
+    } catch (error) {
+      console.error('No se pudo crear el mapa', error)
+      setMapInitError(true)
+      return undefined
+    }
 
     map.addControl(
       new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }),
@@ -1011,6 +1021,15 @@ export function MapView({
   return (
     <div className="map-shell">
       <div ref={containerRef} className={className ?? 'map-view'} aria-label="Mapa peninsular" />
+      {mapInitError && (
+        <div className="map-init-error" role="alert">
+          <p className="map-init-error__title">No se puede mostrar el mapa</p>
+          <p>
+            Tu navegador necesita WebGL2. Activa la aceleración por hardware en los ajustes del navegador
+            (en Chrome: Configuración › Sistema) y recarga la página, o prueba con otro navegador.
+          </p>
+        </div>
+      )}
       {showLayerControl && mapLayers && onMapLayersChange && (
         <MapLayerControl value={mapLayers} onChange={onMapLayersChange} />
       )}

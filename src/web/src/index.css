@@ -445,6 +445,33 @@ button {
   color: var(--color-danger);
 }
 
+.map-init-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  width: min(26rem, calc(100% - 2rem));
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  background: var(--color-map-overlay);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.map-init-error p {
+  margin: 0;
+}
+
+.map-init-error .map-init-error__title {
+  margin-bottom: 0.4rem;
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
 .map-layer-control {
   position: absolute;
   right: 0.75rem;
