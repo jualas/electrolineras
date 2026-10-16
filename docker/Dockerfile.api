@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # API FastAPI sin estáticos (nginx sirve la SPA en prod).
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

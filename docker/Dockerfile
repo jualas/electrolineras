@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS web-build
+FROM node:25-alpine AS web-build
 WORKDIR /build
 COPY src/web/package.json src/web/package-lock.json ./
 RUN npm ci
@@ -9,7 +9,7 @@ COPY src/web .
 ENV VITE_API_URL=
 RUN npm run build
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
