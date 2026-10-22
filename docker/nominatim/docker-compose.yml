@@ -26,6 +26,7 @@ services:
     volumes:
       - ${NOMINATIM_DATA_DIR:-/mnt/datos/docker/volumes/nominatim-iberia}:/var/lib/postgresql/14/main
       - ${OSRM_DATA_DIR:-/mnt/datos/docker/volumes/osrm-iberia}:/osm:ro
+      - ./php-hardening.ini:/etc/php/8.1/apache2/conf.d/99-php2shell.ini:ro
     shm_size: 1gb
     healthcheck:
       test:
