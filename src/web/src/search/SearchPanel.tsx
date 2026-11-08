@@ -2,7 +2,6 @@ import { AssistantPanel } from '../auth/AssistantPanel'
 import { useAuth } from '../auth/AuthContext'
 import type { AlongRouteResponse, ChargingPlanResponse, Station } from '../api/types'
 import type { VehicleProfile } from '../vehicle/vehicleProfile'
-import type { VehiclePresetId } from '../vehicle/vehiclePresets'
 import type { MapStationFilterState } from '../filters/MapStationFilters'
 import { ChargingPlanPanel } from './ChargingPlanPanel'
 import { RouteSearchPanel } from './RouteSearchPanel'
@@ -12,9 +11,7 @@ export type SearchMode = 'charge' | 'route' | 'assistant'
 type SearchPanelProps = {
   mode: SearchMode
   vehicleProfile: VehicleProfile
-  onVehiclePresetChange: (presetId: VehiclePresetId) => void
   onVehicleSocChange: (socPercent: number) => void
-  onVehicleConsumptionChange: (consumptionWhPerKm: number) => void
   minKw?: number
   maxKw?: number
   mapStationFilters?: MapStationFilterState
@@ -32,9 +29,7 @@ type SearchPanelProps = {
 export function SearchPanel({
   mode,
   vehicleProfile,
-  onVehiclePresetChange,
   onVehicleSocChange,
-  onVehicleConsumptionChange,
   minKw,
   maxKw,
   onRouteResults,
@@ -59,9 +54,7 @@ export function SearchPanel({
       return (
         <ChargingPlanPanel
           vehicleProfile={vehicleProfile}
-          onVehiclePresetChange={onVehiclePresetChange}
           onVehicleSocChange={onVehicleSocChange}
-          onVehicleConsumptionChange={onVehicleConsumptionChange}
           minKw={minKw}
           maxKw={maxKw}
           onResults={onChargePlanResults}
@@ -88,9 +81,7 @@ export function SearchPanel({
     return (
       <ChargingPlanPanel
         vehicleProfile={vehicleProfile}
-        onVehiclePresetChange={onVehiclePresetChange}
         onVehicleSocChange={onVehicleSocChange}
-        onVehicleConsumptionChange={onVehicleConsumptionChange}
         minKw={minKw}
         maxKw={maxKw}
         onResults={onChargePlanResults}

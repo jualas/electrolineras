@@ -9,7 +9,7 @@ import { MapStationFilters, type MapStationFilterState } from '../../filters/Map
 import { PowerFilterPanel } from '../../filters/PowerFilterPanel'
 import { usePowerFilter } from '../../hooks/usePowerFilter'
 import { useLiveNearestCharger } from '../../hooks/useLiveNearestCharger'
-import { useVehicleProfile } from '../../hooks/useVehicleProfile'
+import { useVehicleProfile, VehicleGarageContext } from '../../hooks/useVehicleProfile'
 import { useActiveTrip } from '../../hooks/useActiveTrip'
 import { useActiveTripMapLocation } from '../../hooks/useActiveTripMapLocation'
 import type { MapLayerToggles } from '../../map/MapLayerControl'
@@ -61,12 +61,8 @@ export function AppShell() {
   const [mapStationFilters, setMapStationFilters] = useState<MapStationFilterState>(DEFAULT_MAP_STATION_FILTERS)
   const mapBoundsGetterRef = useRef<(() => MapBounds | null) | null>(null)
   const { filter, setPreset, setCustomRange, apiQuery } = usePowerFilter('all')
-  const {
-    profile: vehicleProfile,
-    setPresetId: setVehiclePresetId,
-    setSocPercent: setVehicleSoc,
-    setConsumptionWhPerKm: setVehicleConsumption,
-  } = useVehicleProfile()
+  const vehicleGarage = useVehicleProfile()
+  const { profile: vehicleProfile, setSocPercent: setVehicleSoc } = vehicleGarage
   const { setCenterOnMe } = useActiveTrip()
   const { trackingActive, location: tripMapLocation, centerOnMe } = useActiveTripMapLocation()
   const [liveActive, setLiveActive] = useState(false)
@@ -264,6 +260,7 @@ export function AppShell() {
   }, [])
 
   return (
+    <VehicleGarageContext.Provider value={vehicleGarage}>
     <div className="app-shell app-shell--map-search">
       <MapView
         className="app-map"
@@ -390,9 +387,7 @@ export function AppShell() {
           <SearchPanel
             mode={mode}
             vehicleProfile={vehicleProfile}
-            onVehiclePresetChange={setVehiclePresetId}
             onVehicleSocChange={setVehicleSoc}
-            onVehicleConsumptionChange={setVehicleConsumption}
             minKw={apiQuery.minKw}
             maxKw={apiQuery.maxKw}
             mapStationFilters={mapStationFilters}
@@ -409,9 +404,7 @@ export function AppShell() {
           {mode !== 'assistant' && !(CHARGE_PLAN_NAV_ENABLED && mode === 'charge') && (
             <VehicleProfilePanel
               profile={vehicleProfile}
-              onPresetChange={setVehiclePresetId}
               onSocChange={setVehicleSoc}
-              onConsumptionChange={setVehicleConsumption}
             />
           )}
           <PowerFilterPanel
@@ -423,5 +416,6 @@ export function AppShell() {
         </aside>
       </div>
     </div>
+    </VehicleGarageContext.Provider>
   )
 }

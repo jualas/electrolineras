@@ -1,4 +1,4 @@
-import { peakDcKwForPreset, type VehiclePresetId } from '../vehicle/vehiclePresets'
+import { peakDcKwForPreset } from '../vehicle/vehiclePresets'
 
 export type RevePlanningOptions = {
   maxChargePowerKw: number
@@ -18,10 +18,11 @@ export const DEFAULT_REVE_PLANNING: RevePlanningOptions = {
   consumptionKwhPer100km: null,
 }
 
-export function revePlanningForPreset(presetId?: VehiclePresetId): RevePlanningOptions {
+/** Ajustes por defecto con la potencia DC máxima del vehículo activo. */
+export function revePlanningForVehicle(peakDcKw: number): RevePlanningOptions {
   return {
     ...DEFAULT_REVE_PLANNING,
-    maxChargePowerKw: peakDcKwForPreset(presetId),
+    maxChargePowerKw: peakDcKw,
   }
 }
 

@@ -1,6 +1,5 @@
 import type { VehicleTelemetryResult } from '../api/types'
-import { DEFAULT_RESERVE_SOC_PERCENT } from './vehicleProfile'
-import { getVehiclePreset } from './vehiclePresets'
+import { DEFAULT_RESERVE_SOC_PERCENT, type VehicleProfile } from './vehicleProfile'
 
 /**
  * TeslaMate reporta `rated_battery_range_km` a la autonomía actual (SOC actual), como el
@@ -96,16 +95,16 @@ export function carOriginFromTelemetry(
 export function telemetryToChargingPlanQuery(
   telemetry: VehicleTelemetryResult,
   terrainFactor: number,
+  vehicle: Pick<VehicleProfile, 'usableCapacityKwh' | 'consumptionWhPerKm' | 'presetId'>,
   reserveSocPercent = DEFAULT_RESERVE_SOC_PERCENT,
   departureSocPercent?: number | null,
-  vehiclePresetId?: string,
 ): {
   soc_percent: number
   usable_capacity_kwh: number
   consumption_wh_per_km: number
   terrain_factor: number
   reserve_soc_percent: number
-  vehicle_preset_id: string
+  vehicle_preset_id?: string
 } {
   const nominal = nominalRangeKm(telemetry)
   if (nominal == null || nominal <= 0) {
@@ -117,20 +116,18 @@ export function telemetryToChargingPlanQuery(
       ? liveSoc
       : Math.min(100, Math.max(5, departureSocPercent))
   const terrain = Math.max(0.01, Math.min(2, terrainFactor))
-  const preset = getVehiclePreset(vehiclePresetId ?? 'tesla-model3-sr-2023')
-  const usableCapacityKwh = preset.usableCapacityKwh
-  // Preferir efficiency TeslaMate; si no, reference del preset (afinado a ~137–140 Wh/km).
+  // Preferir efficiency TeslaMate; si no, el consumo del vehículo vinculado del garaje.
   const efficiencyWh =
     telemetry.efficiency_kwh_per_km != null && telemetry.efficiency_kwh_per_km > 0
       ? telemetry.efficiency_kwh_per_km * 1000
-      : preset.referenceWhPerKm
+      : vehicle.consumptionWhPerKm
   const consumptionWhPerKm = efficiencyWh * terrain
   return {
     soc_percent: soc,
-    usable_capacity_kwh: usableCapacityKwh,
+    usable_capacity_kwh: vehicle.usableCapacityKwh,
     consumption_wh_per_km: consumptionWhPerKm,
     terrain_factor: terrain,
     reserve_soc_percent: reserveSocPercent,
-    vehicle_preset_id: preset.id,
+    ...(vehicle.presetId ? { vehicle_preset_id: vehicle.presetId } : {}),
   }
 }

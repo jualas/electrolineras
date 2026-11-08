@@ -1,24 +1,22 @@
+import { useState } from 'react'
+
+import { useVehicleGarage } from '../../hooks/useVehicleProfile'
 import {
   DEFAULT_RESERVE_SOC_PERCENT,
   estimateChargingReachKm,
   estimateDisplayedRangeKm,
   estimatePlanningRangeKm,
+  formatConsumptionBreakdown,
   formatVehicleSummary,
   SOC_MAX,
   SOC_MIN,
   type VehicleProfile,
 } from '../../vehicle/vehicleProfile'
-import {
-  getVehiclePreset,
-  VEHICLE_PRESETS,
-  type VehiclePresetId,
-} from '../../vehicle/vehiclePresets'
+import { GarageEditor } from './GarageEditor'
 
 type VehicleProfileFieldsProps = {
   profile: VehicleProfile
-  onPresetChange: (presetId: VehiclePresetId) => void
   onSocChange: (socPercent: number) => void
-  onConsumptionChange: (consumptionWhPerKm: number) => void
   variant?: 'full' | 'compact' | 'advanced' | 'assistant'
   socReadOnly?: boolean
   socSourceLabel?: string
@@ -26,43 +24,38 @@ type VehicleProfileFieldsProps = {
 
 export function VehicleProfileFields({
   profile,
-  onPresetChange,
   onSocChange,
-  onConsumptionChange,
   variant = 'full',
   socReadOnly = false,
   socSourceLabel,
 }: VehicleProfileFieldsProps) {
-  const preset = getVehiclePreset(profile.presetId)
-  const displayedRangeKm = estimateDisplayedRangeKm(profile, preset)
-  const planningRangeKm = estimatePlanningRangeKm(profile, preset)
-  const chargingReachKm = estimateChargingReachKm(profile, preset)
+  const { garage, selectVehicle } = useVehicleGarage()
+  const [garageOpen, setGarageOpen] = useState(false)
+  const displayedRangeKm = estimateDisplayedRangeKm(profile)
+  const planningRangeKm = estimatePlanningRangeKm(profile)
+  const chargingReachKm = estimateChargingReachKm(profile)
   const summary = formatVehicleSummary(profile)
   const compact = variant === 'compact'
   const advanced = variant === 'advanced'
   const assistant = variant === 'assistant'
 
+  const consumptionHint = (
+    <p className="vehicle-panel__hint">
+      {formatConsumptionBreakdown(profile)} · {profile.usableCapacityKwh} kWh útil · {profile.peakDcKw} kW DC
+    </p>
+  )
+
   if (advanced) {
     return (
       <>
-        <div className="field">
-          <label className="field__label" htmlFor="vehicle-consumption-adv">
-            Consumo (Wh/km)
-          </label>
-          <input
-            id="vehicle-consumption-adv"
-            type="number"
-            min={80}
-            max={350}
-            step={1}
-            value={profile.consumptionWhPerKm}
-            onChange={(event) => onConsumptionChange(Number(event.target.value))}
-          />
-          <p className="vehicle-panel__hint">
-            Referencia {preset.referenceWhPerKm} Wh/km · {preset.ratedRangeKm} km al 100 % ·{' '}
-            {preset.usableCapacityKwh} kWh útil
-          </p>
-        </div>
+        {consumptionHint}
+        {garageOpen ? (
+          <GarageEditor onClose={() => setGarageOpen(false)} />
+        ) : (
+          <button type="button" className="btn btn--ghost btn--compact" onClick={() => setGarageOpen(true)}>
+            Editar vehículos y perfil de conducción
+          </button>
+        )}
       </>
     )
   }
@@ -76,14 +69,14 @@ export function VehicleProfileFields({
       )}
       {!compact && !assistant && (
         <p className="panel-hint">
-          Cuadro ~{displayedRangeKm} km · plan reserva {DEFAULT_RESERVE_SOC_PERCENT} % (~{planningRangeKm} km) · hasta
+          Total ~{displayedRangeKm} km · plan reserva {DEFAULT_RESERVE_SOC_PERCENT} % (~{planningRangeKm} km) · hasta
           cargador ≥5 % (~{chargingReachKm} km).
         </p>
       )}
 
       {assistant && (
         <p className="panel-hint">
-          SOC y posición desde TeslaMate (arriba). Aquí ajustas modelo y consumo para el cálculo.
+          SOC y posición desde TeslaMate (arriba). Aquí eliges el vehículo y su consumo para el cálculo.
         </p>
       )}
 
@@ -94,21 +87,33 @@ export function VehicleProfileFields({
       )}
 
       <div className="field">
-        <label className="field__label" htmlFor="vehicle-preset">
-          Modelo
+        <label className="field__label" htmlFor="vehicle-select">
+          Vehículo
         </label>
-        <select
-          id="vehicle-preset"
-          value={profile.presetId}
-          onChange={(event) => onPresetChange(event.target.value as VehiclePresetId)}
-        >
-          {VEHICLE_PRESETS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label} · {item.ratedRangeKm} km · {item.usableCapacityKwh} kWh
-            </option>
-          ))}
-        </select>
+        <div className="vehicle-select-row">
+          <select
+            id="vehicle-select"
+            value={profile.vehicleId}
+            onChange={(event) => selectVehicle(event.target.value)}
+          >
+            {garage.vehicles.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} · {item.usableCapacityKwh} kWh
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn--ghost btn--compact"
+            aria-expanded={garageOpen}
+            onClick={() => setGarageOpen((open) => !open)}
+          >
+            Garaje
+          </button>
+        </div>
       </div>
+
+      {garageOpen && <GarageEditor onClose={() => setGarageOpen(false)} />}
 
       <div className="custom-range vehicle-panel__soc" aria-label="Estado de carga">
         {!assistant && socReadOnly ? (
@@ -137,28 +142,7 @@ export function VehicleProfileFields({
         )}
       </div>
 
-      {!compact && (
-        <>
-          <div className="field">
-            <label className="field__label" htmlFor="vehicle-consumption">
-              Consumo (Wh/km)
-            </label>
-            <input
-              id="vehicle-consumption"
-              type="number"
-              min={80}
-              max={350}
-              step={1}
-              value={profile.consumptionWhPerKm}
-              onChange={(event) => onConsumptionChange(Number(event.target.value))}
-            />
-            <p className="vehicle-panel__hint">
-              Referencia {preset.referenceWhPerKm} Wh/km · {preset.ratedRangeKm} km al 100 % ·{' '}
-              {preset.usableCapacityKwh} kWh útil
-            </p>
-          </div>
-        </>
-      )}
+      {!compact && consumptionHint}
     </>
   )
 }

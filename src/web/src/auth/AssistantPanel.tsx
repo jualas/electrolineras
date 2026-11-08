@@ -17,7 +17,7 @@ import {
   createEmptyStop,
   type ItineraryStopDraft,
 } from '../search/ItineraryFields'
-import { revePlanningForPreset, type RevePlanningOptions } from '../search/RevePlanningFields'
+import { revePlanningForVehicle, type RevePlanningOptions } from '../search/RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import {
   defaultDepartureSoc,
@@ -72,7 +72,7 @@ export function AssistantPanel({
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
   const [avoidTolls, setAvoidTolls] = useState(true)
   const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
-    revePlanningForPreset(vehicleProfile.presetId),
+    revePlanningForVehicle(vehicleProfile.peakDcKw),
   )
   const [simulateDeparture, setSimulateDeparture] = useState(false)
   const [departureSoc, setDepartureSoc] = useState(80)
@@ -93,6 +93,7 @@ export function AssistantPanel({
     error: vehicleError,
     refresh: loadVehicle,
   } = useVehicleTelemetry({
+    enabled: vehicleProfile.teslaMateLinked,
     syncSoc: true,
     currentSocPercent: vehicleProfile.socPercent,
     onSocChange: onVehicleSocChange,
@@ -102,9 +103,9 @@ export function AssistantPanel({
   useEffect(() => {
     setRevePlanning((prev) => ({
       ...prev,
-      maxChargePowerKw: revePlanningForPreset(vehicleProfile.presetId).maxChargePowerKw,
+      maxChargePowerKw: vehicleProfile.peakDcKw,
     }))
-  }, [vehicleProfile.presetId])
+  }, [vehicleProfile.peakDcKw])
 
   useEffect(() => {
     if (!vehicle) {
@@ -342,7 +343,7 @@ export function AssistantPanel({
         maxChargeSocPct: revePlanning.maxChargeSocPct,
         excludeSlowChargers: revePlanning.excludeSlowChargers,
         consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
-        vehiclePresetId: vehicleProfile.presetId,
+        vehiclePresetId: vehicleProfile.presetId ?? undefined,
         minKw: 100,
       })
       setAdvice(result)
@@ -422,7 +423,7 @@ export function AssistantPanel({
         maxChargeSocPct: nextMaxCharge,
         excludeSlowChargers: revePlanning.excludeSlowChargers,
         consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
-        vehiclePresetId: vehicleProfile.presetId,
+        vehiclePresetId: vehicleProfile.presetId ?? undefined,
         minKw: 100,
       })
       setAdvice(result)
