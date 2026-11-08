@@ -11,10 +11,13 @@ services:
       - ${OSRM_DATA_DIR:-/mnt/datos/docker/volumes/osrm-iberia}/car:/data:ro
     command: osrm-routed --algorithm mld --max-table-size 10000 /data/iberia-latest.osrm
     healthcheck:
+      # La imagen osrm-backend no trae wget ni curl: petición HTTP con bash + /dev/tcp.
       test:
         [
-          "CMD-SHELL",
-          "wget -qO- 'http://127.0.0.1:5000/route/v1/car/-3.7038,40.4168;-0.3763,39.4699?overview=false' | grep -q '\"code\":\"Ok\"'",
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/5000 && printf 'GET /route/v1/car/-3.7038,40.4168;-0.3763,39.4699?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '\"code\":\"Ok\"' <&3",
         ]
       interval: 30s
       timeout: 10s
@@ -33,10 +36,13 @@ services:
       - ${OSRM_DATA_DIR:-/mnt/datos/docker/volumes/osrm-iberia}/shortest:/data:ro
     command: osrm-routed --algorithm mld --max-table-size 10000 /data/iberia-latest.osrm
     healthcheck:
+      # La imagen osrm-backend no trae wget ni curl: petición HTTP con bash + /dev/tcp.
       test:
         [
-          "CMD-SHELL",
-          "wget -qO- 'http://127.0.0.1:5000/route/v1/shortest/-3.7038,40.4168;-0.3763,39.4699?overview=false' | grep -q '\"code\":\"Ok\"'",
+          "CMD",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/5000 && printf 'GET /route/v1/shortest/-3.7038,40.4168;-0.3763,39.4699?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '\"code\":\"Ok\"' <&3",
         ]
       interval: 30s
       timeout: 10s
