@@ -2767,3 +2767,119 @@ button {
   font-size: 0.8125rem;
 }
 
+
+/* Garaje de vehículos y perfil de conducción */
+.vehicle-select-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.vehicle-select-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.garage,
+.garage-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.5rem 0;
+  padding: 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.garage__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.garage__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.garage__item--active {
+  border-color: var(--color-accent);
+}
+
+.garage__select {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.25rem 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.garage__name {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.garage__tag {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.garage__specs {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.garage__item-actions,
+.garage__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.garage-form__title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.garage-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+
+.garage-driver {
+  margin: 0;
+  padding: 0.5rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.garage-driver legend {
+  padding: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}

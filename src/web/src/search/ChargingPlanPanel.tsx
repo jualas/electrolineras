@@ -4,7 +4,6 @@ import { fetchChargingPlan } from '../api/chargingPlan'
 import type { ChargingPlanResponse, GeocodeResult, Station } from '../api/types'
 import { geocodePlace } from '../api/route'
 import { VehicleTelemetryStrip } from '../components/vehicle/VehicleTelemetryStrip'
-import type { VehiclePresetId } from '../vehicle/vehiclePresets'
 import { getTerrainFactor } from '../vehicle/vehiclePresets'
 import { VehicleProfilePanel } from '../components/vehicle/VehicleProfilePanel'
 import { VehicleProfileFields } from '../components/vehicle/VehicleProfileFields'
@@ -25,7 +24,7 @@ import {
   type ItineraryPoint,
   type ItineraryStopDraft,
 } from './ItineraryFields'
-import { revePlanningForPreset, type RevePlanningOptions } from './RevePlanningFields'
+import { revePlanningForVehicle, type RevePlanningOptions } from './RevePlanningFields'
 import { DEFAULT_CHARGING_PREFERENCES } from '../charging/chargingPreferences'
 import { buildPlanSearchKey } from '../charging/planSearchKey'
 import { clampTripProgress, bumpReplanTelemetry, EMPTY_REPLAN_TELEMETRY, type ReplanReason } from '../charging/activeTrip'
@@ -53,9 +52,7 @@ type OriginMode = 'car' | 'gps' | 'simulation'
 
 type ChargingPlanPanelProps = {
   vehicleProfile: VehicleProfile
-  onVehiclePresetChange: (presetId: VehiclePresetId) => void
   onVehicleSocChange: (socPercent: number) => void
-  onVehicleConsumptionChange: (consumptionWhPerKm: number) => void
   minKw?: number
   maxKw?: number
   onResults: (response: ChargingPlanResponse | null) => void
@@ -66,9 +63,7 @@ type ChargingPlanPanelProps = {
 
 export function ChargingPlanPanel({
   vehicleProfile,
-  onVehiclePresetChange,
   onVehicleSocChange,
-  onVehicleConsumptionChange,
   minKw,
   maxKw,
   onResults,
@@ -84,7 +79,7 @@ export function ChargingPlanPanel({
   const [routePreference, setRoutePreference] = useState<RoutePreference>('shortest')
   const [avoidTolls, setAvoidTolls] = useState(true)
   const [revePlanning, setRevePlanning] = useState<RevePlanningOptions>(() =>
-    revePlanningForPreset(vehicleProfile.presetId),
+    revePlanningForVehicle(vehicleProfile.peakDcKw),
   )
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -118,6 +113,7 @@ export function ChargingPlanPanel({
     loginEnabled,
     authLoading,
   } = useVehicleTelemetry({
+    enabled: vehicleProfile.teslaMateLinked,
     syncSoc: true,
     currentSocPercent: vehicleProfile.socPercent,
     onSocChange: onVehicleSocChange,
@@ -130,9 +126,9 @@ export function ChargingPlanPanel({
   useEffect(() => {
     setRevePlanning((prev) => ({
       ...prev,
-      maxChargePowerKw: revePlanningForPreset(vehicleProfile.presetId).maxChargePowerKw,
+      maxChargePowerKw: vehicleProfile.peakDcKw,
     }))
-  }, [vehicleProfile.presetId])
+  }, [vehicleProfile.peakDcKw])
 
   useEffect(() => {
     if (!carTelemetryAvailable || originModeTouchedRef.current) {
@@ -200,13 +196,7 @@ export function ChargingPlanPanel({
   const resolveVehicleQuery = useCallback(() => {
     const terrain = getTerrainFactor(vehicleProfile.terrainFactorId)
     if (carTelemetryAvailable && carTelemetry) {
-      return telemetryToChargingPlanQuery(
-        carTelemetry,
-        terrain.factor,
-        undefined,
-        undefined,
-        vehicleProfile.presetId,
-      )
+      return telemetryToChargingPlanQuery(carTelemetry, terrain.factor, vehicleProfile)
     }
     return vehicleProfileToChargingPlanQuery(vehicleProfile)
   }, [carTelemetry, carTelemetryAvailable, vehicleProfile])
@@ -716,10 +706,8 @@ export function ChargingPlanPanel({
         className="charge-panel__vehicle"
         variant="compact"
         profile={vehicleProfile}
-        onPresetChange={onVehiclePresetChange}
-        onSocChange={onVehicleSocChange}
-        onConsumptionChange={onVehicleConsumptionChange}
-        socReadOnly={telemetrySocLocked}
+                onSocChange={onVehicleSocChange}
+                socReadOnly={telemetrySocLocked}
         socSourceLabel={telemetrySocLocked ? 'TeslaMate en vivo' : undefined}
       />
 
@@ -735,14 +723,12 @@ export function ChargingPlanPanel({
 
       {!carTelemetryAvailable && (
         <details className="vehicle-advanced">
-          <summary>Consumo (avanzado)</summary>
+          <summary>Consumo y garaje</summary>
           <div className="vehicle-advanced__body">
             <VehicleProfileFields
               profile={vehicleProfile}
-              onPresetChange={onVehiclePresetChange}
-              onSocChange={onVehicleSocChange}
-              onConsumptionChange={onVehicleConsumptionChange}
-              variant="advanced"
+                            onSocChange={onVehicleSocChange}
+                            variant="advanced"
             />
           </div>
         </details>
