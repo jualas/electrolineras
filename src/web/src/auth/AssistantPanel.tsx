@@ -8,7 +8,12 @@ import {
   nominalRangeKm,
   planningRangeFromNominal,
 } from '../vehicle/telemetryProfile'
-import { DEFAULT_RESERVE_SOC_PERCENT } from '../vehicle/vehicleProfile'
+import {
+  DEFAULT_RESERVE_SOC_PERCENT,
+  estimateChargingReachKm,
+  estimatePlanningRangeKm,
+} from '../vehicle/vehicleProfile'
+import { VehicleProfileFields } from '../components/vehicle/VehicleProfileFields'
 import { getTerrainFactor } from '../vehicle/vehiclePresets'
 import { geocodePlace } from '../api/route'
 import { RoutePreferenceFields } from '../search/RoutePreferenceFields'
@@ -93,8 +98,9 @@ export function AssistantPanel({
     error: vehicleError,
     refresh: loadVehicle,
   } = useVehicleTelemetry({
-    enabled: vehicleProfile.teslaMateLinked,
-    syncSoc: true,
+    // La telemetría da el origen (posición del coche) aunque se simule otro vehículo;
+    // el SOC solo se sincroniza con el vehículo vinculado a TeslaMate.
+    syncSoc: vehicleProfile.teslaMateLinked,
     currentSocPercent: vehicleProfile.socPercent,
     onSocChange: onVehicleSocChange,
     pollIntervalMs: TELEMETRY_POLL_INTERVAL_MS,
@@ -170,10 +176,20 @@ export function AssistantPanel({
     runMapPlanRef.current()
   }, [authenticated, routePreference, avoidTolls, revePlanning, busy, advice?.plan, destination])
 
-  const departureSocParam =
-    vehicle != null
+  const simulatingOtherVehicle = !vehicleProfile.teslaMateLinked
+  const departureSocParam = simulatingOtherVehicle
+    ? vehicleProfile.socPercent
+    : vehicle != null
       ? departureSocQueryParam(simulateDeparture, vehicle.battery_level_pct, departureSoc)
       : undefined
+  /** Energía del vehículo del garaje; con el coche de TeslaMate decide la telemetría. */
+  const garageEnergyParams = simulatingOtherVehicle
+    ? {
+        usableCapacityKwh: vehicleProfile.usableCapacityKwh,
+        consumptionKwhPer100km:
+          revePlanning.consumptionKwhPer100km ?? Math.round(vehicleProfile.consumptionWhPerKm) / 10,
+      }
+    : { consumptionKwhPer100km: revePlanning.consumptionKwhPer100km }
 
   if (loading) {
     return <p className="assistant-panel__muted">Comprobando sesión…</p>
@@ -207,16 +223,18 @@ export function AssistantPanel({
   const nominalKm = vehicle != null ? nominalRangeKm(vehicle) : null
   const planningSocPercent =
     vehicle != null && simulateDeparture ? departureSoc : vehicle?.battery_level_pct ?? 0
-  const planKm =
-    nominalKm != null && planningSocPercent > 0
+  const planKm = simulatingOtherVehicle
+    ? estimatePlanningRangeKm(vehicleProfile)
+    : nominalKm != null && planningSocPercent > 0
       ? planningRangeFromNominal(
           nominalKm,
           planningSocPercent,
           DEFAULT_RESERVE_SOC_PERCENT,
         )
       : null
-  const reachKm =
-    nominalKm != null && planningSocPercent > 0
+  const reachKm = simulatingOtherVehicle
+    ? estimateChargingReachKm(vehicleProfile)
+    : nominalKm != null && planningSocPercent > 0
       ? chargingReachFromNominal(nominalKm, planningSocPercent)
       : null
 
@@ -342,7 +360,7 @@ export function AssistantPanel({
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
         maxChargeSocPct: revePlanning.maxChargeSocPct,
         excludeSlowChargers: revePlanning.excludeSlowChargers,
-        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
+        ...garageEnergyParams,
         vehiclePresetId: vehicleProfile.presetId ?? undefined,
         minKw: 100,
       })
@@ -422,7 +440,7 @@ export function AssistantPanel({
         minStopArrivalSocPct: revePlanning.minStopArrivalSocPct,
         maxChargeSocPct: nextMaxCharge,
         excludeSlowChargers: revePlanning.excludeSlowChargers,
-        consumptionKwhPer100km: revePlanning.consumptionKwhPer100km,
+        ...garageEnergyParams,
         vehiclePresetId: vehicleProfile.presetId ?? undefined,
         minKw: 100,
       })
@@ -478,8 +496,9 @@ export function AssistantPanel({
     <section className="panel search-panel assistant-panel">
       <h2>Asistente (coche)</h2>
       <p className="panel-hint">
-        Datos en vivo desde TeslaMate (SOC, autonomía del cuadro y modelo). El plan usa esos valores, no presets
-        genéricos.
+        {simulatingOtherVehicle
+          ? `Simulando con ${vehicleProfile.name}: origen en la posición del coche (TeslaMate); batería, consumo y SOC del garaje.`
+          : 'Datos en vivo desde TeslaMate (SOC, autonomía del cuadro y modelo). El plan usa esos valores, no presets genéricos.'}
       </p>
 
       <VehicleTelemetryStrip
@@ -489,13 +508,19 @@ export function AssistantPanel({
         onRefresh={() => void loadVehicle()}
       />
 
-      {vehicle && planKm != null && (
+      <VehicleProfileFields
+        profile={vehicleProfile}
+        onSocChange={onVehicleSocChange}
+        variant={simulatingOtherVehicle ? 'compact' : 'assistant'}
+      />
+
+      {vehicle && planKm != null && !simulatingOtherVehicle && (
         <p className="charge-vehicle-summary">
           ~{planKm} km de plan{reachKm != null && <> · hasta cargador ~{reachKm} km</>}
         </p>
       )}
 
-      {vehicle && nominalKm != null && (
+      {vehicle && nominalKm != null && !simulatingOtherVehicle && (
         <DepartureChargeSimulator
           liveSocPercent={vehicle.battery_level_pct}
           departureSocPercent={departureSoc}
