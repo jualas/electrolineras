@@ -10,7 +10,7 @@ import httpx
 from api.config import settings
 from db.spatial import haversine_m
 
-RoutePreference = Literal["fastest", "shortest", "conventional"]
+RoutePreference = Literal["fastest", "shortest", "conventional", "eco"]
 # (lat, lon) — mismo orden que el resto de la API.
 LatLon = tuple[float, float]
 
@@ -30,6 +30,8 @@ class RouteAlternativesSummary:
     fastest_duration_minutes: float
     conventional_distance_km: float | None = None
     conventional_duration_minutes: float | None = None
+    eco_distance_km: float | None = None
+    eco_duration_minutes: float | None = None
     shortest_excess_km: float | None = None
     conventional_excess_km: float | None = None
     variants_approximate: bool = False
@@ -747,10 +749,16 @@ def fetch_osrm_route_with_alternatives(
             )
         except RoutingError:
             continue
-    active_payload = variants[route_preference].route
+    effective_preference: RoutePreference = route_preference
+    if route_preference == "eco" and "eco" not in variants:
+        warnings.append(
+            "Ruta eco eléctrica requiere Google Routes API; se utiliza la ruta más directa (OSRM)."
+        )
+        effective_preference = "shortest"
+    active_payload = variants[effective_preference].route
     route = osrm_route_from_payload(
         active_payload,
-        route_preference=route_preference,
+        route_preference=effective_preference,
         avoid_highways=avoid_highways,
     )
     return route, summary, warnings, variant_routes

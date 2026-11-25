@@ -7,7 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.charging_plan_service import ChargingPlanBuildResult, build_charging_plan
 from api.config import settings
 from api.dependencies import get_repository
+from api.routes.stations import reliability_report_to_schema
 from api.routing.charging_plan import VehicleEnergyProfile
+from api.routing.station_reliability import StationReliabilityReport
 from api.routing.trip_metrics import build_route_trip_summary, planned_stop_to_result
 from api.schemas import (
     MAX_CORRIDOR_KM,
@@ -61,6 +63,8 @@ def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanRes
         geodesic_distance_km=built.geodesic_distance_km,
         route_conventional_distance_km=built.route_conventional_distance_km,
         route_conventional_duration_minutes=built.route_conventional_duration_minutes,
+        route_eco_distance_km=built.route_eco_distance_km,
+        route_eco_duration_minutes=built.route_eco_duration_minutes,
         route_shortest_duration_minutes=built.route_shortest_duration_minutes,
         route_fastest_duration_minutes=built.route_fastest_duration_minutes,
         shortest_excess_km=built.shortest_excess_km,
@@ -69,6 +73,7 @@ def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanRes
         route_shortest_geometry=built.route_shortest_geometry,
         route_fastest_geometry=built.route_fastest_geometry,
         route_conventional_geometry=built.route_conventional_geometry,
+        route_eco_geometry=built.route_eco_geometry,
         preview_route_geometry=built.preview_route_geometry,
         route_preference=built.route_preference,
         avoid_highways=built.avoid_highways,
@@ -78,6 +83,7 @@ def charging_plan_to_response(built: ChargingPlanBuildResult) -> ChargingPlanRes
         destination_stay=built.destination_stay,
         preferred_operators=built.preferred_operators,
         max_price_eur_kwh=built.max_price_eur_kwh,
+        stop_reliabilities=built.stop_reliabilities,
     )
 
 
@@ -97,6 +103,8 @@ def _to_response(
     geodesic_distance_km: float | None = None,
     route_conventional_distance_km: float | None = None,
     route_conventional_duration_minutes: float | None = None,
+    route_eco_distance_km: float | None = None,
+    route_eco_duration_minutes: float | None = None,
     route_shortest_duration_minutes: float | None = None,
     route_fastest_duration_minutes: float | None = None,
     shortest_excess_km: float | None = None,
@@ -105,6 +113,7 @@ def _to_response(
     route_shortest_geometry: dict | None = None,
     route_fastest_geometry: dict | None = None,
     route_conventional_geometry: dict | None = None,
+    route_eco_geometry: dict | None = None,
     preview_route_geometry: dict | None = None,
     route_preference: RoutePreference | None = None,
     avoid_highways: bool = True,
@@ -114,6 +123,7 @@ def _to_response(
     destination_stay: DestinationStayAdviceResult | None = None,
     preferred_operators: tuple[str, ...] = (),
     max_price_eur_kwh: float | None = None,
+    stop_reliabilities: dict[str, StationReliabilityReport] | None = None,
 ) -> ChargingPlanResponse:
     vehicle_input = VehicleEnergyInput(
         soc_percent=vehicle.soc_percent,
@@ -147,6 +157,8 @@ def _to_response(
         geodesic_distance_km=geodesic_distance_km,
         route_conventional_distance_km=route_conventional_distance_km,
         route_conventional_duration_minutes=route_conventional_duration_minutes,
+        route_eco_distance_km=route_eco_distance_km,
+        route_eco_duration_minutes=route_eco_duration_minutes,
         route_shortest_duration_minutes=route_shortest_duration_minutes,
         route_fastest_duration_minutes=route_fastest_duration_minutes,
         shortest_excess_km=shortest_excess_km,
@@ -157,6 +169,7 @@ def _to_response(
         route_shortest_geometry=route_shortest_geometry,
         route_fastest_geometry=route_fastest_geometry,
         route_conventional_geometry=route_conventional_geometry,
+        route_eco_geometry=route_eco_geometry,
         preview_route_geometry=preview_route_geometry,
         route_preference=route_preference,
         avoid_highways=avoid_highways,
@@ -190,7 +203,15 @@ def _to_response(
             for stop in computation.origin_stops
         ],
         planned_stops=[
-            planned_stop_to_result(stop, profile=vehicle)
+            planned_stop_to_result(stop, profile=vehicle).model_copy(
+                update={
+                    "reliability": (
+                        reliability_report_to_schema(stop_reliabilities[stop.station.id])
+                        if stop_reliabilities and stop.station.id in stop_reliabilities
+                        else None
+                    )
+                }
+            )
             for stop in computation.planned_stops
         ],
         projected_soc_at_destination_with_plan=computation.projected_soc_at_destination_with_plan,

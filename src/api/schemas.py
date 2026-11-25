@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -85,7 +86,7 @@ class AlongRouteStationResult(BaseModel):
     wrong_side: bool
 
 
-RoutePreference = Literal["fastest", "shortest", "conventional"]
+RoutePreference = Literal["fastest", "shortest", "conventional", "eco"]
 
 
 class AlongRouteResponse(BaseModel):
@@ -100,12 +101,15 @@ class AlongRouteResponse(BaseModel):
     route_fastest_distance_km: float | None = None
     route_conventional_distance_km: float | None = None
     route_conventional_duration_minutes: float | None = None
+    route_eco_distance_km: float | None = None
+    route_eco_duration_minutes: float | None = None
     shortest_excess_km: float | None = None
     route_variants_approximate: bool = False
     route_geometry: dict[str, Any] | None = None
     route_shortest_geometry: dict[str, Any] | None = None
     route_fastest_geometry: dict[str, Any] | None = None
     route_conventional_geometry: dict[str, Any] | None = None
+    route_eco_geometry: dict[str, Any] | None = None
     route_preference: RoutePreference = "fastest"
     avoid_highways: bool = True
     results: list[AlongRouteStationResult]
@@ -113,6 +117,35 @@ class AlongRouteResponse(BaseModel):
 
 
 ChargingClassification = Literal["safe", "adjusted", "critical", "unreachable"]
+ReliabilityLevel = Literal["high", "medium", "low"]
+
+
+class StationReliabilityResponse(BaseModel):
+    station_id: str
+    level: ReliabilityLevel
+    score: int
+    summary: str
+    warnings: list[str] = Field(default_factory=list)
+    connector_count: int = 0
+    single_connector: bool = False
+    isolation_radius_km: float = 50.0
+    isolated_area: bool = False
+    backup_stations_in_radius: int = 0
+    backup_station_km: float | None = None
+    backup_station_label: str | None = None
+    reve_status: str | None = None
+    reve_updated_at: datetime | None = None
+    reve_age_minutes: float | None = None
+    google_checked: bool = False
+    google_matched: bool = False
+    google_status: str | None = None
+    google_available_count: int | None = None
+    google_out_of_service_count: int | None = None
+    google_total_connectors: int | None = None
+    google_last_update: str | None = None
+    google_rating: float | None = None
+    google_rating_count: int | None = None
+    google_maps_uri: str | None = None
 
 
 class VehicleEnergyInput(BaseModel):
@@ -160,6 +193,7 @@ class PlannedRouteStopResult(BaseModel):
     effective_charge_power_kw: float | None = None
     estimated_charge_cost_eur: float | None = None
     operator: str | None = None
+    reliability: StationReliabilityResponse | None = None
 
 
 class RouteTripSummaryResult(BaseModel):
@@ -233,6 +267,8 @@ class ChargingPlanResponse(BaseModel):
     route_fastest_distance_km: float | None = None
     route_conventional_distance_km: float | None = None
     route_conventional_duration_minutes: float | None = None
+    route_eco_distance_km: float | None = None
+    route_eco_duration_minutes: float | None = None
     route_shortest_duration_minutes: float | None = None
     route_fastest_duration_minutes: float | None = None
     shortest_excess_km: float | None = None
@@ -244,6 +280,7 @@ class ChargingPlanResponse(BaseModel):
     route_shortest_geometry: dict[str, Any] | None = None
     route_fastest_geometry: dict[str, Any] | None = None
     route_conventional_geometry: dict[str, Any] | None = None
+    route_eco_geometry: dict[str, Any] | None = None
     preview_route_geometry: dict[str, Any] | None = None
     route_preference: RoutePreference | None = None
     avoid_highways: bool = True

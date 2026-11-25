@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Layers } from 'lucide-react'
 
+import { shouldUseGoogleMaps } from './googleMapsLoader'
 import { trafficLayerAvailable } from './mapTrafficLayer'
 
 export type MapLayerToggles = {
@@ -16,7 +17,8 @@ type MapLayerControlProps = {
 
 export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
   const [open, setOpen] = useState(false)
-  const trafficAvailable = trafficLayerAvailable()
+  const usingGoogleMaps = shouldUseGoogleMaps()
+  const trafficAvailable = usingGoogleMaps || trafficLayerAvailable()
 
   const toggle = (key: keyof MapLayerToggles) => {
     onChange({ ...value, [key]: !value[key] })
@@ -46,14 +48,18 @@ export function MapLayerControl({ value, onChange }: MapLayerControlProps) {
             <span>Detalle</span>
           </label>
           <p className="map-layer-control__hint">
-            Curvas de nivel y topografía fina (el mapa base ya incluye sombreado del terreno).
+            {usingGoogleMaps
+              ? 'Relieve y topografía del terreno (Google Maps).'
+              : 'Curvas de nivel y topografía fina (el mapa base ya incluye sombreado del terreno).'}
           </p>
           <label
             className={`map-layer-control__item${trafficAvailable ? '' : ' map-layer-control__item--disabled'}`}
             title={
-              trafficAvailable
-                ? 'Tráfico en tiempo real (TomTom)'
-                : 'Configura VITE_TOMTOM_API_KEY para activar tráfico'
+              usingGoogleMaps
+                ? 'Tráfico en tiempo real (Google Maps)'
+                : trafficAvailable
+                  ? 'Tráfico en tiempo real (TomTom)'
+                  : 'Configura VITE_TOMTOM_API_KEY para activar tráfico'
             }
           >
             <input

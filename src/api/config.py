@@ -23,6 +23,28 @@ class Settings(BaseSettings):
     api_max_request_body_bytes: int = 65536
     api_trust_proxy_headers: bool = False
     api_security_headers_enabled: bool = True
+    # Proveedor de rutas: "osrm" (default), "google" (Google Routes API) o "auto" (google si hay API key).
+    routing_provider: str = "osrm"
+    google_maps_api_key: str = ""
+    google_routes_base_url: str = "https://routes.googleapis.com/directions/v2:computeRoutes"
+    google_routes_timeout_seconds: float = 20.0
+    # TRAFFIC_AWARE_OPTIMAL (Pro, permite eco eléctrico), TRAFFIC_AWARE (Pro) o TRAFFIC_UNAWARE (Essentials).
+    google_routes_routing_preference: str = "TRAFFIC_AWARE_OPTIMAL"
+    google_routes_enable_eco: bool = True
+    google_routes_cache_enabled: bool = True
+    google_routes_cache_ttl_seconds: float = 300.0
+    google_routes_cache_max_entries: int = 256
+    google_routes_fallback_to_osrm: bool = False
+    # Verificación cruzada de cargadores con Google Places API (New) — bajo demanda (cuota 25/día = 0 €)
+    google_places_ev_enabled: bool = True
+    google_places_ev_base_url: str = "https://places.googleapis.com/v1/places:searchNearby"
+    google_places_ev_timeout_seconds: float = 10.0
+    google_places_ev_search_radius_m: float = 180.0
+    google_places_ev_cache_ttl_seconds: float = 600.0
+    google_places_ev_cache_max_entries: int = 256
+    # Alerta de zona aislada (sierra) en SQLite local (0 coste externo)
+    reliability_isolation_radius_km: float = 50.0
+    reliability_min_backup_kw: float = 50.0
     osrm_base_url: str = "https://router.project-osrm.org"
     osrm_shortest_base_url: str = ""
     osrm_timeout_seconds: float = 30.0

@@ -59,6 +59,21 @@ export function RoutePreferenceFields({
           <input
             type="radio"
             name="route-preference"
+            value="eco"
+            checked={routePreference === 'eco'}
+            onChange={() => onRoutePreferenceChange('eco')}
+          />
+          <span>
+            Eco eléctrica (menor consumo)
+            <span className="route-preference__hint">
+              Optimizada para batería y desniveles (Google Routes VE).
+            </span>
+          </span>
+        </label>
+        <label className="route-preference__option">
+          <input
+            type="radio"
+            name="route-preference"
             value="conventional"
             checked={routePreference === 'conventional'}
             onChange={() => onRoutePreferenceChange('conventional')}
@@ -95,6 +110,9 @@ export function routePreferenceLabel(preference: RoutePreference | null | undefi
   if (preference === 'fastest') {
     return 'Ruta más rápida'
   }
+  if (preference === 'eco') {
+    return 'Ruta eco eléctrica'
+  }
   if (preference === 'conventional') {
     return 'Ruta convencional'
   }
@@ -114,6 +132,8 @@ type RouteAlternativesKm = {
   route_fastest_distance_km?: number | null
   route_conventional_distance_km?: number | null
   route_conventional_duration_minutes?: number | null
+  route_eco_distance_km?: number | null
+  route_eco_duration_minutes?: number | null
   route_shortest_duration_minutes?: number | null
   route_fastest_duration_minutes?: number | null
   shortest_excess_km?: number | null
@@ -161,6 +181,10 @@ export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
     )
     parts.push(`Rápida: ${fastest.toFixed(0)} km${duration ? ` · ${duration}` : ''}`)
   }
+  if (plan.route_eco_distance_km != null) {
+    const duration = formatDurationMinutes(plan.route_eco_duration_minutes)
+    parts.push(`Eco VE: ${plan.route_eco_distance_km.toFixed(0)} km${duration ? ` · ${duration}` : ''}`)
+  }
   if (conventional != null) {
     const duration = formatDurationMinutes(plan.route_conventional_duration_minutes)
     const approx =
@@ -175,7 +199,9 @@ export function formatRouteAlternativesKm(plan: RouteAlternativesKm): string {
         ? 'directa'
         : plan.route_preference === 'fastest'
           ? 'rápida'
-          : 'convencionales'
+          : plan.route_preference === 'eco'
+            ? 'eco VE'
+            : 'convencionales'
     const approx = plan.route_variants_approximate ? ' ~aprox.' : ''
     parts.push(`Plan: ${selectedLabel} (${selectedKm.toFixed(0)} km${approx})`)
   }

@@ -124,12 +124,15 @@ export type AlongRouteResponse = {
   route_fastest_distance_km?: number | null
   route_conventional_distance_km?: number | null
   route_conventional_duration_minutes?: number | null
+  route_eco_distance_km?: number | null
+  route_eco_duration_minutes?: number | null
   shortest_excess_km?: number | null
   route_variants_approximate?: boolean
   route_geometry: RouteLineGeometry | null
   route_shortest_geometry?: RouteLineGeometry | null
   route_fastest_geometry?: RouteLineGeometry | null
   route_conventional_geometry?: RouteLineGeometry | null
+  route_eco_geometry?: RouteLineGeometry | null
   route_preference?: RoutePreference
   avoid_highways?: boolean
   results: AlongRouteStationResult[]
@@ -163,6 +166,35 @@ export type NearbyReferenceResponse = {
 }
 
 export type ChargingClassification = 'safe' | 'adjusted' | 'critical' | 'unreachable'
+export type ReliabilityLevel = 'high' | 'medium' | 'low'
+
+export type StationReliabilityResponse = {
+  station_id: string
+  level: ReliabilityLevel
+  score: number
+  summary: string
+  warnings: string[]
+  connector_count: number
+  single_connector: boolean
+  isolation_radius_km: number
+  isolated_area: boolean
+  backup_stations_in_radius: number
+  backup_station_km?: number | null
+  backup_station_label?: string | null
+  reve_status?: string | null
+  reve_updated_at?: string | null
+  reve_age_minutes?: number | null
+  google_checked: boolean
+  google_matched: boolean
+  google_status?: string | null
+  google_available_count?: number | null
+  google_out_of_service_count?: number | null
+  google_total_connectors?: number | null
+  google_last_update?: string | null
+  google_rating?: number | null
+  google_rating_count?: number | null
+  google_maps_uri?: string | null
+}
 
 export type ChargingPlanStopResult = {
   station: Station
@@ -187,6 +219,7 @@ export type PlannedRouteStopResult = ChargingPlanStopResult & {
   effective_charge_power_kw?: number | null
   estimated_charge_cost_eur?: number | null
   operator?: string | null
+  reliability?: StationReliabilityResponse | null
 }
 
 export type RouteTripSummaryResult = {
@@ -208,7 +241,7 @@ export type ChargingPlanStrategyResult = {
   summary: string
 }
 
-export type RoutePreference = 'fastest' | 'shortest' | 'conventional'
+export type RoutePreference = 'fastest' | 'shortest' | 'conventional' | 'eco'
 
 export type VehicleEnergyInput = {
   soc_percent: number
@@ -239,6 +272,8 @@ export type ChargingPlanResponse = {
   route_fastest_distance_km?: number | null
   route_conventional_distance_km?: number | null
   route_conventional_duration_minutes?: number | null
+  route_eco_distance_km?: number | null
+  route_eco_duration_minutes?: number | null
   route_shortest_duration_minutes?: number | null
   route_fastest_duration_minutes?: number | null
   shortest_excess_km?: number | null
@@ -249,6 +284,7 @@ export type ChargingPlanResponse = {
   route_shortest_geometry?: RouteLineGeometry | null
   route_fastest_geometry?: RouteLineGeometry | null
   route_conventional_geometry?: RouteLineGeometry | null
+  route_eco_geometry?: RouteLineGeometry | null
   preview_route_geometry?: RouteLineGeometry | null
   route_preference?: RoutePreference | null
   avoid_highways?: boolean

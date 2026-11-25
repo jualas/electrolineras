@@ -8,7 +8,10 @@ from api.config import settings
 from api.dependencies import get_repository
 from api.query_params import parse_country_list
 from api.routing.corridor import RoutePolyline, rank_stations_along_route
-from api.routing.osrm import RoutingError, fetch_osrm_route_with_alternatives
+from api.routing.osrm import RoutingError
+from api.routing.provider import (
+    fetch_route_with_alternatives as fetch_osrm_route_with_alternatives,
+)
 from api.schemas import (
     MAX_CORRIDOR_KM,
     MAX_ROUTE_RESULTS_LIMIT,
@@ -56,13 +59,14 @@ def stations_along_route(
         Query(
             description=(
                 "fastest = menos tiempo; shortest = menos km; "
+                "eco = menor consumo eléctrico (Google Routes); "
                 "conventional = solo nacionales/secundarias (sin autovía)"
             ),
         ),
     ] = "fastest",
     avoid_highways: Annotated[
         bool,
-        Query(description="Evitar autopistas de peaje (OSRM exclude=toll). Default true."),
+        Query(description="Evitar autopistas de peaje (exclude=toll / avoidTolls). Default true."),
     ] = True,
 ) -> AlongRouteResponse:
     if min_kw is not None and max_kw is not None and min_kw > max_kw:
@@ -135,6 +139,8 @@ def stations_along_route(
         route_fastest_distance_km=route_alternatives.fastest_distance_km,
         route_conventional_distance_km=route_alternatives.conventional_distance_km,
         route_conventional_duration_minutes=route_alternatives.conventional_duration_minutes,
+        route_eco_distance_km=route_alternatives.eco_distance_km,
+        route_eco_duration_minutes=route_alternatives.eco_duration_minutes,
         shortest_excess_km=route_alternatives.shortest_excess_km,
         route_variants_approximate=route_alternatives.variants_approximate,
         route_geometry=osrm_route.geojson_geometry if include_route else None,
@@ -151,6 +157,11 @@ def stations_along_route(
         route_conventional_geometry=(
             variant_routes["conventional"].geojson_geometry
             if include_route and "conventional" in variant_routes
+            else None
+        ),
+        route_eco_geometry=(
+            variant_routes["eco"].geojson_geometry
+            if include_route and "eco" in variant_routes
             else None
         ),
         route_preference=route_preference,

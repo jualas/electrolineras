@@ -6,7 +6,11 @@ WORKDIR /build
 COPY src/web/package.json src/web/package-lock.json ./
 RUN npm ci
 COPY src/web .
+ARG VITE_GOOGLE_MAPS_JS_API_KEY=
+ARG VITE_MAP_PROVIDER=
 ENV VITE_API_URL=
+ENV VITE_GOOGLE_MAPS_JS_API_KEY=${VITE_GOOGLE_MAPS_JS_API_KEY}
+ENV VITE_MAP_PROVIDER=${VITE_MAP_PROVIDER}
 RUN npm run build
 
 # Imagen sin root: nginx escucha en 8080 dentro del contenedor

@@ -4,22 +4,25 @@ export type RouteVariantGeometries = {
   shortest?: RouteLineGeometry | null
   fastest?: RouteLineGeometry | null
   conventional?: RouteLineGeometry | null
+  eco?: RouteLineGeometry | null
 }
 
 export function routeVariantGeometriesFromResponse(data: {
   route_shortest_geometry?: RouteLineGeometry | null
   route_fastest_geometry?: RouteLineGeometry | null
   route_conventional_geometry?: RouteLineGeometry | null
+  route_eco_geometry?: RouteLineGeometry | null
 }): RouteVariantGeometries {
   return {
     shortest: data.route_shortest_geometry ?? null,
     fastest: data.route_fastest_geometry ?? null,
     conventional: data.route_conventional_geometry ?? null,
+    eco: data.route_eco_geometry ?? null,
   }
 }
 
 export function hasRouteComparison(geometries: RouteVariantGeometries): boolean {
-  const keys = (['shortest', 'fastest', 'conventional'] as const).filter((key) => geometries[key])
+  const keys = (['shortest', 'fastest', 'conventional', 'eco'] as const).filter((key) => geometries[key])
   return keys.length >= 2
 }
 
@@ -39,7 +42,7 @@ export function inactiveRouteGeometries(
   geometries: RouteVariantGeometries,
 ): RouteLineGeometry[] {
   const inactive: RouteLineGeometry[] = []
-  for (const key of ['shortest', 'fastest', 'conventional'] as const) {
+  for (const key of ['shortest', 'fastest', 'conventional', 'eco'] as const) {
     if (key === preference) {
       continue
     }

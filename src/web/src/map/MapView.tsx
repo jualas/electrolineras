@@ -53,8 +53,11 @@ import {
   expandMapBounds,
   featuresForViewport,
   shouldFetchStations,
+  zoomedInPastTruncatedCoverage,
 } from './mapStationMerge'
 import { MapLayerControl, type MapLayerToggles } from './MapLayerControl'
+import { GoogleMapView } from './GoogleMapView'
+import { shouldUseGoogleMaps } from './googleMapsLoader'
 import { enhancePlaceLabels } from './mapPlaceLabels'
 import { ensureReliefLayers, setContourVisible, setShadowVisible } from './mapTerrainLayers'
 import { ensureTrafficLayer, setTrafficLayerVisible } from './mapTrafficLayer'
@@ -92,7 +95,7 @@ function getMapUiPadding(): maplibregl.PaddingOptions {
   return { top, bottom: 40, left: 48, right: 48 }
 }
 
-type MapViewProps = {
+export type MapViewProps = {
   className?: string
   loadStations?: boolean
   minKw?: number
@@ -207,7 +210,14 @@ function handleClusterClick(
     })
 }
 
-export function MapView({
+export function MapView(props: MapViewProps) {
+  if (shouldUseGoogleMaps()) {
+    return <GoogleMapView {...props} />
+  }
+  return <MapLibreMapView {...props} />
+}
+
+function MapLibreMapView({
   className,
   loadStations = true,
   minKw,
@@ -247,7 +257,9 @@ export function MapView({
   const loadSeqRef = useRef(0)
   const loadedFeaturesRef = useRef<StationFeature[]>([])
   const coverageBoundsRef = useRef<MapBounds | null>(null)
+  const coverageTruncatedRef = useRef(false)
   const lastLoadedZoomRef = useRef<number | null>(null)
+  const pendingForceLoadRef = useRef(false)
   const stationMapModeRef = useRef<StationMapMode>('browse')
   const loadStationsRef = useRef(loadStations)
   const mapFocusPlaceRef = useRef(mapFocusPlace)
@@ -606,14 +618,24 @@ export function MapView({
       if (
         !force &&
         loadedFeaturesRef.current.length > 0 &&
-        !shouldFetchStations(coverageBoundsRef.current, visibleBounds, lastLoadedZoomRef.current, zoom)
+        !shouldFetchStations(
+          coverageBoundsRef.current,
+          visibleBounds,
+          lastLoadedZoomRef.current,
+          zoom,
+          coverageTruncatedRef.current,
+        )
       ) {
         const hasOverlay = Boolean(routeDataRef.current || chargePlanDataRef.current)
         if (!hasOverlay) {
           setStationCount(inView)
           setLoadState(inView > 0 || loadedFeaturesRef.current.length > 0 ? 'ready' : 'idle')
         }
-        lastLoadedZoomRef.current = zoom
+        // Con la página incompleta el zoom de referencia sigue siendo el de la
+        // descarga: así varios acercamientos pequeños acaban pidiendo el recuadro.
+        if (!coverageTruncatedRef.current) {
+          lastLoadedZoomRef.current = zoom
+        }
         if (inView > 0 && !mapShowsStationGlyphs(map, 'browse')) {
           paintBrowseStations(map, loadedFeaturesRef.current)
         }
@@ -662,13 +684,18 @@ export function MapView({
           return
         }
 
+        const truncated = payload.pagination.has_more
         coverageBoundsRef.current = fetchBounds
+        coverageTruncatedRef.current = truncated
         lastLoadedZoomRef.current = zoom
-        setHasMore(payload.pagination.has_more)
+        setHasMore(truncated)
         const merged = trimBrowseCache(extendStationFeatures(loadedFeaturesRef.current, payload.features))
         loadedFeaturesRef.current = merged
         applyMapPlacePin(map, mapFocusPlaceRef.current)
         paintBrowseStations(map, merged)
+        if (truncated && zoomedInPastTruncatedCoverage(zoom, map.getZoom())) {
+          scheduleLoadRef.current(map, true)
+        }
       } catch (error) {
         if (controller.signal.aborted || loadSeq !== loadSeqRef.current) {
           return
@@ -682,11 +709,16 @@ export function MapView({
   )
 
   const scheduleLoad = useCallback((map: maplibregl.Map, force = false) => {
+    if (force) {
+      pendingForceLoadRef.current = true
+    }
     if (debounceRef.current !== null) {
       window.clearTimeout(debounceRef.current)
     }
     debounceRef.current = window.setTimeout(() => {
-      void loadVisibleStationsRef.current(map, force)
+      const forceLoad = pendingForceLoadRef.current
+      pendingForceLoadRef.current = false
+      void loadVisibleStationsRef.current(map, forceLoad)
     }, LOAD_DEBOUNCE_MS)
   }, [])
 
@@ -868,6 +900,7 @@ export function MapView({
       // ruta/plan activo, o ambos a la vez (estilo REVE): nunca hay que elegir uno u otro.
       if (loadStations && loadedFeaturesRef.current.length === 0) {
         coverageBoundsRef.current = null
+        coverageTruncatedRef.current = false
         lastLoadedZoomRef.current = null
       }
       applyActiveOverlay(readyMap)
@@ -950,6 +983,7 @@ export function MapView({
     focusMapOnPlace(map, mapFocusPlace)
     loadedFeaturesRef.current = []
     coverageBoundsRef.current = null
+    coverageTruncatedRef.current = false
     lastLoadedZoomRef.current = null
     scheduleLoad(map, true)
   }, [mapFocusPlace, loadStations, focusMapOnPlace, scheduleLoad])
@@ -973,6 +1007,7 @@ export function MapView({
     }
     loadedFeaturesRef.current = []
     coverageBoundsRef.current = null
+    coverageTruncatedRef.current = false
     lastLoadedZoomRef.current = null
     scheduleLoad(map, true)
   }, [minKw, maxKw, publicOpenOnly, excludeParking, adHocOnly, availableOnly, maxPriceEurKwh, connectorTypes.join('|'), loadStations, scheduleLoad])

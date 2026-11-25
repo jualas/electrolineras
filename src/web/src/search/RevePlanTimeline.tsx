@@ -4,6 +4,7 @@ import { stationLabel } from '../api/chargingPlan'
 import type { PlannedRouteStopResult, Station } from '../api/types'
 import { formatDurationHm, formatEsNumber } from '../charging/formatTrip'
 import { StationNavActions } from '../components/navigation/StationNavActions'
+import { StationReliabilityBadge } from '../components/StationReliabilityBadge'
 import { ReveStatRow } from './ReveStatRow'
 
 type RevePlanTimelineProps = {
@@ -103,6 +104,7 @@ export function RevePlanTimeline({
                 />
               )}
             </button>
+            <StationReliabilityBadge stationId={stop.station.id} initial={stop.reliability ?? null} />
             <StationNavActions
               lat={stop.station.location.lat}
               lon={stop.station.location.lon}

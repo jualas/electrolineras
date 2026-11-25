@@ -36,7 +36,6 @@ services:
       - ${ELECTROLINERAS_DATA:-/mnt/datos/docker/volumes/electrolineras-data}:/app/data
     networks:
       - default
-      - osrm
     healthcheck:
       test: ['CMD-SHELL', 'python -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\")"']
       interval: 30s
@@ -48,6 +47,9 @@ services:
     build:
       context: ${ELECTROLINERAS_SRC:-/mnt/datos/Proyectos/Electrolineras}
       dockerfile: docker/Dockerfile.nginx
+      args:
+        VITE_GOOGLE_MAPS_JS_API_KEY: ${VITE_GOOGLE_MAPS_JS_API_KEY:-}
+        VITE_MAP_PROVIDER: ${VITE_MAP_PROVIDER:-}
     image: electrolineras-nginx:local
     container_name: electrolineras-nginx
     restart: unless-stopped
@@ -81,8 +83,3 @@ services:
     depends_on:
       electrolineras-nginx:
         condition: service_healthy
-
-networks:
-  osrm:
-    external: true
-    name: osrm_default

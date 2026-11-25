@@ -24,6 +24,8 @@ def _route_preference_label(preference: str | None) -> str:
         return "más rápida (tiempo mínimo con velocidades de vía)"
     if preference == "shortest":
         return "más directa (menos km y desvío vs línea recta)"
+    if preference == "eco":
+        return "eco eléctrica (menor consumo energético)"
     if preference == "conventional":
         return "solo convencionales (nacionales/locales, sin autovía)"
     return "calculada"
@@ -128,6 +130,10 @@ def build_agent_narration(
             elif pref == "fastest" and fastest_km < shortest_km - 1:
                 bullets.append(
                     f"Ruta elegida: la más rápida (~{fastest_km:.0f} km vs ~{shortest_km:.0f} km directa)."
+                )
+            elif pref == "eco" and plan.route_eco_distance_km is not None:
+                bullets.append(
+                    f"Ruta elegida: eco eléctrica (~{plan.route_eco_distance_km:.0f} km, optimizada para menor consumo)."
                 )
             elif pref == "conventional" and conventional_km is not None:
                 bullets.append(

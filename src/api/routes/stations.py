@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.access_filters import passes_access_filters
+from api.config import settings
 from api.converters import stations_to_geojson
 from api.dependencies import get_repository
 from api.query_params import (
@@ -17,6 +18,10 @@ from api.query_params import (
     stations_offset_query,
 )
 from api.routing.nominatim import GeocodingError, search_places
+from api.routing.station_reliability import (
+    StationReliabilityReport,
+    inspect_station_reliability,
+)
 from api.schemas import (
     MAX_STATIONS_LIMIT,
     CountryStats,
@@ -29,6 +34,7 @@ from api.schemas import (
     Pagination,
     PowerBandStats,
     StationListResponse,
+    StationReliabilityResponse,
 )
 from db.repository import StationRepository
 from ingest.config import settings as ingest_settings
@@ -299,6 +305,66 @@ def list_stations(
         )
 
     return StationListResponse(stations=stations, pagination=pagination)
+
+
+def reliability_report_to_schema(report: StationReliabilityReport) -> StationReliabilityResponse:
+    return StationReliabilityResponse(
+        station_id=report.station_id,
+        level=report.level,
+        score=report.score,
+        summary=report.summary,
+        warnings=report.warnings,
+        connector_count=report.connector_count,
+        single_connector=report.single_connector,
+        isolation_radius_km=report.isolation_radius_km,
+        isolated_area=report.isolated_area,
+        backup_stations_in_radius=report.backup_stations_in_radius,
+        backup_station_km=report.backup_station_km,
+        backup_station_label=report.backup_station_label,
+        reve_status=report.reve_status,
+        reve_updated_at=report.reve_updated_at,
+        reve_age_minutes=report.reve_age_minutes,
+        google_checked=report.google_checked,
+        google_matched=report.google_matched,
+        google_status=report.google_status,
+        google_available_count=report.google_available_count,
+        google_out_of_service_count=report.google_out_of_service_count,
+        google_total_connectors=report.google_total_connectors,
+        google_last_update=report.google_last_update,
+        google_rating=report.google_rating,
+        google_rating_count=report.google_rating_count,
+        google_maps_uri=report.google_maps_uri,
+    )
+
+
+@router.get("/stations/{station_id}/reliability")
+def get_station_reliability(
+    station_id: str,
+    repo: Annotated[StationRepository, Depends(get_repository)],
+    verify_google: Annotated[
+        bool,
+        Query(description="Cruzar estado en vivo con Google Places API (New) si hay API key"),
+    ] = True,
+    isolation_radius_km: Annotated[
+        float,
+        Query(gt=5, le=150, description="Radio (km) para buscar cargadores alternativos de respaldo"),
+    ] = settings.reliability_isolation_radius_km,
+    min_backup_kw: Annotated[
+        float | None,
+        Query(ge=0, le=350, description="Potencia mínima (kW) del cargador de respaldo"),
+    ] = None,
+) -> StationReliabilityResponse:
+    station = repo.get_by_id(station_id)
+    if station is None:
+        raise HTTPException(status_code=404, detail=f"Estación no encontrada: {station_id}")
+    report = inspect_station_reliability(
+        repo,
+        station,
+        verify_google=verify_google,
+        isolation_radius_km=isolation_radius_km,
+        min_backup_kw=min_backup_kw,
+    )
+    return reliability_report_to_schema(report)
 
 
 @router.get("/stations/{station_id}")

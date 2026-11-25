@@ -22,10 +22,18 @@ from api.routing.destination_stay import analyze_destination_stay, append_destin
 from api.routing.osrm import (
     RoutePreference,
     RoutingError,
-    fetch_osrm_route,
-    fetch_osrm_route_with_alternatives,
     geodesic_path_km,
     normalize_waypoints,
+)
+from api.routing.provider import (
+    fetch_route as fetch_osrm_route,
+)
+from api.routing.provider import (
+    fetch_route_with_alternatives as fetch_osrm_route_with_alternatives,
+)
+from api.routing.station_reliability import (
+    StationReliabilityReport,
+    inspect_station_reliability,
 )
 from api.schemas import DestinationStayAdviceResult
 from db.repository import StationRepository
@@ -61,11 +69,15 @@ class ChargingPlanBuildResult:
     route_shortest_geometry: dict | None = None
     route_fastest_geometry: dict | None = None
     route_conventional_geometry: dict | None = None
+    route_eco_geometry: dict | None = None
     preferred_operators: tuple[str, ...] = ()
     max_price_eur_kwh: float | None = None
     exclude_slow_chargers: bool = False
     route_shortest_duration_minutes: float | None = None
     route_fastest_duration_minutes: float | None = None
+    route_eco_distance_km: float | None = None
+    route_eco_duration_minutes: float | None = None
+    stop_reliabilities: dict[str, StationReliabilityReport] | None = None
 
 
 def charging_preferences_from_inputs(
@@ -610,6 +622,23 @@ def build_charging_plan(
     )
 
     extra_warnings = [*power_fallback_warnings, *(osrm_warnings or [])]
+    stop_reliabilities: dict[str, StationReliabilityReport] = {}
+    for planned in computation.planned_stops:
+        report = inspect_station_reliability(
+            repo,
+            planned.station,
+            verify_google=False,
+        )
+        stop_reliabilities[planned.station.id] = report
+        stop_name = planned.station.site_name or planned.station.operator or planned.station.id
+        if report.level == "low":
+            extra_warnings.append(f"Parada {planned.order} ({stop_name}): {report.summary}")
+        elif report.isolated_area:
+            extra_warnings.append(
+                f"Parada {planned.order} ({stop_name}): zona aislada sin otro cargador rápido "
+                f"en {report.isolation_radius_km:.0f} km — verifica estado y reseñas antes de salir."
+            )
+
     if extra_warnings:
         computation = replace(
             computation,
@@ -631,6 +660,8 @@ def build_charging_plan(
         geodesic_distance_km=route_alternatives.geodesic_distance_km,
         route_conventional_distance_km=route_alternatives.conventional_distance_km,
         route_conventional_duration_minutes=route_alternatives.conventional_duration_minutes,
+        route_eco_distance_km=route_alternatives.eco_distance_km,
+        route_eco_duration_minutes=route_alternatives.eco_duration_minutes,
         route_shortest_duration_minutes=route_alternatives.shortest_duration_minutes,
         route_fastest_duration_minutes=route_alternatives.fastest_duration_minutes,
         shortest_excess_km=route_alternatives.shortest_excess_km,
@@ -652,6 +683,11 @@ def build_charging_plan(
             if include_route and "conventional" in variant_routes
             else None
         ),
+        route_eco_geometry=(
+            variant_routes["eco"].geojson_geometry
+            if include_route and "eco" in variant_routes
+            else None
+        ),
         route_preference=route_preference,
         avoid_highways=avoid_highways,
         exclude_slow_chargers=exclude_slow_chargers,
@@ -660,4 +696,5 @@ def build_charging_plan(
         destination_stay=destination_stay,
         preferred_operators=charging_preferences.preferred_operators,
         max_price_eur_kwh=charging_preferences.max_price_eur_kwh,
+        stop_reliabilities=stop_reliabilities or None,
     )
