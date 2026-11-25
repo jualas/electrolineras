@@ -76,16 +76,32 @@ export function viewportWithinCoverage(
   )
 }
 
+/** Acercar al menos esto tras una página incompleta justifica otra petición. */
+export const ZOOM_IN_REFETCH_DELTA = 0.5
+
+export function zoomedInPastTruncatedCoverage(
+  previousZoom: number | null,
+  currentZoom: number,
+): boolean {
+  return previousZoom !== null && currentZoom > previousZoom + ZOOM_IN_REFETCH_DELTA
+}
+
 export function shouldFetchStations(
   coverage: MapBounds | null,
   visibleBounds: MapBounds,
   previousZoom: number | null,
   currentZoom: number,
+  coverageTruncated = false,
 ): boolean {
   if (!viewportWithinCoverage(coverage, visibleBounds)) {
     return true
   }
   if (previousZoom !== null && currentZoom < previousZoom - 1.25) {
+    return true
+  }
+  // La vista de península cabe en el límite (3.000–5.000) y se ordena por id:
+  // los puntos REVE quedan fuera. Acercar debe volver a pedir ese recuadro.
+  if (coverageTruncated && zoomedInPastTruncatedCoverage(previousZoom, currentZoom)) {
     return true
   }
   return false
