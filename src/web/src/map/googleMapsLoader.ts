@@ -10,6 +10,7 @@ export type GoogleMapsApi = {
   TrafficLayer: new () => any
   SymbolPath: { CIRCLE: number }
   ControlPosition: Record<string, number>
+  importLibrary?: (name: string) => Promise<any>
   event: {
     clearInstanceListeners: (instance: any) => void
   }
@@ -61,12 +62,27 @@ export function loadGoogleMapsApi(): Promise<GoogleMapsApi> {
     const callbackName = '__electrolinerasGoogleMapsInit'
     window[callbackName] = () => {
       delete window[callbackName]
-      if (window.google?.maps?.Map) {
-        resolve(window.google.maps)
-      } else {
-        loadPromise = null
-        reject(new Error('Google Maps JS cargó sin objeto google.maps.Map'))
+      const finish = async () => {
+        const gm = window.google?.maps
+        if (!gm) {
+          loadPromise = null
+          reject(new Error('Google Maps JS cargó sin objeto google.maps'))
+          return
+        }
+        if (!gm.Map && typeof gm.importLibrary === 'function') {
+          await gm.importLibrary('maps')
+        }
+        if (window.google?.maps?.Map) {
+          resolve(window.google.maps)
+        } else {
+          loadPromise = null
+          reject(new Error('Google Maps JS cargó sin objeto google.maps.Map'))
+        }
       }
+      void finish().catch((err) => {
+        loadPromise = null
+        reject(err instanceof Error ? err : new Error('Error inicializando Google Maps JS'))
+      })
     }
 
     const script = document.createElement('script')
@@ -75,6 +91,7 @@ export function loadGoogleMapsApi(): Promise<GoogleMapsApi> {
       v: 'weekly',
       language: 'es',
       region: 'ES',
+      loading: 'async',
       callback: callbackName,
     })
     script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`

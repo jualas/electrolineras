@@ -476,7 +476,8 @@ button {
   position: absolute;
   right: 0.75rem;
   bottom: calc(9.5rem + env(safe-area-inset-bottom, 0px));
-  z-index: 10;
+  /* Por encima del canvas del mapa, pero por debajo de .map-ui-layer (z-index: 5) para no tapar el panel lateral */
+  z-index: 4;
   pointer-events: auto;
 }
 
@@ -627,6 +628,27 @@ button {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
+}
+
+/* Pulido del InfoWindow de Google Maps: compacta cabecera de cierre y elimina scroll residual */
+.gm-style .gm-style-iw-c {
+  padding: 0.65rem 0.75rem !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--color-surface) !important;
+  color: var(--color-text) !important;
+}
+
+.gm-style .gm-style-iw-chr {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  height: auto !important;
+}
+
+.gm-style .gm-style-iw-d {
+  overflow: visible !important;
+  max-height: none !important;
+  padding-right: 1.25rem;
 }
 
 .station-popup__title {
