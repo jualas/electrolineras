@@ -10,20 +10,26 @@ MODEL_3_LR_USABLE_KWH = 75.0
 MODEL_Y_LR_USABLE_KWH = 75.0
 
 
+_PUSH_NON_TESLA_SOURCES = frozenset({"android_car", "obd2", "home_assistant", "custom"})
+
+
 def nominal_range_km(telemetry: VehicleTelemetry) -> float | None:
     """Autonomía nominal al 100 %.
 
     TeslaMate publica `rated_battery_range_km` a la autonomía del SOC actual (modo
-    «Rated» del cuadro), no normalizada al 100 %. Se divide por el SOC actual para
-    obtener la autonomía al 100 % que asumen `current_range_from_nominal`,
-    `planning_range_km` y el fallback de consumo si no hay efficiency TeslaMate.
-    Al depender del SOC en vivo, la autonomía nominal se ajusta sola si la batería
-    pierde capacidad con el tiempo, en vez de quedar fija a un valor de preset.
+    «Rated» del cuadro). En fuentes multi-coche (Android Auto/AAOS, OBD-II, Home
+    Assistant), si no viene `rated_battery_range_km`, se normaliza `est_battery_range_km`.
     """
-    rated = telemetry.rated_battery_range_km
     soc = telemetry.usable_battery_level_pct or telemetry.battery_level_pct
-    if rated is not None and rated > 0 and soc is not None and soc > 0:
+    if soc is None or soc <= 0:
+        return None
+    rated = telemetry.rated_battery_range_km
+    if rated is not None and rated > 0:
         return rated * 100.0 / soc
+    if telemetry.source in _PUSH_NON_TESLA_SOURCES:
+        est = telemetry.est_battery_range_km
+        if est is not None and est > 0:
+            return est * 100.0 / soc
     return None
 
 
@@ -112,8 +118,6 @@ def vehicle_energy_from_telemetry(
     rated_km = nominal_range_km(telemetry)
     live_soc = telemetry.battery_level_pct
     soc = live_soc if departure_soc_percent is None else min(100.0, max(5.0, departure_soc_percent))
-    if rated_km is None:
-        raise TeslaMateError("TeslaMate sin rated_battery_range_km (autonomía nominal)")
     if soc <= 0:
         raise TeslaMateError("SOC inválido en telemetría")
 
@@ -124,10 +128,13 @@ def vehicle_energy_from_telemetry(
         telemetry=telemetry,
     )
     efficiency = resolve_telemetry_efficiency_kwh_per_km(telemetry)
+    if rated_km is None and (telemetry.source not in _PUSH_NON_TESLA_SOURCES or efficiency is None):
+        raise TeslaMateError("Telemetría sin autonomía nominal (rated/est_battery_range_km)")
     if efficiency is not None:
         consumption_wh_per_km = efficiency * 1000.0 * terrain
     else:
-        # Fallback: coherente con capacidad útil y autonomía nominal TeslaMate al 100 %
+        assert rated_km is not None
+        # Fallback: coherente con capacidad útil y autonomía nominal al 100 %
         consumption_wh_per_km = (capacity * 1000.0 / rated_km) * terrain
     return soc, capacity, consumption_wh_per_km, reserve_soc_percent
 

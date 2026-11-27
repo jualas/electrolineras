@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from api.config import settings
+from api.integrations.push_telemetry import get_push_telemetry, push_telemetry_active
 from api.integrations.teslamate import TeslaMateClient, TeslaMateError, VehicleTelemetry
 from api.integrations.teslamate_mqtt import fetch_vehicle_telemetry_mqtt, mqtt_configured
 
@@ -12,13 +13,20 @@ def teslamate_api_configured() -> bool:
 
 
 def vehicle_telemetry_configured() -> bool:
-    return mqtt_configured() or teslamate_api_configured()
+    return push_telemetry_active() or mqtt_configured() or teslamate_api_configured()
+
+
+_PUSH_NON_TESLA_SOURCES = frozenset({"android_car", "obd2", "home_assistant", "custom"})
 
 
 def _enrich_telemetry_energy(telemetry: VehicleTelemetry) -> VehicleTelemetry:
     """Añade efficiency/capacidad de settings si MQTT/API no las traen."""
     updates: dict[str, float] = {}
-    if telemetry.efficiency_kwh_per_km is None and settings.teslamate_efficiency_kwh_per_km:
+    if (
+        telemetry.efficiency_kwh_per_km is None
+        and telemetry.source not in _PUSH_NON_TESLA_SOURCES
+        and settings.teslamate_efficiency_kwh_per_km
+    ):
         updates["efficiency_kwh_per_km"] = float(settings.teslamate_efficiency_kwh_per_km)
     if updates:
         return replace(telemetry, **updates)
@@ -26,7 +34,17 @@ def _enrich_telemetry_energy(telemetry: VehicleTelemetry) -> VehicleTelemetry:
 
 
 def fetch_vehicle_telemetry(car_id: int | None = None) -> VehicleTelemetry:
-    """Estado del vehículo: MQTT (recomendado) → TeslaMateApi (opcional)."""
+    """Estado del vehículo: push Android Auto/AAOS/OBD-II si reciente → TeslaMate (MQTT/API)."""
+    provider = settings.vehicle_telemetry_provider.strip().lower() or "auto"
+    if provider in {"push", "auto"}:
+        pushed = get_push_telemetry(car_id=car_id)
+        if pushed is not None:
+            return _enrich_telemetry_energy(pushed)
+        if provider == "push":
+            raise TeslaMateError(
+                "Sin telemetría push reciente desde el vehículo (Android Auto / AAOS / OBD-II)"
+            )
+
     mode = settings.teslamate_data_source.strip().lower() or "auto"
 
     if mode in {"mqtt", "auto"} and mqtt_configured():

@@ -39,6 +39,13 @@ data/logs/*
 # Frontend
 node_modules/
 src/web/dist/
+# Android / Capacitor (generado y artefactos de build)
+src/web/android/.gradle/
+src/web/android/build/
+src/web/android/app/build/
+src/web/android/local.properties
+src/web/android/app/src/main/assets/public/
+*.apk
 # img/ — capturas locales para revisión con el asistente (no versionar)
 img/*
 !img/.gitkeep

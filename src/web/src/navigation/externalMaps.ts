@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core'
+import { Share } from '@capacitor/share'
+
 export type MapCoords = {
   lat: number
   lon: number
@@ -22,6 +25,87 @@ export function googleMapsDestinationUrl(lat: number, lon: number): string {
 
 export function appleMapsDestinationUrl(lat: number, lon: number): string {
   return `https://maps.apple.com/?daddr=${lat},${lon}`
+}
+
+/** Formato que la app Tesla parsea al recibir un «Compartir» desde Maps. */
+export function teslaMapsPlaceUrl(lat: number, lon: number): string {
+  return `https://maps.google.com/?q=${lat},${lon}`
+}
+
+export function teslaShareText(lat: number, lon: number, label?: string): string {
+  const title = label?.trim() || 'Destino'
+  return `${title}\n${teslaMapsPlaceUrl(lat, lon)}`
+}
+
+export function teslaAndroidShareIntentUrl(lat: number, lon: number, label?: string): string {
+  const text = encodeURIComponent(teslaShareText(lat, lon, label))
+  const subject = encodeURIComponent(label?.trim() || 'Destino')
+  return (
+    'intent:#Intent;' +
+    'action=android.intent.action.SEND;' +
+    'type=text/plain;' +
+    'package=com.teslamotors.tesla;' +
+    `S.android.intent.extra.SUBJECT=${subject};` +
+    `S.android.intent.extra.TEXT=${text};` +
+    'end'
+  )
+}
+
+export type TeslaHandoffResult = 'share' | 'intent' | 'copied' | 'cancelled' | 'failed'
+
+/** Envía el destino a la app Tesla (Share nativo Capacitor → Web Share → Intent Android → copiar). */
+export async function openInTeslaApp(
+  lat: number,
+  lon: number,
+  label?: string,
+): Promise<TeslaHandoffResult> {
+  const text = teslaShareText(lat, lon, label)
+  const title = label?.trim() || 'Destino'
+  const url = teslaMapsPlaceUrl(lat, lon)
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await Share.share({ title, text, dialogTitle: 'Enviar a Tesla' })
+      return 'share'
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (/cancel|abort/i.test(message)) {
+        return 'cancelled'
+      }
+    }
+  }
+
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      await navigator.share({ title, text, url })
+      return 'share'
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return 'cancelled'
+      }
+    }
+  }
+
+  if (
+    Capacitor.getPlatform() === 'android' ||
+    (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent))
+  ) {
+    try {
+      const a = document.createElement('a')
+      a.href = teslaAndroidShareIntentUrl(lat, lon, label)
+      a.rel = 'noopener'
+      a.style.display = 'none'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      return 'intent'
+    } catch {
+      // fallthrough
+    }
+  }
+
+  const copied = await copyCoordinates(lat, lon)
+  return copied ? 'copied' : 'failed'
 }
 
 export function googleMapsRouteUrl(options: {

@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     teslamate_car_display_name: str = "The Ship"
     teslamate_timeout_seconds: float = 15.0
     teslamate_data_source: str = "auto"
+    # Proveedor de telemetría multi-coche: "auto" (push Android/OBD si fresco → TeslaMate), "push" o "teslamate"
+    vehicle_telemetry_provider: str = "auto"
+    vehicle_telemetry_push_ttl_seconds: float = 600.0
     teslamate_mqtt_host: str = ""
     teslamate_mqtt_port: int = 1883
     teslamate_mqtt_username: str = ""

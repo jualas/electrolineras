@@ -7,6 +7,7 @@
 data/raw
 data/processed
 src/web/node_modules
+src/web/android
 node_modules
 TASKBOARD.md
 docs

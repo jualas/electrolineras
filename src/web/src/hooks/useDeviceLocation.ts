@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core'
+import { Geolocation } from '@capacitor/geolocation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type DeviceLocationSource = 'gps' | 'manual'
@@ -50,21 +52,22 @@ export function useDeviceLocation(options: UseDeviceLocationOptions = {}): UseDe
   const [status, setStatus] = useState<DeviceLocationStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const manualOverrideRef = useRef(false)
-  const watchIdRef = useRef<number | null>(null)
+  const watchIdRef = useRef<string | number | null>(null)
+  const native = Capacitor.isNativePlatform()
 
-  const applyGpsPosition = useCallback(
-    (position: GeolocationPosition) => {
+  const applyGpsCoords = useCallback(
+    (lat: number, lon: number, accuracy: number | null, timestamp: number) => {
       if (manualOverrideRef.current) {
         return
       }
-      const label = formatGpsLabel(gpsLabel, position.coords.accuracy)
+      const label = formatGpsLabel(gpsLabel, accuracy)
       setLocation({
-        lat: position.coords.latitude,
-        lon: position.coords.longitude,
-        accuracyM: position.coords.accuracy,
+        lat,
+        lon,
+        accuracyM: accuracy,
         label,
         source: 'gps',
-        updatedAt: position.timestamp,
+        updatedAt: timestamp,
       })
       setStatus('active')
       setError(null)
@@ -72,75 +75,167 @@ export function useDeviceLocation(options: UseDeviceLocationOptions = {}): UseDe
     [gpsLabel],
   )
 
-  const handleGpsError = useCallback((geoError: GeolocationPositionError) => {
-    const message =
-      geoError.code === geoError.PERMISSION_DENIED
-        ? 'Permiso de ubicación denegado. Actívalo en el teléfono (Android Auto usa el GPS del móvil).'
-        : geoError.code === geoError.TIMEOUT
-          ? 'Tiempo agotado al obtener GPS. Reintenta en zona con mejor señal.'
-          : 'No se pudo obtener la ubicación GPS'
+  const handleErrorText = useCallback((message: string) => {
     setError(message)
     setStatus('error')
   }, [])
 
-  const stopWatch = useCallback(() => {
-    if (watchIdRef.current != null) {
-      navigator.geolocation.clearWatch(watchIdRef.current)
-      watchIdRef.current = null
-    }
-  }, [])
+  const handleBrowserGpsError = useCallback(
+    (geoError: GeolocationPositionError) => {
+      const message =
+        geoError.code === geoError.PERMISSION_DENIED
+          ? 'Permiso de ubicación denegado. Actívalo en el teléfono (Android Auto usa el GPS del móvil).'
+          : geoError.code === geoError.TIMEOUT
+            ? 'Tiempo agotado al obtener GPS. Reintenta en zona con mejor señal.'
+            : 'No se pudo obtener la ubicación GPS'
+      handleErrorText(message)
+    },
+    [handleErrorText],
+  )
 
-  const startWatch = useCallback(() => {
-    if (!navigator.geolocation) {
-      setStatus('unsupported')
-      setError('Geolocalización no disponible en este navegador')
+  const stopWatch = useCallback(() => {
+    const id = watchIdRef.current
+    if (id == null) {
       return
     }
+    watchIdRef.current = null
+    if (native && typeof id === 'string') {
+      void Geolocation.clearWatch({ id })
+    } else if (typeof id === 'number' && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.clearWatch(id)
+    }
+  }, [native])
+
+  const startWatch = useCallback(() => {
     stopWatch()
     setStatus('loading')
     setError(null)
-    watchIdRef.current = navigator.geolocation.watchPosition(applyGpsPosition, handleGpsError, {
-      enableHighAccuracy: true,
-      maximumAge: 15_000,
-      timeout: 20_000,
-    })
-  }, [applyGpsPosition, handleGpsError, stopWatch])
 
-  const refreshGps = useCallback(() => {
+    if (native) {
+      void (async () => {
+        try {
+          const perm = await Geolocation.requestPermissions()
+          if (perm.location === 'denied') {
+            handleErrorText('Permiso de ubicación denegado. Actívalo en Ajustes.')
+            return
+          }
+          const id = await Geolocation.watchPosition(
+            { enableHighAccuracy: true, timeout: 20_000 },
+            (position, err) => {
+              if (err || !position) {
+                handleErrorText(err?.message ?? 'No se pudo obtener GPS')
+                return
+              }
+              applyGpsCoords(
+                position.coords.latitude,
+                position.coords.longitude,
+                position.coords.accuracy ?? null,
+                position.timestamp,
+              )
+            },
+          )
+          watchIdRef.current = id
+        } catch (err) {
+          handleErrorText(err instanceof Error ? err.message : 'GPS no disponible')
+        }
+      })()
+      return
+    }
+
     if (!navigator.geolocation) {
       setStatus('unsupported')
       setError('Geolocalización no disponible en este navegador')
       return
     }
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) =>
+        applyGpsCoords(
+          position.coords.latitude,
+          position.coords.longitude,
+          position.coords.accuracy,
+          position.timestamp,
+        ),
+      handleBrowserGpsError,
+      {
+        enableHighAccuracy: true,
+        maximumAge: 15_000,
+        timeout: 20_000,
+      },
+    )
+  }, [applyGpsCoords, handleBrowserGpsError, handleErrorText, native, stopWatch])
+
+  const refreshGps = useCallback(() => {
     manualOverrideRef.current = false
     setStatus('loading')
     setError(null)
+
+    if (native) {
+      void (async () => {
+        try {
+          const perm = await Geolocation.requestPermissions()
+          if (perm.location === 'denied') {
+            handleErrorText('Permiso de ubicación denegado. Actívalo en Ajustes.')
+            return
+          }
+          const position = await Geolocation.getCurrentPosition({
+            enableHighAccuracy: true,
+            timeout: 20_000,
+          })
+          applyGpsCoords(
+            position.coords.latitude,
+            position.coords.longitude,
+            position.coords.accuracy ?? null,
+            position.timestamp,
+          )
+          if (watch) {
+            startWatch()
+          }
+        } catch (err) {
+          handleErrorText(err instanceof Error ? err.message : 'GPS no disponible')
+        }
+      })()
+      return
+    }
+
+    if (!navigator.geolocation) {
+      setStatus('unsupported')
+      setError('Geolocalización no disponible en este navegador')
+      return
+    }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        applyGpsPosition(position)
+        applyGpsCoords(
+          position.coords.latitude,
+          position.coords.longitude,
+          position.coords.accuracy,
+          position.timestamp,
+        )
         if (watch) {
           startWatch()
         }
       },
-      handleGpsError,
+      handleBrowserGpsError,
       { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
     )
-  }, [applyGpsPosition, handleGpsError, startWatch, watch])
+  }, [applyGpsCoords, handleBrowserGpsError, handleErrorText, native, startWatch, watch])
 
-  const setManualLocation = useCallback((point: { lat: number; lon: number; label: string }) => {
-    manualOverrideRef.current = true
-    stopWatch()
-    setLocation({
-      lat: point.lat,
-      lon: point.lon,
-      accuracyM: null,
-      label: point.label,
-      source: 'manual',
-      updatedAt: Date.now(),
-    })
-    setStatus('active')
-    setError(null)
-  }, [stopWatch])
+  const setManualLocation = useCallback(
+    (point: { lat: number; lon: number; label: string }) => {
+      manualOverrideRef.current = true
+      stopWatch()
+      setLocation({
+        lat: point.lat,
+        lon: point.lon,
+        accuracyM: null,
+        label: point.label,
+        source: 'manual',
+        updatedAt: Date.now(),
+      })
+      setStatus('active')
+      setError(null)
+    },
+    [stopWatch],
+  )
 
   const clearManualOverride = useCallback(() => {
     manualOverrideRef.current = false

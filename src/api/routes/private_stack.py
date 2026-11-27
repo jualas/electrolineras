@@ -14,6 +14,7 @@ from api.auth.private_access import (
 from api.config import settings
 from api.dependencies import get_repository
 from api.integrations.cursor_bridge_client import cursor_bridge_configured
+from api.integrations.push_telemetry import push_telemetry_active, store_push_telemetry
 from api.integrations.telemetry_energy import vehicle_energy_from_telemetry
 from api.integrations.teslamate import TeslaMateError, VehicleTelemetry
 from api.integrations.vehicle_telemetry import (
@@ -32,6 +33,7 @@ from api.schemas import (
     TripChatRequest,
     TripChatResponse,
     TripGuideResponse,
+    VehicleTelemetryIngestRequest,
     VehicleTelemetryResult,
 )
 from db.repository import StationRepository
@@ -94,6 +96,7 @@ def private_stack_status() -> PrivateStackStatusResult:
         login_enabled=private_totp_auth_configured(),
         mqtt_configured=mqtt_configured(),
         teslamate_api_configured=teslamate_api_configured(),
+        push_telemetry_active=push_telemetry_active(),
         cursor_bridge_configured=cursor_bridge_configured(),
     )
 
@@ -107,10 +110,36 @@ def private_home_location() -> HomeLocationResult:
 
 @router.get("/vehicle/state")
 def private_vehicle_state(
-    car_id: Annotated[int | None, Query(ge=1, description="ID TeslaMate; default TESLAMATE_CAR_ID")] = None,
+    car_id: Annotated[int | None, Query(ge=1, description="ID vehículo; default TESLAMATE_CAR_ID")] = None,
 ) -> VehicleTelemetryResult:
     telemetry = _get_vehicle_telemetry(car_id=car_id)
     return _telemetry_to_schema(telemetry)
+
+
+@router.post("/telemetry/ingest")
+def private_telemetry_ingest(
+    payload: VehicleTelemetryIngestRequest,
+) -> VehicleTelemetryResult:
+    """Recibe telemetría en vivo desde Android Auto / AAOS (CarHardwareManager), OBD-II o Home Assistant."""
+    telemetry = VehicleTelemetry(
+        car_id=payload.car_id,
+        display_name=payload.display_name,
+        state=payload.state or "driving",
+        lat=payload.lat,
+        lon=payload.lon,
+        battery_level_pct=payload.battery_level_pct,
+        usable_battery_level_pct=payload.usable_battery_level_pct,
+        est_battery_range_km=payload.est_battery_range_km,
+        rated_battery_range_km=payload.rated_battery_range_km,
+        car_model_label=payload.car_model_label,
+        charging_state=payload.charging_state,
+        outside_temp_c=payload.outside_temp_c,
+        odometer_km=payload.odometer_km,
+        efficiency_kwh_per_km=payload.efficiency_kwh_per_km,
+        source=payload.source,
+    )
+    stored = store_push_telemetry(telemetry)
+    return _telemetry_to_schema(stored)
 
 
 def _resolve_car_energy(

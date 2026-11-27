@@ -320,6 +320,29 @@ class VehicleTelemetryResult(BaseModel):
     source: str = "teslamateapi"
 
 
+TelemetryPushSource = Literal["android_car", "obd2", "home_assistant", "custom"]
+
+
+class VehicleTelemetryIngestRequest(BaseModel):
+    """Telemetría enviada desde la app Android Auto / AAOS, OBD-II BLE o Home Assistant."""
+
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+    battery_level_pct: float = Field(ge=0.0, le=100.0)
+    usable_battery_level_pct: float | None = Field(default=None, ge=0.0, le=100.0)
+    est_battery_range_km: float | None = Field(default=None, ge=0.0, le=2000.0)
+    rated_battery_range_km: float | None = Field(default=None, ge=0.0, le=2000.0)
+    charging_state: str | None = Field(default=None, max_length=64)
+    state: str | None = Field(default=None, max_length=64)
+    display_name: str | None = Field(default=None, max_length=120)
+    car_model_label: str | None = Field(default=None, max_length=120)
+    outside_temp_c: float | None = Field(default=None, ge=-60.0, le=80.0)
+    odometer_km: float | None = Field(default=None, ge=0.0)
+    efficiency_kwh_per_km: float | None = Field(default=None, gt=0.0, le=2.0)
+    car_id: int = Field(default=1, ge=1)
+    source: TelemetryPushSource = "android_car"
+
+
 class TripAdviceResponse(BaseModel):
     """Respuesta enriquecida para agentes (Dify / Cursor CLI)."""
 
@@ -390,6 +413,7 @@ class PrivateStackStatusResult(BaseModel):
     login_enabled: bool = False
     mqtt_configured: bool = False
     teslamate_api_configured: bool = False
+    push_telemetry_active: bool = False
     cursor_bridge_configured: bool = False
 
 
