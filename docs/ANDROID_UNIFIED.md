@@ -50,11 +50,27 @@ npx cap add android
 
 `src/web/src/native/carBridge.ts` persiste en `@capacitor/preferences` (`CapacitorStorage` en Android `SharedPreferences`) las claves `car_api_base_url`, `car_private_token`, `car_filter_min_kw`, `car_filter_max_kw` y `car_vehicle_preset_id`.
 
-## 3. Paso 2 futuro: módulo nativo Android Auto / AAOS
+## 3. Módulo nativo Android Auto / AAOS (implementado)
 
-Android Auto y AAOS no permiten renderizar WebViews en la pantalla del coche; exigen plantillas de **Android for Cars App Library (`androidx.car.app`)** en Kotlin dentro del mismo proyecto `src/web/android/`:
+Dentro del mismo proyecto `src/web/android/` (`es.jualas.electrolineras.car`) se incluye el servicio oficial de **Android for Cars App Library (`androidx.car.app:1.7.0`)**, categoría **POI / EV Charging**:
 
-1. Añadir `androidx.car.app:app` y un `CarAppService` categoría **POI / EV Charging**.
-2. Leer `SharedPreferences("CapacitorStorage")` para heredar URL de API, token y filtro de potencia.
-3. Escuchar `CarHardwareManager.carInfo.addEnergyLevelListener(...)` (`batteryPercent` + `rangeRemainingMeters`, comprobando `CarValue.STATUS_SUCCESS`) y enviarlo periódicamente a `POST /api/v1/private/telemetry/ingest`.
-4. Pintar `PlaceListMapTemplate` (`/api/v1/stations/nearest-live` o `along-route`) + `PaneTemplate` (`/api/v1/stations/{id}/reliability` + botón **Navegar**).
+- **`ElectrolinerasCarAppService` + `ElectrolinerasCarSession`:** punto de entrada para Android Auto (proyección) y Android Automotive OS (AAOS), con `HostValidator` seguro en release y abierto en debug para el simulador DHU.
+- **`CarPreferencesBridge`:** lee `SharedPreferences("CapacitorStorage")` para heredar URL de la API, token privado y filtro de potencia configurados desde la app del móvil.
+- **`CarTelemetryManager`:** se suscribe a `CarHardwareManager.getCarInfo()` (`EnergyLevel` → `batteryPercent` + `rangeRemainingMeters`, y `Model`). Comprueba `CarValue.STATUS_SUCCESS` de forma segura (si el coche actual no expone esos datos, no falla) y empuja los cambios (throttle 60 s / Δ1 % SOC) a `POST /api/v1/private/telemetry/ingest`.
+- **`NearbyChargersScreen` (`PlaceListMapTemplate`):** mapa nativo del coche + hasta 6 cargadores cercanos (`/api/v1/stations/nearby`), estado REVE, precio, distancia nativa y cambio rápido de filtro (`≥100 kW` / `≥50 kW` / `Todos`).
+- **`StationDetailScreen` (`PaneTemplate`):** verificación mixta en vivo (`GET /api/v1/stations/{id}/reliability?verify_google=true`), semáforo REVE + Google Places, alerta de zona aislada (50 km) / plan B y botón primario **Navegar** (`CarContext.ACTION_NAVIGATE`).
+
+### Compilar APK debug y probar en Android Auto DHU
+
+```bash
+cd src/web
+VITE_API_URL=https://electro.jualas.es VITE_PRIVATE_TOKEN= npm run cap:sync
+cd android
+ANDROID_HOME="$HOME/Android/Sdk" ./gradlew testDebugUnitTest assembleDebug
+# APK generado en: src/web/android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Para probar en coche real o simulador Desktop Head Unit (DHU):
+1. Instala `app-debug.apk` en el móvil y abre la app al menos una vez para conceder permiso de ubicación (GPS).
+2. En el móvil: *Ajustes de Android Auto → pulsa 10 veces Versión → Ajustes de desarrollador → Orígenes desconocidos* (o súbelo a una pista de pruebas interna cerrada en Google Play Console para uso estable sin modo desarrollador).
+3. Conecta el móvil al coche (o al DHU con `adb forward tcp:5277 tcp:5277` y `desktop-head-unit`).

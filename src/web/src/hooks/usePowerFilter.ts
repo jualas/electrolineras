@@ -8,6 +8,7 @@ import {
   type PowerFilter,
   type PowerPresetId,
 } from '../filters/powerPresets'
+import { syncCarBridgePowerFilter } from '../native/carBridge'
 
 export function usePowerFilter(initialPreset: PowerPresetId = 'all') {
   const [filter, setFilterState] = useState<PowerFilter>(() => {
@@ -17,6 +18,8 @@ export function usePowerFilter(initialPreset: PowerPresetId = 'all') {
 
   useEffect(() => {
     storePowerFilter(filter)
+    const bounds = apiQueryFromFilter(filter)
+    void syncCarBridgePowerFilter(bounds.minKw, bounds.maxKw)
   }, [filter])
 
   const setPreset = useCallback((presetId: PowerPresetId) => {
